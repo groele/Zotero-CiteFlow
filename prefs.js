@@ -1,0 +1,11 @@
+pref("extensions.zotero.zoterocitation.enable", true);
+pref("extensions.zotero.zoterocitation.dragCite.enable", true);
+pref("extensions.zotero.zoterocitation.citationTagDebounceMs", 150);
+pref("extensions.zotero.zoterocitation.itemsViewRefreshDebounceMs", 120);
+pref("extensions.zotero.zoterocitation.execCommandWaitTimeoutMs", 6000);
+pref("extensions.zotero.zoterocitation.execCommandPollIntervalMs", 25);
+pref("extensions.zotero.zoterocitation.healthWarnTimeoutCount", 1);
+pref("extensions.zotero.zoterocitation.healthErrorTimeoutCount", 3);
+pref("extensions.zotero.zoterocitation.healthWindowMs", 300000);
+pref("extensions.zotero.zoterocitation.perfSlowThresholdMs", 50);
+pref("extensions.zotero.zoterocitation.debug", false);

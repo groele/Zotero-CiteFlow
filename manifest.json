@@ -1,0 +1,19 @@
+{
+    "manifest_version": 2,
+    "name": "Easier Citation",
+    "version": "40.0.3",
+    "description": "Easier Citation for Zotero",
+    "homepage_url": "https://github.com/muisedestiny/zotero-citation#readme",
+    "author": "Polygon; V30 integration by Hou",
+    "icons": {
+        "48": "chrome/content/icons/favicon@0.5x.png",
+        "96": "chrome/content/icons/favicon.png"
+    },
+    "applications": {
+        "zotero": {
+            "id": "zoterocitation@polygon.org",
+            "strict_min_version": "6.999",
+            "strict_max_version": "10.0.*"
+        }
+    }
+}
