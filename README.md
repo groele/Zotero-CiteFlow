@@ -24,3 +24,9 @@ node --test tests/*.test.*
 当前 `manifest.json` 将兼容范围限制为 Zotero `6.999` 至 `10.0.*`。扩展到后续版本之前，应先在目标版本核对集成 API、列注册、拖拽事件和真实 Word 流程，然后调整版本声明。不可只修改 `strict_max_version`。
 
 本轮问题清单、优先级和后续处理顺序见 [PROJECT_AUDIT.md](PROJECT_AUDIT.md)。
+
+## 版权与来源声明
+
+本项目是基于 [MuiseDestiny/zotero-citation](https://github.com/MuiseDestiny/zotero-citation) 的二次开发版本，保留并继承原项目的来源信息、版权声明及适用许可证。本项目不主张拥有原项目及其原始代码的版权；原项目版权归原作者及相应贡献者所有。
+
+本项目中的新增或修改内容属于本次二次开发范围。使用、复制、修改或再分发本项目时，请同时遵守原项目许可证、第三方依赖许可证以及其中的版权和署名要求，不得删除或掩盖原项目的版权与来源信息。
