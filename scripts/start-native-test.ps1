@@ -1,5 +1,5 @@
 param(
-    [string]$XpiPath = 'dist/native-candidate-40.1.0-citeflow-v3/zotero-citeflow-40.1.0.xpi',
+    [string]$XpiPath = 'dist/candidate-v10/zotero-citeflow-10.0.0.xpi',
     [int]$Port = 23129
 )
 $ErrorActionPreference = 'Stop'

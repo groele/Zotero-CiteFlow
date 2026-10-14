@@ -8,7 +8,7 @@
 |---|---|
 | 显示名称 | Zotero CiteFlow |
 | Add-on ID | `citeflow@groele` |
-| 版本 | `40.1.0`（本地候选） |
+| 版本 | `10.0.0`（本地候选；Git 标签 `v10`） |
 | GitHub 仓库 | `https://github.com/groele/Zotero-CiteFlow` |
 | Update URL | `https://raw.githubusercontent.com/groele/Zotero-CiteFlow/main/update.json` |
 | Zotero 声明范围 | 8.0–11.0.*（按用户要求；8/9/11 未实机验证） |

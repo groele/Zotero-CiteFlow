@@ -45,7 +45,7 @@ test('published update manifest has a versioned release link and hash', () => {
   const update = updateManifest.addons[manifest.applications.zotero.id].updates[0];
   assert.match(update.version, /^\d+\.\d+\.\d+$/);
   assert.equal(update.update_link,
-    `https://github.com/groele/Zotero-CiteFlow/releases/download/v${update.version}/zotero-citeflow-${update.version}.xpi`);
+    `https://github.com/groele/Zotero-CiteFlow/releases/download/v${update.version.split('.')[0]}/zotero-citeflow-${update.version}.xpi`);
   assert.match(update.update_hash, /^sha256:[a-f0-9]{64}$/i);
   assert.equal(update.applications.zotero.strict_min_version, '8.0');
   assert.equal(update.applications.zotero.strict_max_version, '11.0.*');

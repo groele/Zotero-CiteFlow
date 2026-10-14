@@ -6,7 +6,7 @@ Zotero CiteFlow tracks citations between Zotero and Word and displays citation d
 | --- | --- |
 | Add-on name | Zotero CiteFlow |
 | Add-on ID | `citeflow@groele` |
-| Current development version | `40.1.0` |
+| Current development version | `10.0.0` (Git tag: `v10`) |
 | Repository | [groele/Zotero-CiteFlow](https://github.com/groele/Zotero-CiteFlow) |
 | Update feed | [update.json](https://raw.githubusercontent.com/groele/Zotero-CiteFlow/main/update.json) |
 | Declared Zotero range | `8.0`–`11.0.*` |
@@ -17,7 +17,7 @@ The add-on ID changed from `zoterocitation@polygon.org` to `citeflow@groele`, so
 
 ## Compatibility and validation
 
-The manifest and update feed declare Zotero `8.0` through `11.0.*`. This is a compatibility range declaration, not proof that every version in the range has passed desktop testing. The available native validation used Zotero 10.0.6 and Microsoft Word 16.0.20430; Zotero 8, 9, and 11 have not been tested in this project. The CiteFlow quick-insert path also remains under investigation; see `VALIDATION-40.1.0.md` before installing this candidate in a primary profile.
+The manifest and update feed declare Zotero `8.0` through `11.0.*`. This is a compatibility range declaration, not proof that every version in the range has passed desktop testing. The available native validation used Zotero 10.0.6 and Microsoft Word 16.0.20430; Zotero 8, 9, and 11 have not been tested in this project. The CiteFlow quick-insert path also remains under investigation; see `VALIDATION-40.1.0.md` before installing this candidate in a primary profile. Version `10.0.0` resets the prior `40.1.0` line, so Zotero will treat it as a downgrade for installations already on 40.x.
 
 Citation fields and Word document metadata are managed by Zotero's native integration. This plugin preserves those native field/index structures and does not rewrite the document's citation payload format.
 

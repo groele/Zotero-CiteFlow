@@ -1,13 +1,17 @@
 {
   "name": "zotero-citeflow",
-  "version": "40.1.0",
+  "version": "10.0.0",
   "private": true,
   "license": "AGPL-3.0-only",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "node scripts/build-source.mjs",
     "test": "node scripts/build-source.mjs && node --test tests/*.test.*",
     "package": "pwsh -NoProfile -File scripts/build.ps1"
   },
-  "devDependencies": { "esbuild": "0.28.2" }
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
 }

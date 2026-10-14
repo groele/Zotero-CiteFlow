@@ -95,7 +95,7 @@ try {
             $manifest.applications.zotero.id = @{
                 updates = @(@{
                     version = $version
-                    update_link = "https://github.com/groele/Zotero-CiteFlow/releases/download/v$version/zotero-citeflow-$version.xpi"
+                    update_link = "https://github.com/groele/Zotero-CiteFlow/releases/download/v$($version.Split('.')[0])/zotero-citeflow-$version.xpi"
                     update_hash = "sha256:$($archiveHash.Hash.ToLowerInvariant())"
                     applications = @{ zotero = @{
                         strict_min_version = $manifest.applications.zotero.strict_min_version
