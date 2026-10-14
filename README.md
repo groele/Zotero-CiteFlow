@@ -60,8 +60,6 @@ Update feed: [update.json](https://github.com/groele/Zotero-CiteFlow/blob/main/u
 
 Microsoft Word with Zotero's Word integration is required. Quick-insert behavior is still under investigation; verify it with a test document before production use.
 
-**Installation / coexistence note:** The add-on ID differs from the original Easier Citation plugin. Zotero treats them as separate add-ons; avoid running both simultaneously. The 10.0.0 version may be treated as a downgrade from previously installed 40.x builds.
-
 ## Development & Testing
 
 Run the following commands from the repository root. Follow project-specific test prerequisites before running native desktop validation.
