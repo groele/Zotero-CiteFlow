@@ -1,7 +1,7 @@
 {
     "manifest_version": 2,
     "name": "Easier Citation",
-    "version": "40.0.3",
+    "version": "40.0.4",
     "description": "Easier Citation for Zotero",
     "homepage_url": "https://github.com/muisedestiny/zotero-citation#readme",
     "author": "Polygon; V30 integration by Hou",
@@ -13,7 +13,8 @@
         "zotero": {
             "id": "zoterocitation@polygon.org",
             "strict_min_version": "6.999",
-            "strict_max_version": "10.0.*"
+            "strict_max_version": "10.0.*",
+            "update_url": "https://raw.githubusercontent.com/groele/Zotero-diy/main/zotero%20citation/update.json"
         }
     }
 }

@@ -1,6 +1,6 @@
 # Zotero Citation（Easier Citation）
 
-当前版本：`40.0.3`
+当前版本：`40.0.4`
 
 项目类型：Zotero 插件二次开发候选版
 
@@ -20,7 +20,7 @@
 - 本项目不主张拥有原项目及其原始代码的版权；原项目版权归原作者及相应贡献者所有。
 - 本项目新增或修改的内容属于本次二次开发范围，不能替代或删除原项目的来源和版权信息。
 - 上游仓库声明的许可证为 [GNU Affero General Public License v3.0（AGPL-3.0）](https://github.com/MuiseDestiny/zotero-citation/blob/bootstrap/LICENSE)。使用、复制、修改或再分发时，应同时遵守该许可证及第三方依赖的许可证要求。
-- 当前目录尚未单独附带完整的 `LICENSE` 文件；正式分发前应将适用许可证文本和必要的第三方声明一并提供。
+- `LICENSE` 已恢复为上游 AGPL-3.0 正文并纳入构建包。捆绑的 `zotero-plugin-toolkit` 等第三方代码声明仍需逐项核对。
 
 ## 当前功能范围
 
@@ -37,13 +37,13 @@
 | Zotero | `6.999` 至 `10.0.*`，以 `manifest.json` 为准 |
 | Word | 依赖 Zotero Word 集成；真实版本矩阵尚未完成 |
 | 操作系统 | Windows 路径已作为主要验证环境；Mac Word 文档名自动识别仍有限制 |
-| 更新通道 | 当前候选版未配置自动更新地址 |
+| 更新通道 | [Zotero-diy 更新清单](https://raw.githubusercontent.com/groele/Zotero-diy/main/zotero%20citation/update.json)，安装包由 GitHub Release 托管 |
 
 `strict_max_version` 不代表已经验证所有后续 Zotero 版本。升级兼容范围前，应在目标版本中重新检查 Word 集成 API、Item Tree 列注册、集合选择、拖拽事件和启动/关闭生命周期。
 
 ## 安装与使用
 
-当前版本是本地候选包，未发布到自动更新服务器。建议先备份 Zotero 数据库和目标 Word 文档，并使用隔离 Zotero 配置进行验证。
+当前版本为 40.0.4，兼容范围仍限制为 Zotero 10；Zotero 11 需通过真实桌面验收后才能增加声明。新安装请从 [40.0.4 发布页](https://github.com/groele/Zotero-diy/releases/tag/v40.0.4)下载 XPI；已安装的 40.x 分支会通过本项目更新清单检查升级。建议先备份 Zotero 数据库和目标 Word 文档，并使用隔离 Zotero 配置进行验证。
 
 1. 使用本项目的构建脚本生成 XPI。
 2. 在 Zotero 中打开“工具 → 附加组件”。
@@ -89,5 +89,5 @@ PROJECT_AUDIT.md                   问题清单、风险边界和后续计划
 
 - 当前目录没有与编译产物一一对应的 TypeScript 源码、依赖锁文件和完整构建工程；后续应先恢复可维护的源码结构，再切换为源码构建发布。
 - 真实桌面 Zotero 与 Word 的多文档切换、连续插入、编辑、撤销、拖拽、禁用/重启清理和长文档性能仍需实机验收。
-- 正式发布前需要补充许可证文件、独立更新清单、发布资产和安装/升级回归记录。
+- 捆绑的 `zotero-plugin-toolkit` 等第三方代码声明仍需逐项核对；真实 Zotero/Word 安装与升级回归也应在更多受支持环境中执行。
 - 详细的风险分级和后续优化顺序见 [PROJECT_AUDIT.md](PROJECT_AUDIT.md)。

@@ -775,7 +775,20 @@ If you do not know what it is, please click Cancel to deny.`);
         if (props.attributes && Object.keys(props.attributes).length) {
           Object.keys(props.attributes).forEach((k) => {
             const v = props.attributes[k];
-            typeof v !== "undefined" && realElem.setAttribute(k, String(v));
+            if (typeof v === "undefined") {
+              return;
+            }
+            // Firefox 153 treats a present XUL/HTML boolean attribute as true,
+            // including hidden="false". Preserve false by removing the attribute.
+            if (["hidden", "collapsed", "selected", "disabled", "checked"].includes(k.toLowerCase()) && typeof v === "boolean") {
+              if (v) {
+                realElem.setAttribute(k, "true");
+              } else {
+                realElem.removeAttribute(k);
+              }
+              return;
+            }
+            realElem.setAttribute(k, String(v));
           });
         }
         if (props.classList?.length) {
@@ -1666,11 +1679,15 @@ If you do not know what it is, please click Cancel to deny.`);
       this._steps.push(...steps);
       return this;
     }
+    _getDocumentWindow(doc) {
+      return doc?.documentGlobal ?? doc?.defaultView ?? doc?.ownerDocument?.defaultView;
+    }
     async show(doc) {
-      if (!doc?.ownerGlobal) {
+      const win = this._getDocumentWindow(doc);
+      if (!win) {
         throw new Error("Document is required.");
       }
-      const guide = new Guide(doc.ownerGlobal);
+      const guide = new Guide(win);
       await guide.show(this._steps);
       const promise = new Promise((resolve) => {
         guide._panel.addEventListener("guide-finished", () => resolve(guide));
@@ -1679,10 +1696,11 @@ If you do not know what it is, please click Cancel to deny.`);
       return guide;
     }
     async highlight(doc, step) {
-      if (!doc?.ownerGlobal) {
+      const win = this._getDocumentWindow(doc);
+      if (!win) {
         throw new Error("Document is required.");
       }
-      const guide = new Guide(doc.ownerGlobal);
+      const guide = new Guide(win);
       await guide.show([step]);
       const promise = new Promise((resolve) => {
         guide._panel.addEventListener("guide-finished", () => resolve(guide));
@@ -6186,25 +6204,31 @@ If you do not know what it is, please click Cancel to deny.`);
       throw error;
     }
   }
+  async function runShutdownStep(name, action) {
+    try {
+      await action();
+    } catch (error) {
+      try {
+        Zotero.logError(new Error(`ZoteroCitation shutdown failed during ${name}`, { cause: error }));
+      } catch (logError) {
+        console.error(`ZoteroCitation shutdown failed during ${name}`, error, logError);
+      }
+    }
+  }
   async function onShutdown() {
     if (shutdownPromise) return shutdownPromise;
     shutdownPromise = (async () => {
     addon.data.alive = false;
-    addon.data.views?.dispose?.();
-    if (keydownHandler) {
-      document.removeEventListener("keydown", keydownHandler, true);
-      keydownHandler = void 0;
+    await runShutdownStep("dispose UI", () => addon.data.views?.dispose?.());
+    const listener = keydownHandler;
+    keydownHandler = void 0;
+    if (listener) {
+      await runShutdownStep("remove keyboard listener", () => document.removeEventListener("keydown", listener, true));
     }
-    try {
-      await addon.data.citation?.clear?.();
-    } catch (error) {
-      Zotero.logError(error instanceof Error ? error : new Error(String(error)));
-    } finally {
-      ztoolkit.unregisterAll();
-      ztoolkit.Prompt.unregisterAll();
-      addon.data.alive = false;
-      if (Zotero[config.addonInstance] === addon) delete Zotero[config.addonInstance];
-    }
+    await runShutdownStep("clear citation state", () => addon.data.citation?.clear?.());
+    await runShutdownStep("unregister toolkit UI", () => ztoolkit.unregisterAll());
+    await runShutdownStep("unregister prompts", () => ztoolkit.Prompt.unregisterAll());
+    if (Zotero[config.addonInstance] === addon) delete Zotero[config.addonInstance];
     })();
     return shutdownPromise;
   }

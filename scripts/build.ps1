@@ -7,6 +7,7 @@ $projectRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $manifest = Get-Content -LiteralPath (Join-Path $projectRoot 'manifest.json') -Raw | ConvertFrom-Json
 $runtimeFiles = @(
     'bootstrap.js',
+    'LICENSE',
     'manifest.json',
     'prefs.js',
     'chrome/content/scripts/index.js',

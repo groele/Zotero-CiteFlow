@@ -5,8 +5,10 @@ const path = require('node:path');
 
 const root = path.join(__dirname, '..');
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
+const updateManifest = JSON.parse(fs.readFileSync(path.join(root, 'update.json'), 'utf8'));
 const runtimeFiles = [
   'bootstrap.js',
+  'LICENSE',
   'manifest.json',
   'prefs.js',
   'chrome/content/scripts/index.js',
@@ -29,11 +31,24 @@ test('all runtime assets exist and are nonempty', () => {
 
 test('manifest and bundled addon identity agree', () => {
   assert.equal(manifest.applications.zotero.id, 'zoterocitation@polygon.org');
-  assert.equal(manifest.applications.zotero.update_url, undefined, 'local candidate must not use the unrelated upstream update channel');
+  assert.equal(manifest.applications.zotero.update_url,
+    'https://raw.githubusercontent.com/groele/Zotero-diy/main/zotero%20citation/update.json');
   assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
   const bundle = fs.readFileSync(path.join(root, 'chrome/content/scripts/index.js'), 'utf8');
   assert.match(bundle, /addonID: "zoterocitation@polygon\.org"/);
   assert.match(bundle, /addonRef: "zoterocitation"/);
+});
+
+test('hosted update manifest matches the installed addon and candidate package', () => {
+  const update = updateManifest.addons[manifest.applications.zotero.id].updates[0];
+  assert.equal(update.version, manifest.version);
+  assert.equal(update.update_link,
+    'https://github.com/groele/Zotero-diy/releases/download/v40.0.4/zotero-citation-40.0.4.xpi');
+  assert.match(update.update_hash, /^sha256:[a-f0-9]{64}$/i);
+  assert.deepEqual(update.applications.zotero, {
+    strict_min_version: manifest.applications.zotero.strict_min_version,
+    strict_max_version: manifest.applications.zotero.strict_max_version,
+  });
 });
 
 test('both locale files define the citation column title', () => {
