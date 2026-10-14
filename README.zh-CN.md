@@ -60,8 +60,6 @@ Zotero CiteFlow 是 Zotero Flow Series 中独立维护的插件，连接 Zotero 
 
 需要安装 Microsoft Word 及 Zotero Word 集成。快捷插入功能仍在排查中，建议先用测试文档确认后再用于正式写作。
 
-**安装与共存提示：**本插件 ID 与原 Easier Citation 不同，Zotero 会识别为独立插件，请勿同时启用。已安装过 40.x 版本的用户可能会遇到 10.0.0 被视为降级的情况。
-
 ## 开发与测试
 
 在仓库根目录运行以下命令。涉及 Zotero 桌面实机测试时，请先配置项目要求的独立测试环境。
