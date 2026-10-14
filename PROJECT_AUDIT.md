@@ -1,45 +1,47 @@
-# 项目审查与分步优化记录（2026-09-23）
+# Zotero CiteFlow 项目审查与优化记录
 
-## Zotero 11 / Firefox 153 适配审查（2026-10-14）
+更新日期：2026-10-14。当前状态：本地架构重构和回归测试完成；Zotero 10 + Word 的原生 CSL 插入已在隔离环境验证；CiteFlow 快捷插入的完整实机验收仍未通过。按用户要求，兼容声明扩大至 Zotero 8.0–11.0.*，但 Zotero 8、9、11 尚未实机验证，因此该范围声明不等同于完整兼容验收。
 
-- 依据 `Zotero11-Firefox153-插件适配指南.md` 检查当前编译包。发现内嵌 UI 工具包将布尔 `false` 一律写成属性字符串，并在引导面板中依赖 `ownerGlobal`。现已让 `hidden`、`collapsed`、`selected`、`disabled`、`checked` 在值为 `false` 时移除属性，并为引导面板窗口解析增加 `documentGlobal`、`defaultView` 和 `ownerDocument.defaultView` 路径。
-- 源码目录不完整，改动直接落在发布运行文件 `chrome/content/scripts/index.js`。关闭流程现逐项隔离视图、键盘监听、引用会话、工具包 UI 和提示框清理失败。新增 Gecko 153 回归覆盖属性语义、窗口解析和清理失败路径。恢复上游 AGPL-3.0 正文并纳入 XPI；捆绑工具包的独立许可证声明仍需核对。安装版本仍限制为 Zotero 10，Zotero 11 真实界面与 Word 验收未完成，因此不声明 Zotero 11 兼容。
-- 审查还检出内嵌 UI 工具包保留了字符串 `oncommand` 属性写入接口；当前插件没有调用该菜单 API。若之后启用菜单功能，应改用 `commandListener` 并覆盖未来 CSP 行为。新更新清单限制为 Zotero 10，并含 XPI SHA-256 校验值。
+## 当前身份与兼容范围
 
-## 已执行
+| 项目 | 当前设置 |
+|---|---|
+| 显示名称 | Zotero CiteFlow |
+| Add-on ID | `citeflow@groele` |
+| 版本 | `40.1.0`（本地候选） |
+| GitHub 仓库 | `https://github.com/groele/Zotero-CiteFlow` |
+| Update URL | `https://raw.githubusercontent.com/groele/Zotero-CiteFlow/main/update.json` |
+| Zotero 声明范围 | 8.0–11.0.*（按用户要求；8/9/11 未实机验证） |
+| Firefox 最低版本 | 115（打包目标） |
 
-1. **P0 启动与关闭清理**：`bootstrap.js` 在脚本加载失败后会遗留 chrome 注册；关闭钩子或字符串包刷新报错也会跳过后续卸载。现已改为分段清理并覆盖失败路径，3 个新增测试通过。
-2. **P1 引用列误识别**：`index.js` 原先以 `endsWith("citation")` 识别列，可能命中其他插件的列。现改为匹配注册的列 ID，新增界面回归断言；图标补丁失败也会记录错误。
-3. **P1 回归资产缺失**：当前目录原来只有 9 个运行文件，没有测试。现迁入与当前 40.0.2 文件逐项一致的历史测试，并新增包与启动测试。23 组稳定性、8 组 Word、6 组数据、界面生命周期与 6 个新增断言通过。
-4. **P1 打包不可复现**：新增 `scripts/build.ps1`，固定 9 个运行文件，执行语法和测试检查，逐项校验 XPI 内容散列；版本升至 40.0.3，以区分已修改的本地候选版与历史 40.0.2。
-5. **P1 更新通道混用**：上游 `update.json` 当前只提供 `0.5.6`，与本地 40.x 分支不是同一更新线。已从候选版清单移除这条 `update_url`，防止未来上游版本误覆盖本地分支；正式发布前需要自有更新清单。
-6. **P1 标签同步的无效让出**：写入计数恰好为 30 的倍数时，后续未变化的每个条目也会调用 `delay(0)`。现改为每完成 30 次实际写入只让出一次，新增 30 次写入后接 100 个未变化条目的回归场景。
+本次实机仅在 Zotero 10.0.6 与 Word 16.0.20430 上进行。更名迁移在启动早期禁用旧 ID `zoterocitation@polygon.org`，保留旧 `extensions.zotero.zoterocitation.*` 首选项和资源命名空间，以避免状态丢失和重复监听。
 
-## 仍需提升的问题与顺序
+## 架构与维护性改造
 
-| 优先级 | 问题及当前证据 | 建议的下一步 | 状态 |
-| --- | --- | --- | --- |
-| P0 | 只有 227 KB 的编译后 `index.js`，缺少与当前实现对应的 `src/`、锁文件和原始构建配置；历史“源码”目录也只有同一打包文件。[上游仓库](https://github.com/MuiseDestiny/zotero-citation/blob/bootstrap/src/modules/citation.ts)有较早的 TypeScript 源码，但当前功能已大幅分叉。 | 以当前包为基准逐模块恢复 TypeScript，锁定依赖，要求重建产物与现有行为测试等价后再切换构建链。 | 待完成，不能直接拿旧源码覆盖 |
-| P0 | Word 与 Zotero 真实联动尚未在本轮完成；VM 测试不能覆盖实际文档字段、数据库事务、窗口切换和其他插件的钩子顺序。 | 用隔离 Zotero 配置与测试 Word 文档，逐项检查插入、编辑、撤销、刷新、多文档、拖拽、禁用、重启及长文档。 | 待实机验收 |
-| P1 | `manifest.json` 的 `strict_max_version` 是 `10.0.*`；后续版本的 API 兼容性未证实。 | 在目标 Zotero 版本执行兼容矩阵，重点核对 `Integration`、`ItemTreeManager`、`collectionsView` 与启动生命周期，再调整声明。 | 待目标版本验证 |
-| P1 | 40.x 更新通道刚建立；实际自动检查时序仍取决于 Zotero 主进程。 | 通过在线清单、Release 资产、散列和已安装插件元数据验证通道；后续再观察自动检查与升级体验。 | 40.0.4 已发布并挂载；自动检查时序待观察 |
-| P1 | 上游 AGPL-3.0 正文已恢复；`zotero-plugin-toolkit` 等捆绑代码的单独许可证声明尚未核对。 | 逐项核实捆绑依赖及其许可证和版权声明后再正式发布。 | 部分完成 |
-| P1 | `Session.prototype.cite`、`Integration.getSession`、`itemsView.onDragStart`、`collectionsView.renderItem` 均被包装；这些接口及调用顺序变化会使快捷插入或 UI 行为失效。 | 恢复源码后将适配点集中成少数可测试的封装，增加异常与并发集成测试。 | 待架构改造 |
-| P1 | `/Citations` 标签和临时 Word 集合会写入文库；失败时有保留所有权并下次重试的逻辑，但用户不能分别关闭这两种副作用。 | 增加明确的独立开关及状态说明；先以真实文库副本验证迁移和清理行为。 | 待体验设计与验证 |
-| P2 | 列 `dataProvider` 及集合图标渲染会逐行扫描全部会话；大量打开文档或大型文库下的延迟没有实机数据。 | 建立按集合键和活动会话索引，以长文档数据测量滚动、刷新和内存后再优化。 | 待基准测试 |
-| P2 | 单引号快捷键使用全局 `keydown`，拖拽引用依靠屏幕坐标判断是否离开 Zotero；复杂焦点或多显示器场景可能误触发。 | 增加可见的开关或快捷键配置，并在多窗口、多显示器与辅助技术场景做人工测试。 | 待体验测试 |
-| P2 | 诊断计数和健康检查存在于内部 API，但普通用户没有可见的“上次同步结果/重试”反馈。 | 在不暴露文献内容的前提下提供状态提示与可复制的诊断摘要。 | 待界面设计 |
+- 从 `src/` 的 9 个 ES module 构建正式运行包；锁定 esbuild 0.28.2，面向 Firefox 115，不再依赖遗留的 `zotero-plugin-toolkit`。
+- `scripts/build.ps1` 固定 XPI 文件清单和 ZIP 时间戳，校验每个归档文件与源码散列，并生成含 SHA-256 的更新清单候选。
+- 运行时拆分为启动/关闭生命周期、原生引用、引用命令、列表视图、钩子及运行时工具；保留 Zotero 原生 CSL 字段结构，不自行改写引用 payload。
+- 加强异常隔离、窗口与会话绑定、并发命令串行化、缓存回退、标签写入回滚、临时集合清理、关闭释放和启动取消。
+- 通过构建检查排除测试脚手架、调试桥接、内嵌事件处理器和未用 toolkit 代码；XPI 只包含 9 个运行时文件。
+- 新增/整理稳定性、数据、UI 生命周期、Word 集成、引导与打包检查。完整实机范围及未通过项见 [VALIDATION-40.1.0.md](VALIDATION-40.1.0.md)。
 
-## 验证记录与限制
+## 实机验收结果与限制
 
-### 40.0.4 发布前复核（2026-10-14）
+测试使用独立 Zotero profile/dataDir 和临时 Word 文件；没有写入用户主 Zotero 文库或打开的原始 Word 文档。验证到插件在 Zotero 10 中以新名称、新 ID 激活，三个合成测试条目可用，Word 原生插件能向隔离文档写入标准 `ADDIN ZOTERO_ITEM CSL_CITATION` 字段。测试后重启 profile，插件仍激活且条目/已有字段保留。
 
-- 完整回归再次通过：23 组稳定性、7 组数据、8 组 Word 行为、启动/界面生命周期，以及 Gecko 153 新增兼容和关闭清理用例；这些仍为模拟测试，不代表 Zotero 11 实机兼容。
-- XPI 按全新输出目录构建，SHA-256 `E173D85429B42E08324B101B7584D5BC1D565EF3B79500B35C8F1F7BD7C53D1`。更新清单指向 GitHub Release 附件并声明同一散列。
-- 40.0.4 更新清单与安装包托管于 Zotero-diy；此次更新通道只适用于具有该更新 URL 的 40.x 安装。旧 40.0.3 安装因不含此更新地址，不会被静默改写，需要先从发布页手动安装一次 40.0.4。
-- 当前兼容声明仍是 Zotero `6.999`–`10.0.*`。Zotero 11 / Firefox 153 仅完成代码审查和模拟回归，真实 Zotero 11 与 Word 验收未通过，故不纳入兼容范围。
-- 上游 AGPL-3.0 正文已打包；捆绑的 `zotero-plugin-toolkit` 第三方许可证清单尚待逐项核查。
+实机过程中发现 Word 的 `getActiveDocument()` 路径可能把空文档名交给 Zotero 10 host API，后者会对 `null` 调用 `indexOf()`。`src/modules/cite.mjs` 已加入临时、作用域受限的 WinWord 活动文档兼容桥，并在成功或失败路径恢复；单元回归覆盖无参数和额外 `null` 参数。但是在最后的实机候选包中，直接通过 CiteFlow API 的引用调用仍未稳定地产生 Word 字段，所以该桥尚未达到实机验收标准。
 
-- 当前目录与 `D:\Dev Studio\Citation\zotero-citation V40.0.2-src` 的原始 `index.js` SHA-256 同为 `43C4B595CA2D62CEAC1521A86D51B21347E4BD30DE1F0F5FEC615AC765DBC020`，因此历史测试可作为当前逻辑的回归起点。
-- `node --test tests/*.test.*` 当前通过，包括 23 组稳定性、8 组 Word、7 组数据、界面生命周期与 6 个新增启动/包断言；测试仍是模拟环境，不覆盖 Word 或 Zotero 实机。
-- 最终候选 XPI：`dist/release-review/zotero-citation-40.0.3.xpi`，68,636 字节，SHA-256 `FEC23BD2ACC761D32A5811D52DA0E8C88E4CA57E70A87A3BFCBB2E45EE86DE4F`。9 个条目与当前运行文件逐项对比散列后生成。此包为本地候选版，未上传、未发布，也未验证自动更新通道。
+`manifest.json` 与本地 `update.json` 指向 groele/Zotero-CiteFlow，并按用户要求声明 Zotero 8.0–11.0.*。该仓库的 GitHub 主分支、Release 附件及自动更新生效状态须以本次 GitHub 提交和 Release 核验结果为准；发布可供自动安装的 XPI 前仍须修复快捷引用验收并重新构建、验证 XPI 和远端清单。
+
+## 验证摘要
+
+- `npm test`：15 个 Node 测试目标全部通过，包含 40 余项稳定性、数据、Word 兼容及包检查。
+- `npm run package -- dist/native-candidate-40.1.0-citeflow-v3`：构建与归档完整性检查通过。
+- 最新候选 XPI：`dist/native-candidate-40.1.0-citeflow-v3/zotero-citeflow-40.1.0.xpi`。
+- 候选 SHA-256：`7D153CC6910D87C3F33BDF9F48DA6C4E54FB73C981AB56C7296AFE0E9A512249`。
+- 实机快捷引用完整流程：未通过，不可据此宣称发布就绪。
+- Zotero 8/9/11 / Firefox 153：未做实机验证；manifest 范围已按用户要求扩大，但不表示这些版本已完成验收。
+
+## 旧版审查事项的处理情况
+
+历史记录中“源代码缺失/只能修改编译包”“构建不可复现”“旧 toolkit 未清理”等事项已由本轮源模块与打包链解决。Zotero 11 声明、快捷引用实机成功、远端 Release/更新通道、用户主 profile 安装与自动更新仍未完成。标签与临时 Word 集合依旧是功能副作用，须继续用隔离数据验证用户可预期性及多文档清理行为。

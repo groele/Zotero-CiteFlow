@@ -9,17 +9,18 @@ const sourcePath = path.join(__dirname, "..", sourceDirectory, "chrome", "conten
 const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "..", sourceDirectory, "manifest.json"), "utf8"));
 const source = fs.readFileSync(sourcePath, "utf8").replace(/\r\n/g, "\n");
 const start = source.indexOf("  var Citation = class {");
-const endMarker = "\n  };\n\n  // src/modules/cite.ts";
+const endMarker = "\n  };\n\n  // src/modules/cite.mjs";
 const end = source.indexOf(endMarker, start);
 assert.ok(start >= 0 && end > start, "Citation class must be extractable from the bundle");
 
 const prefStore = new Map();
 const sandbox = {
   console,
+  setTimeout, clearTimeout, setInterval, clearInterval,
   addon: { data: {} },
-  config: { addonID: "zoterocitation@polygon.org", addonRef: "zoterocitation" },
+  config: { addonID: "citeflow@groele", addonRef: "zoterocitation" },
   getString: (key) => key,
-  ztoolkit: { log() {} },
+  runtime: { log() {} },
   window: {
     setTimeout,
     clearTimeout,
@@ -239,7 +240,7 @@ async function testZotero10CollectionSelectionAPI() {
   sandbox.ZoteroPane.getSelectedCollections = () => [{ key: "WORD", libraryID: 1 }];
   sandbox.ZoteroPane.collectionsView.getSelectedCollections = () => { throw new Error("legacy fallback should not run"); };
   await Object.create(Views.prototype).createCitationColumn();
-  assert.equal(options.pluginID, "zoterocitation@polygon.org");
+  assert.equal(options.pluginID, "citeflow@groele");
   assert.equal(options.dataProvider({ id: 1 }, "citation"), "1: A");
   if (!isV40Source) {
     return;
@@ -379,7 +380,7 @@ async function testDragLifecycle() {
   Object.assign(sandbox.window, {screenX: 0, screenY: 0, outerWidth: 800, outerHeight: 600});
   sandbox.addon.data.alive = true;
   sandbox.addon.api = {citeItems: async items => calls.push(Array.from(items, i => i.id))};
-  sandbox.ztoolkit.patch = (_owner, _key, _id, patch) => { startDrag = patch(() => "native-drag"); };
+  sandbox.runtime.patch = (_owner, _key, _id, patch) => { startDrag = patch(() => "native-drag"); };
   let selected = [regularItem(1)];
   sandbox.ZoteroPane.getSelectedItems = () => selected;
   const view = Object.create(Views.prototype);
@@ -453,7 +454,7 @@ async function testRenameRollbackAndObsoleteRename() {
 }
 async function testCiteSelectionAndNativeFailureRecovery() {
   const a = source.indexOf("  var citeItemsInFlight = false;");
-  const b = source.indexOf("  // src/modules/views.ts", a);
+  const b = source.indexOf("  // src/modules/views.mjs", a);
   vm.runInContext(source.slice(a, b), sandbox);
   sandbox.Zotero_Tabs = {selectedIndex: 0};
   sandbox.addon.data.alive = true;

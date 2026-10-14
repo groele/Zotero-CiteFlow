@@ -15,10 +15,16 @@ function bootEnvironment({ loadError, shutdownError, flushError } = {}) {
   const zotero = {
     initializationPromise: Promise.resolve(),
     ZoteroCitation: addon,
+    debug: (message) => calls.push(`debug: ${message}`),
     logError: (message) => calls.push(`error: ${message}`),
   };
   const context = vm.createContext({
     Zotero: zotero,
+    ChromeUtils: { importESModule: (uri) => {
+      if (uri === 'resource://gre/modules/AddonManager.sys.mjs') return { AddonManager: { getAddonByID: async () => null } };
+      if (uri === 'resource://gre/modules/Timer.sys.mjs') return globalThis;
+      throw new Error(`unexpected import: ${uri}`);
+    } },
     Services: {
       io: { newURI: (uri) => uri },
       scriptloader: { loadSubScript: () => {
@@ -80,4 +86,26 @@ test('normal startup and shutdown release a single registration', async () => {
   assert.equal(calls.filter((call) => call === 'register chrome').length, 1);
   assert.equal(calls.filter((call) => call === 'destruct chrome').length, 1);
   assert.equal(calls.filter((call) => call.startsWith('unload ')).length, 1);
+});
+
+test('new CiteFlow startup disables the legacy add-on before loading its bundle', async () => {
+  const calls = [];
+  let legacyActive = true;
+  const addon = { hooks: { onShutdown: async () => calls.push('legacy shutdown') } };
+  const legacy = { get isActive() { return legacyActive; }, async disable() {
+    calls.push('legacy disable');
+    legacyActive = false;
+  } };
+  const { context, data } = bootEnvironment();
+  context.ChromeUtils.importESModule = (uri) => uri === 'resource://gre/modules/Timer.sys.mjs' ? globalThis : ({ AddonManager: {
+    async getAddonByID(id) {
+      calls.push(`lookup ${id}`);
+      return legacyActive ? legacy : { isActive: false };
+    }
+  } });
+  context.Services.scriptloader.loadSubScript = () => calls.push('CiteFlow bundle');
+  await context.startup(data, 1);
+  assert.ok(calls.indexOf('legacy disable') >= 0, calls.join(', '));
+  assert.ok(calls.indexOf('legacy disable') < calls.indexOf('CiteFlow bundle'));
+  assert.equal(legacyActive, false);
 });

@@ -7,19 +7,20 @@ const sourceDirectory = process.env.CITATION_SOURCE_DIR || ".";
 const sourcePath = path.join(__dirname, "..", sourceDirectory, "chrome", "content", "scripts", "index.js");
 const source = fs.readFileSync(sourcePath, "utf8").replace(/\r\n/g, "\n");
 const classStart = source.indexOf("  var Citation = class {");
-const classEnd = source.indexOf("\n  };\n\n  // src/modules/cite.ts", classStart);
+const classEnd = source.indexOf("\n  };\n\n  // src/modules/cite.mjs", classStart);
 const citeStart = source.indexOf("  var citeItemsInFlight = false;");
-const citeEnd = source.indexOf("\n  // src/modules/views.ts", citeStart);
+const citeEnd = source.indexOf("\n  // src/modules/views.mjs", citeStart);
 assert.ok(classStart >= 0 && classEnd > classStart, "Citation class must be extractable");
 assert.ok(citeStart >= 0 && citeEnd > citeStart, "cite module must be extractable");
 
 const prefStore = new Map();
 const sandbox = {
   console,
+  setTimeout, clearTimeout, setInterval, clearInterval,
   addon: { data: { alive: true } },
-  config: { addonID: "zoterocitation@polygon.org", addonRef: "zoterocitation" },
+  config: { addonID: "citeflow@groele", addonRef: "zoterocitation" },
   getString: key => key,
-  ztoolkit: { log() {} },
+  runtime: { log() {} },
   window: {
     setTimeout,
     clearTimeout,
@@ -239,6 +240,39 @@ async function testNative10CitationShape() { await testInsertionFailureDeletesNe
 async function testExistingFieldFailurePreservesDocument() { await testInsertionFailureDeletesNewField(false, true); }
 async function testPartialRegistrationPreservesCommittedField() { await testInsertionFailureDeletesNewField(true, false, true); }
 
+async function testWinWordActiveDocumentNullCompatibility() {
+  sandbox.Zotero_Tabs = { selectedIndex: 0 };
+  sandbox.addon.data.alive = true;
+  sandbox.Zotero.Integration.Session = function() {};
+  let activeDocumentReads = 0;
+  const originalGetApplication = function(name) {
+    assert.equal(name, "WinWord");
+    return {
+      getDocument(documentName) {
+        if (documentName === null) throw new TypeError("documentName.indexOf is not a function");
+        if (documentName !== "") throw new Error("unexpected document name");
+        activeDocumentReads += 1;
+        return { id: "active-word-document" };
+      },
+      getActiveDocument() { return this.getDocument(null); }
+    };
+  };
+  sandbox.Zotero.Integration.getApplication = originalGetApplication;
+  sandbox.Zotero.Integration.Session.prototype.cite = async function() {
+    const app = sandbox.Zotero.Integration.getApplication("WinWord");
+    assert.deepEqual(app.getActiveDocument(null), { id: "active-word-document" },
+      "adapter compatibility also handles host calls that pass an unused null argument");
+    return "native-cite";
+  };
+  sandbox.Zotero.Integration.execCommand = async () =>
+    sandbox.Zotero.Integration.Session.prototype.cite.call({ sessionID: "native-session" });
+  sandbox.ZoteroPane.getSelectedItems = () => [{ id: 7, isRegularItem: () => true, isTopLevelItem: () => true }];
+  await sandbox.__citeItems();
+  assert.equal(activeDocumentReads, 1, "quick cite resolves Word's active document through the supported empty-name path");
+  assert.equal(sandbox.Zotero.Integration.getApplication, originalGetApplication,
+    "temporary Word adapter compatibility wrapper is restored after native citation");
+}
+
 async function testWrapperChainSurvivesClear() {
   let observed;
   const native = function(...args) { observed = { self: this, args }; return "native"; };
@@ -255,7 +289,8 @@ async function testWrapperChainSurvivesClear() {
 
 const tests = [testNativeSignaturesAndTargetName, testMacWordPlaceholderNeverBecomesDocument,
   testConcurrentCommandsNeverCrossBind, testInsertionFailureDeletesNewField, testNative10CitationShape,
-  testExistingFieldFailurePreservesDocument, testPartialRegistrationPreservesCommittedField, testWrapperChainSurvivesClear];
+  testExistingFieldFailurePreservesDocument, testPartialRegistrationPreservesCommittedField,
+  testWinWordActiveDocumentNullCompatibility, testWrapperChainSurvivesClear];
 (async () => {
   for (const test of tests) {
     await test();

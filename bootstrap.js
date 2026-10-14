@@ -8,6 +8,7 @@
 if (typeof Zotero === "undefined") {
     var Zotero;
 }
+var LEGACY_ADDON_ID = "zoterocitation@polygon.org";
 
 var chromeHandle;
 // A bootstrap shutdown can race with the asynchronous Zotero/window lookup.
@@ -105,6 +106,21 @@ async function startup({ id, version, resourceURI, rootURI }, reason) {
         await waitForZotero();
         if (generation !== startupGeneration) return;
 
+        // The new CiteFlow ID is intentionally distinct from the historical
+        // Easier Citation ID. Disable the old add-on before loading this
+        // bundle so both versions never register the same Zotero APIs at once.
+        const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
+        const legacyAddon = await AddonManager.getAddonByID(LEGACY_ADDON_ID);
+        if (legacyAddon?.isActive) {
+            Zotero.debug("Zotero CiteFlow: disabling legacy Easier Citation add-on before migration");
+            await legacyAddon.disable();
+            const stillActive = await AddonManager.getAddonByID(LEGACY_ADDON_ID);
+            if (stillActive?.isActive) {
+                throw new Error("Could not disable the legacy Easier Citation add-on safely");
+            }
+        }
+        if (generation !== startupGeneration) return;
+
         // String 'rootURI' introduced in Zotero 7
         if (!rootURI) {
             rootURI = resourceURI.spec;
@@ -133,8 +149,12 @@ async function startup({ id, version, resourceURI, rootURI }, reason) {
          */
         const ctx = {
             rootURI,
+            Zotero,
         };
-        ctx._globalThis = ctx;
+        const timers = typeof ChromeUtils !== "undefined"
+            ? ChromeUtils.importESModule("resource://gre/modules/Timer.sys.mjs")
+            : globalThis;
+        for (const key of ["setTimeout", "clearTimeout", "setInterval", "clearInterval"]) ctx[key] = timers[key];
 
         Services.scriptloader.loadSubScript(`${rootURI}chrome/content/scripts/index.js`, ctx);
     } catch (error) {
@@ -198,26 +218,10 @@ async function shutdown({ id, version, resourceURI, rootURI }, reason) {
 
 function uninstall(data, reason) {}
 
-// Loads default preferences from defaults/preferences/prefs.js in Zotero 6
-function setDefaultPrefs(rootURI) {
-    var branch = Services.prefs.getDefaultBranch("");
-    var obj = {
-        pref(pref, value) {
-            switch (typeof value) {
-                case "boolean":
-                    branch.setBoolPref(pref, value);
-                    break;
-                case "string":
-                    branch.setStringPref(pref, value);
-                    break;
-                case "number":
-                    branch.setIntPref(pref, value);
-                    break;
-                default:
-                    Zotero.logError(`Invalid type '${typeof value}' for pref '${pref}'`);
-            }
-        },
-    };
-    Zotero.getMainWindow().console.log(rootURI + "prefs.js");
-    Services.scriptloader.loadSubScript(rootURI + "prefs.js", obj);
+async function onMainWindowLoad({ window }) {
+    await Zotero.ZoteroCitation?.hooks?.onMainWindowLoad?.(window);
+}
+
+async function onMainWindowUnload({ window }) {
+    await Zotero.ZoteroCitation?.hooks?.onMainWindowUnload?.(window);
 }

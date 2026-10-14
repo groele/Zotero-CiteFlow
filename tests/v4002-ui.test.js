@@ -7,14 +7,14 @@ const vm = require("node:vm");
 // is after this prefix and is intentionally not evaluated here.
 process.env.CITATION_SOURCE_DIR = ".";
 const fixturePath = path.join(__dirname, "v40-stability.test.js");
-const fixture = fs.readFileSync(fixturePath, "utf8").split(/\r?\n\(async \(\) => \{\r?\n/)[0];
+const fixture = fs.readFileSync(fixturePath, "utf8").split("\n(async () => {\n")[0];
 const checks = `
 (async () => {
   const assert = globalThis.assert;
   let registeredOptions;
   sandbox.Zotero.ItemTreeManager.registerColumns = async options => {
     registeredOptions = options;
-    return ["zoterocitation\\@polygon.org-citation"];
+    return ["citeflow\\@groele-citation"];
   };
   const unregistered = [];
   sandbox.Zotero.ItemTreeManager.unregisterColumns = keys => unregistered.push(...keys);
@@ -34,12 +34,12 @@ const checks = `
     "duplicate selection entries must not create false ambiguity");
   sandbox.ZoteroPane.itemsView.getColumns = () => [
     { dataKey: "othercitation", hidden: false },
-    { dataKey: "zoterocitation\\@polygon.org-citation", hidden: true }
+    { dataKey: "zoterocitation@polygon.org-citation", hidden: true }
   ];
   assert.equal(view.getColumnInfo("citation")?.hidden, true,
     "drag state must use this add-on's column when another column has a similar name");
   view.dispose();
-  assert.deepEqual(unregistered, ["zoterocitation\\@polygon.org-citation"]);
+  assert.deepEqual(unregistered, ["citeflow\\@groele-citation"]);
 
   const classNames = new Set(["icon-search"]);
   const iconNode = {
@@ -66,7 +66,7 @@ const checks = `
     removeEventListener: (type, fn) => { if (handlers.get(type) === fn) handlers.delete(type); },
     documentElement: { getBoundingClientRect: () => ({ width: 800, height: 600 }) }
   };
-  sandbox.ztoolkit.patch = () => {};
+  sandbox.runtime.patch = () => {};
   sandbox.ZoteroPane.getSelectedItems = () => [{ isRegularItem: () => true, isTopLevelItem: () => true }];
   sandbox.Zotero.Prefs.set("extensions.zotero.zoterocitation.dragCite.enable", false, true);
   const disabledView = Object.create(Views.prototype);
@@ -74,8 +74,8 @@ const checks = `
   await disabledView.dragCite();
   assert.equal(handlers.size, 0, "disabled drag preference must not install a dragend listener");
 
-  const hookStart = source.indexOf("  // src/hooks.ts");
-  const hookEnd = source.indexOf("  // src/addon.ts", hookStart);
+  const hookStart = source.indexOf("  // src/hooks.mjs");
+  const hookEnd = source.indexOf("  // src/addon.mjs", hookStart);
   assert.ok(hookStart >= 0 && hookEnd > hookStart, "hooks slice must be present");
   vm.runInContext(source.slice(hookStart, hookEnd) + "; globalThis.__hooks = hooks_default;", sandbox);
   let clearCalls = 0, disposeCalls = 0, unregisterCalls = 0;
@@ -84,14 +84,14 @@ const checks = `
   sandbox.addon.data.alive = true;
   sandbox.addon.data.views = { dispose: () => { disposeCalls++; } };
   sandbox.addon.data.citation = { clear: async () => { clearCalls++; } };
-  sandbox.ztoolkit.unregisterAll = () => { unregisterCalls++; };
-  sandbox.ztoolkit.Prompt = { unregisterAll() { unregisterCalls++; } };
+  sandbox.runtime.unregisterAll = () => { unregisterCalls++; };
+  sandbox.runtime.Prompt = { unregisterAll() { unregisterCalls++; } };
   sandbox.Zotero.ZoteroCitation = sandbox.addon;
   await sandbox.__hooks.onShutdown();
   await sandbox.__hooks.onShutdown();
   assert.equal(clearCalls, 1, "repeated shutdown must clear citation state once");
   assert.equal(disposeCalls, 1);
-  assert.equal(unregisterCalls, 2);
+  assert.equal(unregisterCalls, 1);
   assert.equal("ZoteroCitation" in sandbox.Zotero, false);
 
   console.log("40.0.2 UI lifecycle suites passed");

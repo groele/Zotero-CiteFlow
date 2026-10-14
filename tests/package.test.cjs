@@ -9,6 +9,7 @@ const updateManifest = JSON.parse(fs.readFileSync(path.join(root, 'update.json')
 const runtimeFiles = [
   'bootstrap.js',
   'LICENSE',
+  'THIRD_PARTY.md',
   'manifest.json',
   'prefs.js',
   'chrome/content/scripts/index.js',
@@ -30,25 +31,24 @@ test('all runtime assets exist and are nonempty', () => {
 });
 
 test('manifest and bundled addon identity agree', () => {
-  assert.equal(manifest.applications.zotero.id, 'zoterocitation@polygon.org');
+  assert.equal(manifest.applications.zotero.id, 'citeflow@groele');
   assert.equal(manifest.applications.zotero.update_url,
     'https://raw.githubusercontent.com/groele/Zotero-CiteFlow/main/update.json');
   assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
+  assert.equal(manifest.version, JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version);
   const bundle = fs.readFileSync(path.join(root, 'chrome/content/scripts/index.js'), 'utf8');
-  assert.match(bundle, /addonID: "zoterocitation@polygon\.org"/);
+  assert.match(bundle, /addonID: "citeflow@groele"/);
   assert.match(bundle, /addonRef: "zoterocitation"/);
 });
 
-test('hosted update manifest matches the installed addon and candidate package', () => {
+test('published update manifest has a versioned release link and hash', () => {
   const update = updateManifest.addons[manifest.applications.zotero.id].updates[0];
-  assert.equal(update.version, manifest.version);
+  assert.match(update.version, /^\d+\.\d+\.\d+$/);
   assert.equal(update.update_link,
-    'https://github.com/groele/Zotero-CiteFlow/releases/download/v40.0.4/zotero-citation-40.0.4.xpi');
+    `https://github.com/groele/Zotero-CiteFlow/releases/download/v${update.version}/zotero-citeflow-${update.version}.xpi`);
   assert.match(update.update_hash, /^sha256:[a-f0-9]{64}$/i);
-  assert.deepEqual(update.applications.zotero, {
-    strict_min_version: manifest.applications.zotero.strict_min_version,
-    strict_max_version: manifest.applications.zotero.strict_max_version,
-  });
+  assert.equal(update.applications.zotero.strict_min_version, '8.0');
+  assert.equal(update.applications.zotero.strict_max_version, '11.0.*');
 });
 
 test('both locale files define the citation column title', () => {

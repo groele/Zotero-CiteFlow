@@ -1,95 +1,38 @@
-# Zotero-CiteFlow (原 Zotero Citation / Easier Citation) — 写作引用追踪
+# Zotero CiteFlow
 
-> **Zotero Flow Series** 系列成员：专注于 Zotero 与写作文档间的引用关系追踪与条目列表显示。
+Zotero CiteFlow tracks citations between Zotero and Word and displays citation details in Zotero's item list.
 
-当前版本：`40.0.4`
-
-项目类型：Zotero 插件二次开发候选版
-
-插件 ID：`zoterocitation@polygon.org`
-
-## 项目简介
-
-本项目用于辅助整理 Zotero 与 Word 文档之间的引用关系，并在 Zotero 条目列表中显示引用信息。当前目录保存的是可安装插件所需的运行文件、回归测试、打包脚本和项目审查记录。
-
-`chrome/content/scripts/index.js` 是包含插件逻辑及 `zotero-plugin-toolkit` 的编译产物，不是可独立构建的原始 TypeScript 源码。因此，本项目当前采用“发布包维护 + 行为回归验证”的方式维护。
-
-## 来源、版权与许可证
-
-本项目基于 [MuiseDestiny/zotero-citation](https://github.com/MuiseDestiny/zotero-citation) 进行二次开发。
-
-- 原项目的代码、版权声明、作者信息和许可证要求继续适用。
-- 本项目不主张拥有原项目及其原始代码的版权；原项目版权归原作者及相应贡献者所有。
-- 本项目新增或修改的内容属于本次二次开发范围，不能替代或删除原项目的来源和版权信息。
-- 上游仓库声明的许可证为 [GNU Affero General Public License v3.0（AGPL-3.0）](https://github.com/MuiseDestiny/zotero-citation/blob/bootstrap/LICENSE)。使用、复制、修改或再分发时，应同时遵守该许可证及第三方依赖的许可证要求。
-- `LICENSE` 已恢复为上游 AGPL-3.0 正文并纳入构建包。捆绑的 `zotero-plugin-toolkit` 等第三方代码声明仍需逐项核对。
-
-## 当前功能范围
-
-- 从 Word 集成会话读取引用，并在 Zotero 中维护对应的临时集合。
-- 在 Zotero 条目列表中提供引用列，并根据活动 Word 文档或选中的引用集合显示引用信息。
-- 支持快捷引用和拖拽引用路径的行为回归测试。
-- 同步 `/Citations` 管理标签，并在条目只读、保存失败或会话关闭时保留可重试状态。
-- 对启动取消、重复启动/关闭、并发 Word 命令、Zotero 10 的 `field`/`fieldIndex` 结构和 UI 生命周期进行防护。
-
-## 兼容性
-
-| 项目 | 当前声明或验证范围 |
+| Field | Value |
 | --- | --- |
-| Zotero | `6.999` 至 `10.0.*`，以 `manifest.json` 为准 |
-| Word | 依赖 Zotero Word 集成；真实版本矩阵尚未完成 |
-| 操作系统 | Windows 路径已作为主要验证环境；Mac Word 文档名自动识别仍有限制 |
-| 更新通道 | [更新清单](https://raw.githubusercontent.com/groele/Zotero-CiteFlow/main/update.json)，安装包由 GitHub Release 托管 |
+| Add-on name | Zotero CiteFlow |
+| Add-on ID | `citeflow@groele` |
+| Current development version | `40.1.0` |
+| Repository | [groele/Zotero-CiteFlow](https://github.com/groele/Zotero-CiteFlow) |
+| Update feed | [update.json](https://raw.githubusercontent.com/groele/Zotero-CiteFlow/main/update.json) |
+| Declared Zotero range | `8.0`–`11.0.*` |
 
-`strict_max_version` 不代表已经验证所有后续 Zotero 版本。升级兼容范围前，应在目标版本中重新检查 Word 集成 API、Item Tree 列注册、集合选择、拖拽事件和启动/关闭生命周期。
+## Upgrade from Easier Citation
 
-## 安装与使用
+The add-on ID changed from `zoterocitation@polygon.org` to `citeflow@groele`, so Zotero treats CiteFlow as a separate add-on. Install the CiteFlow XPI once from the repository's Releases page. On first startup, CiteFlow asks Zotero to disable the legacy add-on before loading its own code, preventing duplicate Word listeners and column registrations. Existing `extensions.zotero.zoterocitation.*` preferences are retained. After confirming CiteFlow works in your Word documents, remove the disabled Easier Citation entry from Zotero's Add-ons pane.
 
-当前版本为 40.0.4，兼容范围仍限制为 Zotero 10；Zotero 11 需通过真实桌面验收后才能增加声明。新安装请从 [40.0.4 发布页](https://github.com/groele/Zotero-CiteFlow/releases/tag/v40.0.4)下载 XPI；已安装的 40.x 分支会通过本项目更新清单检查升级。建议先备份 Zotero 数据库和目标 Word 文档，并使用隔离 Zotero 配置进行验证。
+## Compatibility and validation
 
-1. 使用本项目的构建脚本生成 XPI。
-2. 在 Zotero 中打开“工具 → 附加组件”。
-3. 通过附加组件管理器的齿轮菜单选择“从文件安装附加组件”。
-4. 选择生成的 `.xpi` 文件并重启 Zotero。
-5. 在测试 Word 文档中检查插入、编辑、撤销、刷新、多文档切换和拖拽行为。
+The manifest and update feed declare Zotero `8.0` through `11.0.*`. This is a compatibility range declaration, not proof that every version in the range has passed desktop testing. The available native validation used Zotero 10.0.6 and Microsoft Word 16.0.20430; Zotero 8, 9, and 11 have not been tested in this project. The CiteFlow quick-insert path also remains under investigation; see `VALIDATION-40.1.0.md` before installing this candidate in a primary profile.
 
-## 开发与验证
+Citation fields and Word document metadata are managed by Zotero's native integration. This plugin preserves those native field/index structures and does not rewrite the document's citation payload format.
 
-环境要求：PowerShell 7、Node.js 22 或兼容的较新 Node.js 版本。
+## Build and tests
 
-运行全部回归测试：
+Requirements: PowerShell 7 and Node.js 22 or later.
 
 ```powershell
-node --test tests/*.test.*
-```
-
-生成并校验 XPI：
-
-```powershell
+npm ci
+npm test
 ./scripts/build.ps1 -OutputDirectory dist/my-build
 ```
 
-构建脚本会执行 JavaScript 语法检查、全部测试、运行文件清单检查以及 XPI 内外文件的 SHA-256 校验。若目标目录已有同名 XPI，脚本会停止以避免覆盖已有产物。
+The build is sourced from `src/` and pins esbuild in `package-lock.json`. The XPI contains only runtime files; test drivers and build outputs are excluded. The packaging script checks the archive contents and writes an update-feed candidate with the XPI hash.
 
-当前测试覆盖 23 组稳定性、8 组 Word 接口、7 组数据、界面生命周期及启动/包结构检查。测试主要使用 Node VM 模拟 Zotero/Word 接口，不能替代真实 Zotero、Word、数据库、权限和多窗口端到端验证。
+## Source and license
 
-## 目录结构
-
-```text
-bootstrap.js                       Zotero 启动与关闭入口
-manifest.json                      插件元数据与兼容范围
-prefs.js                           默认配置
-chrome/content/scripts/index.js    编译后的插件运行逻辑
-chrome/content/icons/               插件图标
-locale/                             中英文界面资源
-scripts/build.ps1                   语法、测试与 XPI 构建脚本
-tests/                              稳定性、Word、数据和 UI 回归测试
-PROJECT_AUDIT.md                   问题清单、风险边界和后续计划
-```
-
-## 已知限制与后续工作
-
-- 当前目录没有与编译产物一一对应的 TypeScript 源码、依赖锁文件和完整构建工程；后续应先恢复可维护的源码结构，再切换为源码构建发布。
-- 真实桌面 Zotero 与 Word 的多文档切换、连续插入、编辑、撤销、拖拽、禁用/重启清理和长文档性能仍需实机验收。
-- 捆绑的 `zotero-plugin-toolkit` 等第三方代码声明仍需逐项核对；真实 Zotero/Word 安装与升级回归也应在更多受支持环境中执行。
-- 详细的风险分级和后续优化顺序见 [PROJECT_AUDIT.md](PROJECT_AUDIT.md)。
+This project is derived from [MuiseDestiny/zotero-citation](https://github.com/MuiseDestiny/zotero-citation). Original copyright, source attribution, and AGPL-3.0 obligations remain in force. Third-party runtime and build-tool provenance is listed in `THIRD_PARTY.md`.

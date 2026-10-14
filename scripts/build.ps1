@@ -8,6 +8,7 @@ $manifest = Get-Content -LiteralPath (Join-Path $projectRoot 'manifest.json') -R
 $runtimeFiles = @(
     'bootstrap.js',
     'LICENSE',
+    'THIRD_PARTY.md',
     'manifest.json',
     'prefs.js',
     'chrome/content/scripts/index.js',
@@ -20,6 +21,8 @@ $runtimeFiles = @(
 
 Push-Location -LiteralPath $projectRoot
 try {
+    & node scripts/build-source.mjs
+    if ($LASTEXITCODE -ne 0) { throw 'source build failed; run npm ci to restore pinned build dependencies' }
     & node --check bootstrap.js
     if ($LASTEXITCODE -ne 0) { throw 'bootstrap.js syntax check failed' }
     & node --check chrome/content/scripts/index.js
@@ -34,7 +37,7 @@ try {
     }
     $outputPath = [System.IO.Path]::GetFullPath($outputPath)
     New-Item -ItemType Directory -Path $outputPath -Force | Out-Null
-    $archivePath = Join-Path $outputPath "zotero-citation-$($manifest.version).xpi"
+    $archivePath = Join-Path $outputPath "zotero-citeflow-$($manifest.version).xpi"
     if (Test-Path -LiteralPath $archivePath) {
         throw "Archive already exists: $archivePath"
     }
@@ -46,9 +49,14 @@ try {
                 if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
                     throw "Missing runtime file: $relativePath"
                 }
-                [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
-                    $archive, $sourcePath, $relativePath, [System.IO.Compression.CompressionLevel]::Optimal
-                ) | Out-Null
+                $entry = $archive.CreateEntry($relativePath, [System.IO.Compression.CompressionLevel]::Optimal)
+                $entry.LastWriteTime = [DateTimeOffset]::new(2020, 1, 1, 0, 0, 0, [TimeSpan]::Zero)
+                $inputStream = [System.IO.File]::OpenRead($sourcePath)
+                $outputStream = $entry.Open()
+                try { $inputStream.CopyTo($outputStream) } finally {
+                    $outputStream.Dispose()
+                    $inputStream.Dispose()
+                }
             }
         } finally {
             $archive.Dispose()
@@ -80,7 +88,25 @@ try {
     } finally {
         $zip.Dispose()
     }
-    Get-FileHash -LiteralPath $archivePath -Algorithm SHA256 | Select-Object Path, Hash
+    $archiveHash = Get-FileHash -LiteralPath $archivePath -Algorithm SHA256
+    $version = $manifest.version
+    $candidateFeed = @{
+        addons = @{
+            $manifest.applications.zotero.id = @{
+                updates = @(@{
+                    version = $version
+                    update_link = "https://github.com/groele/Zotero-CiteFlow/releases/download/v$version/zotero-citeflow-$version.xpi"
+                    update_hash = "sha256:$($archiveHash.Hash.ToLowerInvariant())"
+                    applications = @{ zotero = @{
+                        strict_min_version = $manifest.applications.zotero.strict_min_version
+                        strict_max_version = $manifest.applications.zotero.strict_max_version
+                    } }
+                })
+            }
+        }
+    }
+    $candidateFeed | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $outputPath 'update.json') -Encoding utf8NoBOM
+    $archiveHash | Select-Object Path, Hash
 } finally {
     Pop-Location
 }

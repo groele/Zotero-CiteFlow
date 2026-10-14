@@ -1,15 +1,15 @@
 {
   "addons": {
-    "zoterocitation@polygon.org": {
+    "citeflow@groele": {
       "updates": [
         {
-          "version": "40.0.4",
-          "update_link": "https://github.com/groele/Zotero-CiteFlow/releases/download/v40.0.4/zotero-citation-40.0.4.xpi",
-          "update_hash": "sha256:E173D85429B42E08324B101B7584D5BC17D565EF3B79500B35C8F1F7BD7C53D1",
+          "update_link": "https://github.com/groele/Zotero-CiteFlow/releases/download/v40.1.0/zotero-citeflow-40.1.0.xpi",
+          "version": "40.1.0",
+          "update_hash": "sha256:e85503f3148e536f7635d12df72ed1a29bdae030a1de04c9653ff8e8e7605abf",
           "applications": {
             "zotero": {
-              "strict_min_version": "6.999",
-              "strict_max_version": "10.0.*"
+              "strict_min_version": "8.0",
+              "strict_max_version": "11.0.*"
             }
           }
         }
