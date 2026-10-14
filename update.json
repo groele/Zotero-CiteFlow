@@ -4,7 +4,7 @@
       "updates": [
         {
           "version": "40.0.4",
-          "update_link": "https://github.com/groele/Zotero-diy/releases/download/v40.0.4/zotero-citation-40.0.4.xpi",
+          "update_link": "https://github.com/groele/Zotero-Citation/releases/download/v40.0.4/zotero-citation-40.0.4.xpi",
           "update_hash": "sha256:E173D85429B42E08324B101B7584D5BC17D565EF3B79500B35C8F1F7BD7C53D1",
           "applications": {
             "zotero": {

@@ -37,13 +37,13 @@
 | Zotero | `6.999` 至 `10.0.*`，以 `manifest.json` 为准 |
 | Word | 依赖 Zotero Word 集成；真实版本矩阵尚未完成 |
 | 操作系统 | Windows 路径已作为主要验证环境；Mac Word 文档名自动识别仍有限制 |
-| 更新通道 | [Zotero-diy 更新清单](https://raw.githubusercontent.com/groele/Zotero-diy/main/zotero%20citation/update.json)，安装包由 GitHub Release 托管 |
+| 更新通道 | [更新清单](https://raw.githubusercontent.com/groele/Zotero-Citation/main/update.json)，安装包由 GitHub Release 托管 |
 
 `strict_max_version` 不代表已经验证所有后续 Zotero 版本。升级兼容范围前，应在目标版本中重新检查 Word 集成 API、Item Tree 列注册、集合选择、拖拽事件和启动/关闭生命周期。
 
 ## 安装与使用
 
-当前版本为 40.0.4，兼容范围仍限制为 Zotero 10；Zotero 11 需通过真实桌面验收后才能增加声明。新安装请从 [40.0.4 发布页](https://github.com/groele/Zotero-diy/releases/tag/v40.0.4)下载 XPI；已安装的 40.x 分支会通过本项目更新清单检查升级。建议先备份 Zotero 数据库和目标 Word 文档，并使用隔离 Zotero 配置进行验证。
+当前版本为 40.0.4，兼容范围仍限制为 Zotero 10；Zotero 11 需通过真实桌面验收后才能增加声明。新安装请从 [40.0.4 发布页](https://github.com/groele/Zotero-Citation/releases/tag/v40.0.4)下载 XPI；已安装的 40.x 分支会通过本项目更新清单检查升级。建议先备份 Zotero 数据库和目标 Word 文档，并使用隔离 Zotero 配置进行验证。
 
 1. 使用本项目的构建脚本生成 XPI。
 2. 在 Zotero 中打开“工具 → 附加组件”。

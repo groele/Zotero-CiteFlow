@@ -7,7 +7,7 @@ const vm = require("node:vm");
 // is after this prefix and is intentionally not evaluated here.
 process.env.CITATION_SOURCE_DIR = ".";
 const fixturePath = path.join(__dirname, "v40-stability.test.js");
-const fixture = fs.readFileSync(fixturePath, "utf8").split("\n(async () => {\n")[0];
+const fixture = fs.readFileSync(fixturePath, "utf8").split(/\r?\n\(async \(\) => \{\r?\n/)[0];
 const checks = `
 (async () => {
   const assert = globalThis.assert;
