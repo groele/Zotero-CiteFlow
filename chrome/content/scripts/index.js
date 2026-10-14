@@ -25,6 +25,7 @@
   var TEMP_COLLECTION_KEYS_PREF = "zotero-citation.temporaryCollectionKeys";
   var TEMP_SEARCH_KEYS_PREF = "zotero-citation.managedSearchKeys";
   var MANAGED_TAG_IDS_PREF = "zotero-citation.managedCitationTagIDs";
+  var MANAGED_TAG_STATE_PREF = "zotero-citation.managedCitationTagState";
   var Citation = class {
     constructor() {
       this.sessions = {};
@@ -54,10 +55,13 @@
         addon.data.citationDebugEnabled = this._debugEnabled;
       } catch (e) {
       }
-      this._citationTagName = "/Citations";
+      this._citationTagName = this._getCitationTagName();
+      this._citationTagsEnabled = Zotero.Prefs.get("extensions.zotero.zoterocitation.citationTags.enable", true) !== false;
       this._lastTagSyncSig = {};
       this._sessionCitedIDs = {};
-      this._managedCitationTagIDs = this._loadManagedTagIDs();
+      const managedTags = this._loadManagedTagState();
+      this._managedCitationTagIDs = managedTags.ids;
+      this._managedCitationTagNames = managedTags.names;
       this._temporaryCollectionKeys = this._loadKeySet(TEMP_COLLECTION_KEYS_PREF);
       this._managedSearchKeys = this._loadKeySet(TEMP_SEARCH_KEYS_PREF);
       this._tagSyncInFlightBySession = {};
@@ -195,12 +199,33 @@
         this.logError(`Failed to save preference ${prefKey}`, error);
       }
     }
-    _loadManagedTagIDs() {
+    _loadManagedTagState() {
+      let raw;
+      try {
+        raw = Zotero.Prefs.get(MANAGED_TAG_STATE_PREF);
+        const state = raw && JSON.parse(raw);
+        if (state?.version === 1 && state.tags && typeof state.tags === "object" && !Array.isArray(state.tags)) {
+          const entries = Object.entries(state.tags).filter(([id, name]) => Number.isSafeInteger(Number(id)) && Number(id) > 0 && typeof name === "string" && name.trim() && name.length <= 200 && !/[\x00-\x1f\x7f]/.test(name));
+          return { ids: Object.fromEntries(entries.map(([id]) => [id, true])), names: Object.fromEntries(entries) };
+        }
+        if (raw) throw new Error("Unsupported managed citation tag state");
+      } catch (error) {
+        this.logError("Failed to read managed citation tag state", error);
+      }
+      if (raw) return { ids: {}, names: {} };
       const keys = this._loadKeySet(MANAGED_TAG_IDS_PREF);
-      return Object.fromEntries([...keys].map((key) => [key, true]));
+      return { ids: Object.fromEntries([...keys].map((key) => [key, true])), names: Object.fromEntries([...keys].map((key) => [key, "/Citations"])) };
     }
     _saveManagedTagIDs() {
+      try {
+        const tags = Object.fromEntries(Object.keys(this._managedCitationTagIDs).map((id) => [id, this._managedCitationTagNames?.[id] || "/Citations"]));
+        Zotero.Prefs.set(MANAGED_TAG_STATE_PREF, JSON.stringify({ version: 1, tags }));
+      } catch (error) {
+        this.logError("Failed to save managed citation tag state", error);
+        return false;
+      }
       this._saveKeySet(MANAGED_TAG_IDS_PREF, new Set(Object.keys(this._managedCitationTagIDs)));
+      return true;
     }
     async clearStaleArtifacts() {
       const libraryID = Zotero.Libraries.userLibraryID;
@@ -414,14 +439,39 @@
     }
     _getBoolPref(key, fallback) {
       try {
-        return !!Zotero.Prefs.get(key, true);
+        const value = Zotero.Prefs.get(key, true);
+        return typeof value === "boolean" ? value : fallback;
       } catch (e) {
         return fallback;
       }
     }
+    applyPreferences() {
+      const tagsEnabled = Zotero.Prefs.get("extensions.zotero.zoterocitation.citationTags.enable", true) !== false;
+      const tagsChanged = this._citationTagsEnabled !== void 0 && this._citationTagsEnabled !== tagsEnabled;
+      const tagName = this._getCitationTagName();
+      const tagRenamed = this._citationTagName !== void 0 && this._citationTagName !== tagName;
+      this._citationTagsEnabled = tagsEnabled;
+      this._citationTagName = tagName;
+      this._debugEnabled = this._getBoolPref("extensions.zotero.zoterocitation.debug", false);
+      addon.data.citationDebugEnabled = this._debugEnabled;
+      this._tagSyncDebounceMs = this._getClampedIntPref("extensions.zotero.zoterocitation.citationTagDebounceMs", 150, 0, 2e3);
+      this._itemsViewRefreshDebounceMs = this._getClampedIntPref("extensions.zotero.zoterocitation.itemsViewRefreshDebounceMs", 120, 0, 2e3);
+      this._healthWindowMs = this._getClampedIntPref("extensions.zotero.zoterocitation.healthWindowMs", 3e5, 1e4, 36e5);
+      this._perfSlowThresholdMs = this._getClampedIntPref("extensions.zotero.zoterocitation.perfSlowThresholdMs", 50, 5, 5e3);
+      if (tagsChanged || tagRenamed || this._tagPreferencesNeedSync) {
+        this._lastTagSyncSig = {};
+        this._tagPreferencesNeedSync = true;
+        return this.syncCitationTags("__preferences__", []).then((result) => {
+          this._tagPreferencesNeedSync = result?.complete === false;
+          return result;
+        });
+      }
+    }
     _getClampedIntPref(key, fallback, min, max) {
       try {
-        const value = Number(Zotero.Prefs.get(key, true));
+        const raw = Zotero.Prefs.get(key, true);
+        if (typeof raw !== "number" && typeof raw !== "string" || typeof raw === "string" && !raw.trim()) return fallback;
+        const value = Number(raw);
         if (!Number.isFinite(value)) {
           return fallback;
         }
@@ -429,6 +479,10 @@
       } catch (e) {
         return fallback;
       }
+    }
+    _getCitationTagName() {
+      const name = Zotero.Prefs.get("extensions.zotero.zoterocitation.citationTags.text", true);
+      return typeof name === "string" && name.trim() && name.trim().length <= 200 && !/[\x00-\x1f\x7f]/.test(name) ? name.trim() : "/Citations";
     }
     _sanitizeFolderName(rawName) {
       const fallback = "Untitled Document";
@@ -1063,17 +1117,22 @@
     }
     async _syncCitationTags(sessionID, sortedItemIDs) {
       if (this._listenerStopped && sessionID !== "__shutdown__") return;
+      const tagName = this._citationTagName;
+      this._managedCitationTagNames ??= {};
       const perfStart = Date.now();
       let touchedCount = 0;
       let lastYieldedTouchCount = 0;
       let hadFailures = false;
+      let skipped = false;
       let ownershipChanged = false;
       this._bumpDebugCounter("syncCitationTagsRuns");
       try {
         const activeCitedIDSet = /* @__PURE__ */ new Set();
-        for (const sid in this._sessionCitedIDs) {
-          const ids = this._sessionCitedIDs[sid] || [];
-          ids.forEach((id) => activeCitedIDSet.add(Number(id)));
+        if (Zotero.Prefs.get("extensions.zotero.zoterocitation.citationTags.enable", true) !== false) {
+          for (const sid in this._sessionCitedIDs) {
+            const ids = this._sessionCitedIDs[sid] || [];
+            ids.forEach((id) => activeCitedIDSet.add(Number(id)));
+          }
         }
         for (const itemID of activeCitedIDSet) {
           if (!Number.isInteger(itemID) || itemID <= 0) {
@@ -1088,36 +1147,43 @@
               continue;
             }
             if (!this._isWritableCitationItem(item)) {
+              if (item.libraryID === Zotero.Libraries?.userLibraryID || this._managedCitationTagIDs[itemID]) skipped = true;
               continue;
             }
-            const hasCitationTag = typeof item.hasTag === "function" ? item.hasTag(this._citationTagName) : (() => {
-              const tags = typeof item.getTags === "function" ? item.getTags() : [];
-              return Array.isArray(tags) && tags.some((tag) => {
-                const tagName = typeof tag === "string" ? tag : tag?.tag;
-                return tagName === this._citationTagName;
-              });
-            })();
-            let addedByPlugin = false;
-            if (!hasCitationTag && typeof item.addTag === "function") {
-              item.addTag(this._citationTagName);
+            if (Zotero.Prefs.get("extensions.zotero.zoterocitation.citationTags.enable", true) === false || this._citationTagName !== tagName) break;
+            const oldName = this._managedCitationTagIDs[itemID] && (this._managedCitationTagNames[itemID] || "/Citations");
+            const hasTag = (name) => typeof item.hasTag === "function" ? item.hasTag(name) : (item.getTags?.() || []).some((tag) => (typeof tag === "string" ? tag : tag?.tag) === name);
+            const removeOld = oldName && oldName !== tagName && hasTag(oldName);
+            const addNew = !hasTag(tagName);
+            if (removeOld && typeof item.removeTag !== "function" || addNew && typeof item.addTag !== "function") {
+              skipped = true;
+              continue;
+            }
+            if (removeOld || addNew) {
+              if (removeOld) item.removeTag(oldName);
+              if (addNew) item.addTag(tagName);
               try {
                 await item.saveTx();
                 touchedCount += 1;
-                addedByPlugin = true;
                 ownershipChanged = true;
               } catch (saveError) {
                 try {
-                  if (typeof item.removeTag === "function") {
-                    item.removeTag(this._citationTagName);
-                  }
+                  if (addNew) item.removeTag(tagName);
+                  if (removeOld) item.addTag(oldName);
                 } catch (rollbackError) {
-                  runtime.log("[Citation syncCitationTags] Failed to roll back tag add", itemID, rollbackError);
+                  this.logError(`Failed to roll back citation tag change for item ${itemID}`, rollbackError);
                 }
                 throw saveError;
               }
             }
-            if (addedByPlugin || this._managedCitationTagIDs[itemID]) {
+            if (oldName && oldName !== tagName) {
+              delete this._managedCitationTagIDs[itemID];
+              delete this._managedCitationTagNames[itemID];
+              ownershipChanged = true;
+            }
+            if (addNew || oldName === tagName && this._managedCitationTagIDs[itemID]) {
               this._managedCitationTagIDs[itemID] = true;
+              this._managedCitationTagNames[itemID] = tagName;
             }
             if (touchedCount > 0 && touchedCount % 30 === 0 && touchedCount !== lastYieldedTouchCount) {
               lastYieldedTouchCount = touchedCount;
@@ -1126,7 +1192,7 @@
           } catch (e) {
             hadFailures = true;
             this._bumpDebugCounter("syncCitationTagsFailures");
-            runtime.log("[Citation syncCitationTags] Failed to add/sync tag for item", itemID, e);
+            this.logError(`Failed to add or rename citation tag for item ${itemID}`, e);
           }
         }
         const managedIDs = Object.keys(this._managedCitationTagIDs).map((id) => Number(id));
@@ -1141,28 +1207,31 @@
             }
             if (!item) {
               delete this._managedCitationTagIDs[itemID];
+              delete this._managedCitationTagNames[itemID];
               ownershipChanged = true;
               continue;
             }
             if (!this._isWritableCitationItem(item)) {
+              skipped = true;
               continue;
             }
-            const hasCitationTag = typeof item.hasTag === "function" ? item.hasTag(this._citationTagName) : (() => {
+            const managedName = this._managedCitationTagNames[itemID] || "/Citations";
+            const hasCitationTag = typeof item.hasTag === "function" ? item.hasTag(managedName) : (() => {
               const tags = typeof item.getTags === "function" ? item.getTags() : [];
               return Array.isArray(tags) && tags.some((tag) => {
-                const tagName = typeof tag === "string" ? tag : tag?.tag;
-                return tagName === this._citationTagName;
+                const tagName2 = typeof tag === "string" ? tag : tag?.tag;
+                return tagName2 === managedName;
               });
             })();
             if (hasCitationTag && typeof item.removeTag === "function") {
-              item.removeTag(this._citationTagName);
+              item.removeTag(managedName);
               try {
                 await item.saveTx();
                 touchedCount += 1;
               } catch (saveError) {
                 try {
                   if (typeof item.addTag === "function") {
-                    item.addTag(this._citationTagName);
+                    item.addTag(managedName);
                   }
                 } catch (rollbackError) {
                   runtime.log("[Citation syncCitationTags] Failed to roll back tag removal", itemID, rollbackError);
@@ -1171,6 +1240,7 @@
               }
             }
             delete this._managedCitationTagIDs[itemID];
+            delete this._managedCitationTagNames[itemID];
             ownershipChanged = true;
             if (touchedCount > 0 && touchedCount % 30 === 0 && touchedCount !== lastYieldedTouchCount) {
               lastYieldedTouchCount = touchedCount;
@@ -1179,12 +1249,13 @@
           } catch (e) {
             hadFailures = true;
             this._bumpDebugCounter("syncCitationTagsFailures");
-            runtime.log("[Citation syncCitationTags] Failed to remove tag for item", itemID, e);
+            this.logError(`Failed to remove citation tag for item ${itemID}`, e);
           }
         }
       } finally {
-        if (ownershipChanged || hadFailures) {
-          this._saveManagedTagIDs();
+        if (ownershipChanged || hadFailures || this._tagOwnershipDirty) {
+          this._tagOwnershipDirty = this._saveManagedTagIDs() === false;
+          if (this._tagOwnershipDirty) hadFailures = true;
         }
         if (touchedCount > 0) {
           this._bumpDebugCounter("syncCitationTagsTouched", touchedCount);
@@ -1194,6 +1265,7 @@
         }
         this._recordPerf("syncCitationTags", Date.now() - perfStart);
       }
+      return { complete: !hadFailures && !skipped, touchedCount };
     }
     scheduleItemsViewRefresh() {
       if (this._itemsViewRefreshTimer || this._listenerStopped) return;
@@ -1907,6 +1979,181 @@
   };
   var views_default = Views;
 
+  // src/modules/preferences.mjs
+  var prefix = "extensions.zotero.zoterocitation.";
+  var settings = [
+    { id: "enable", key: "enable", defaultValue: true },
+    { id: "quickCite", key: "quickCite.enable", defaultValue: true },
+    { id: "dragCite", key: "dragCite.enable", defaultValue: true },
+    { id: "citationTags", key: "citationTags.enable", defaultValue: true },
+    { id: "citationTagText", key: "citationTags.text", defaultValue: "/Citations", maxLength: 200 },
+    { id: "debug", key: "debug", defaultValue: false },
+    { id: "citationTagDebounceMs", key: "citationTagDebounceMs", defaultValue: 150, min: 0, max: 2e3 },
+    { id: "itemsViewRefreshDebounceMs", key: "itemsViewRefreshDebounceMs", defaultValue: 120, min: 0, max: 2e3 },
+    { id: "healthWindowMs", key: "healthWindowMs", defaultValue: 3e5, min: 1e4, max: 36e5 },
+    { id: "perfSlowThresholdMs", key: "perfSlowThresholdMs", defaultValue: 50, min: 5, max: 5e3 }
+  ];
+  function readSetting(setting) {
+    const value = Zotero.Prefs.get(prefix + setting.key, true);
+    if (setting.maxLength !== void 0) {
+      return typeof value === "string" && value.trim() && value.trim().length <= setting.maxLength && !/[\x00-\x1f\x7f]/.test(value) ? value.trim() : setting.defaultValue;
+    }
+    if (setting.min === void 0) return typeof value === "boolean" ? value : setting.defaultValue;
+    if (typeof value !== "number" && typeof value !== "string" || typeof value === "string" && !value.trim()) return setting.defaultValue;
+    const number = Number(value);
+    return Number.isFinite(number) ? Math.max(setting.min, Math.min(setting.max, Math.trunc(number))) : setting.defaultValue;
+  }
+  var Preferences = class {
+    constructor(apply) {
+      this._apply = apply;
+      this._panels = /* @__PURE__ */ new Map();
+      this._observers = [];
+      this._disposed = false;
+      this._applyQueue = Promise.resolve();
+      this._revision = 0;
+      this._applyFailed = false;
+      this._startedEnabled = readSetting(settings[0]);
+    }
+    async register() {
+      this._paneID = await Zotero.PreferencePanes.register({
+        pluginID: config.addonID,
+        id: "zoterocitation-preferences",
+        label: "CiteFlow",
+        src: "chrome://zoterocitation/content/preferences.xhtml",
+        stylesheets: ["chrome://zoterocitation/content/preferences.css"]
+      });
+      if (this._disposed) {
+        Zotero.PreferencePanes.unregister(this._paneID);
+        this._paneID = void 0;
+        return;
+      }
+      for (const setting of settings) {
+        const symbol = Zotero.Prefs.registerObserver(prefix + setting.key, () => {
+          if (this._disposed) return;
+          for (const panel of this._panels.values()) panel.sync(setting);
+          this._scheduleApply();
+        }, true);
+        this._observers.push(symbol);
+      }
+    }
+    _scheduleApply() {
+      const revision = ++this._revision;
+      this._applyQueue = this._applyQueue.catch((error) => Zotero.logError(error)).then(async () => {
+        if (this._disposed || revision !== this._revision) return;
+        try {
+          const result = await this._apply();
+          if (this._disposed || revision !== this._revision) return;
+          this._applyFailed = result?.complete === false;
+        } catch (error) {
+          Zotero.logError(error);
+          if (this._disposed || revision !== this._revision) return;
+          this._applyFailed = true;
+        }
+        for (const panel of this._panels.values()) panel.updateStatus();
+      });
+    }
+    get settled() {
+      return this._applyQueue;
+    }
+    init(win) {
+      const root = win.document.getElementById("zoterocitation-settings");
+      if (!root || this._disposed || this._panels.has(root)) return;
+      const listeners = [];
+      const invalid = /* @__PURE__ */ new Map();
+      const status = root.querySelector("#zoterocitation-settings-status");
+      const updateStatus = () => {
+        if (invalid.size) {
+          const message = invalid.values().next().value;
+          win.document.l10n.setAttributes(status, message.id, message.args);
+          return;
+        }
+        win.document.l10n.setAttributes(status, this._applyFailed ? "zoterocitation-settings-apply-failed" : readSetting(settings[0]) !== this._startedEnabled ? "zoterocitation-settings-restart" : "zoterocitation-settings-saved");
+      };
+      const on = (node, type, handler) => {
+        node.addEventListener(type, handler);
+        listeners.push(() => node.removeEventListener(type, handler));
+      };
+      const sync = (setting) => {
+        const input = root.querySelector(`#zoterocitation-setting-${setting.id}`);
+        invalid.delete(setting.id);
+        if (typeof setting.defaultValue === "boolean") input.checked = readSetting(setting);
+        else {
+          input.value = String(readSetting(setting));
+          input.setCustomValidity("");
+        }
+        updateStatus();
+      };
+      const dispose = () => {
+        for (const remove of listeners) remove();
+        this._panels.delete(root);
+      };
+      this._panels.set(root, { sync, dispose, updateStatus });
+      const save = (values) => {
+        try {
+          for (const [setting, value] of values) Zotero.Prefs.set(prefix + setting.key, value, true);
+          updateStatus();
+        } catch (error) {
+          Zotero.logError(error);
+          for (const setting of settings) sync(setting);
+          this._applyQueue = this._applyQueue.then(() => {
+            if (!this._disposed && this._panels.has(root)) win.document.l10n.setAttributes(status, "zoterocitation-settings-save-failed");
+          });
+          win.document.l10n.setAttributes(status, "zoterocitation-settings-save-failed");
+        }
+      };
+      for (const setting of settings) {
+        const input = root.querySelector(`#zoterocitation-setting-${setting.id}`);
+        sync(setting);
+        if (typeof setting.defaultValue !== "boolean") on(input, "input", () => {
+          input.setCustomValidity("");
+          invalid.delete(setting.id);
+          updateStatus();
+        });
+        on(input, "change", () => {
+          let value = input.checked;
+          if (setting.maxLength !== void 0) {
+            value = input.value.trim();
+            if (!value || value.length > setting.maxLength || /[\x00-\x1f\x7f]/.test(input.value)) {
+              invalid.set(setting.id, { id: "zoterocitation-settings-invalid-tag" });
+              updateStatus();
+              input.reportValidity();
+              return;
+            }
+          }
+          if (setting.min !== void 0) {
+            value = Number(input.value);
+            if (!input.value.trim() || !Number.isInteger(value) || value < setting.min || value > setting.max) {
+              input.reportValidity();
+              invalid.set(setting.id, { id: "zoterocitation-settings-invalid", args: { min: setting.min, max: setting.max } });
+              updateStatus();
+              return;
+            }
+          }
+          save([[setting, value]]);
+        });
+      }
+      on(root.querySelector("#zoterocitation-settings-reset"), "click", () => {
+        save(settings.map((setting) => [setting, setting.defaultValue]));
+        for (const setting of settings) sync(setting);
+      });
+      on(win, "unload", dispose);
+    }
+    dispose() {
+      this._disposed = true;
+      for (const panel of [...this._panels.values()]) panel.dispose();
+      for (const symbol of this._observers) {
+        try {
+          Zotero.Prefs.unregisterObserver(symbol);
+        } catch (error) {
+          Zotero.logError(error);
+        }
+      }
+      this._observers = [];
+      if (this._paneID) Zotero.PreferencePanes.unregister(this._paneID);
+      this._paneID = void 0;
+    }
+  };
+
   // src/hooks.mjs
   var windowBindings = /* @__PURE__ */ new Map();
   var startupPromise;
@@ -1924,6 +2171,11 @@
       globalThis.ZoteroPane = mainWindow.ZoteroPane;
       globalThis.Zotero_Tabs = mainWindow.Zotero_Tabs;
       await initLocale();
+      if (!addon.data.alive) return;
+      const preferences = new Preferences(applyPreferences);
+      addon.data.preferences = preferences;
+      addon.api.initPreferences = (win) => preferences.init(win);
+      await preferences.register();
       if (!addon.data.alive) return;
       if (Zotero.Prefs.get("extensions.zotero.zoterocitation.enable", true) === false) {
         return;
@@ -1952,8 +2204,8 @@
     const views = new views_default(win);
     const keydownHandler = (event) => {
       if (event.key !== "'" || event.repeat || event.isComposing || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
-      const target = event.originalTarget || event.target;
-      if (!target || target.isContentEditable || "value" in target) return;
+      const targets = [event.target, event.originalTarget, ...event.composedPath?.() || []].filter(Boolean);
+      if (!targets.length || targets.some((target) => target.isContentEditable || "value" in target || target.closest?.('input, textarea, select, [role="textbox"], [role="combobox"]'))) return;
       if (Zotero.Prefs.get("extensions.zotero.zoterocitation.quickCite.enable", true) === false) return;
       const items = win.ZoteroPane.getSelectedItems();
       if (!items?.length || !items.every((item) => item?.isRegularItem?.() && item.isTopLevelItem())) return;
@@ -1992,6 +2244,14 @@
   async function onMainWindowUnload(win) {
     await detachWindow(win);
   }
+  async function applyPreferences() {
+    if (!addon.data.alive) return;
+    const result = await addon.data.citation?.applyPreferences();
+    for (const binding of windowBindings.values()) {
+      if (!binding.closed) await binding.views.dragCite();
+    }
+    return result;
+  }
   async function runShutdownStep(name, action) {
     try {
       await action();
@@ -2007,6 +2267,10 @@
     if (shutdownPromise) return shutdownPromise;
     shutdownPromise = (async () => {
       addon.data.alive = false;
+      if (addon.data.preferences) {
+        await runShutdownStep("remove preferences", () => addon.data.preferences.dispose());
+        delete addon.api.initPreferences;
+      }
       await runShutdownStep("dispose UI", () => addon.data.views?.dispose?.());
       for (const win of [...windowBindings.keys()]) await detachWindow(win);
       await runShutdownStep("clear citation state", () => addon.data.citation?.clear?.());

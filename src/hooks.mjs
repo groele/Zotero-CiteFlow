@@ -3,6 +3,7 @@ import { initLocale } from "./modules/locale.mjs";
 import { Citation } from "./modules/citation.mjs";
 import { citeItems } from "./modules/cite.mjs";
 import Views from "./modules/views.mjs";
+import { Preferences } from "./modules/preferences.mjs";
 const windowBindings = new Map();
 let startupPromise;
 let shutdownPromise;
@@ -19,6 +20,11 @@ async function onStartup() {
     globalThis.ZoteroPane = mainWindow.ZoteroPane;
     globalThis.Zotero_Tabs = mainWindow.Zotero_Tabs;
     await initLocale();
+    if (!addon.data.alive) return;
+    const preferences = new Preferences(applyPreferences);
+    addon.data.preferences = preferences;
+    addon.api.initPreferences = win => preferences.init(win);
+    await preferences.register();
     if (!addon.data.alive) return;
     if (Zotero.Prefs.get("extensions.zotero.zoterocitation.enable", true) === false) {
       return;
@@ -48,8 +54,11 @@ async function attachWindow(win) {
   const keydownHandler = event => {
     if (event.key !== "'" || event.repeat || event.isComposing
       || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
-    const target = event.originalTarget || event.target;
-    if (!target || target.isContentEditable || "value" in target) return;
+    const targets = [event.target, event.originalTarget, ...event.composedPath?.() || []].filter(Boolean);
+    // Firefox's originalTarget can be an anonymous inner node of an input.
+    // Inspect the visible target and composed path as well before intercepting.
+    if (!targets.length || targets.some(target => target.isContentEditable || "value" in target
+      || target.closest?.('input, textarea, select, [role="textbox"], [role="combobox"]'))) return;
     if (Zotero.Prefs.get("extensions.zotero.zoterocitation.quickCite.enable", true) === false) return;
     const items = win.ZoteroPane.getSelectedItems();
     if (!items?.length || !items.every(item => item?.isRegularItem?.() && item.isTopLevelItem())) return;
@@ -88,6 +97,14 @@ async function onMainWindowLoad(win) {
 async function onMainWindowUnload(win) {
   await detachWindow(win);
 }
+async function applyPreferences() {
+  if (!addon.data.alive) return;
+  const result = await addon.data.citation?.applyPreferences();
+  for (const binding of windowBindings.values()) {
+    if (!binding.closed) await binding.views.dragCite();
+  }
+  return result;
+}
 async function runShutdownStep(name, action) {
   try {
     await action();
@@ -103,6 +120,10 @@ async function onShutdown() {
   if (shutdownPromise) return shutdownPromise;
   shutdownPromise = (async () => {
   addon.data.alive = false;
+  if (addon.data.preferences) {
+    await runShutdownStep("remove preferences", () => addon.data.preferences.dispose());
+    delete addon.api.initPreferences;
+  }
   await runShutdownStep("dispose UI", () => addon.data.views?.dispose?.());
   for (const win of [...windowBindings.keys()]) await detachWindow(win);
   await runShutdownStep("clear citation state", () => addon.data.citation?.clear?.());

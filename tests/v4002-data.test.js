@@ -13,6 +13,8 @@ assert.ok(start >= 0 && end > start, "Citation class must be extractable from th
 
 const prefStore = new Map();
 const sandbox = {
+  MANAGED_TAG_IDS_PREF: "zotero-citation.managedCitationTagIDs",
+  MANAGED_TAG_STATE_PREF: "zotero-citation.managedCitationTagState",
   console,
   setTimeout, clearTimeout, setInterval, clearInterval,
   addon: { data: {} },
@@ -213,10 +215,122 @@ async function testTagBatchYieldsOnlyOncePerThirtyWrites() {
   }
 }
 
+async function testCustomTagToggleRenameAndManualOwnership() {
+  const instance = bareCitation();
+  instance._citationTagsEnabled = true;
+  const managed = makeTaggedItem(); managed.tags.clear();
+  const manual = makeTaggedItem(); manual.tags.add("已引用");
+  const items = new Map([[7, managed], [8, manual]]);
+  sandbox.Zotero.Items.get = id => items.get(id);
+  instance._sessionCitedIDs = { A: [7], B: [8] };
+  const enableKey = "extensions.zotero.zoterocitation.citationTags.enable";
+  const textKey = "extensions.zotero.zoterocitation.citationTags.text";
+  prefStore.set(enableKey, true); prefStore.set(textKey, "/Citations");
+  try {
+    await instance.syncCitationTags("A", [7]);
+    assert.equal(managed.tags.has("/Citations"), true);
+    assert.equal(instance._managedCitationTagIDs[8], undefined, "manual tags must not become plugin-owned");
+    prefStore.set(textKey, "已引用"); await instance.applyPreferences();
+    assert.equal(managed.tags.has("/Citations"), false); assert.equal(managed.tags.has("已引用"), true);
+    assert.equal(manual.tags.has("/Citations"), true); assert.equal(manual.tags.has("已引用"), true);
+    assert.equal(instance._managedCitationTagIDs[8], undefined, "pre-existing custom tags must not become plugin-owned");
+    assert.equal(instance._managedCitationTagNames[7], "已引用");
+    Citation.prototype._saveManagedTagIDs.call(instance);
+    const restored = instance._loadManagedTagState();
+    assert.equal(restored.names[7], "已引用"); assert.equal(restored.ids[7], true);
+    prefStore.set(enableKey, false); await instance.applyPreferences();
+    assert.equal(managed.tags.size, 0); assert.equal(manual.tags.size, 2);
+    assert.deepEqual(Object.keys(instance._sessionCitedIDs).sort(), ["A", "B"], "tracking remains intact");
+    await instance.syncCitationTags("A", [7]); assert.equal(managed.tags.size, 0);
+    prefStore.set(enableKey, true); await instance.applyPreferences();
+    assert.equal(managed.tags.has("已引用"), true);
+  } finally { prefStore.delete(enableKey); prefStore.delete(textKey); }
+}
+
+async function testFailedTagRenameRetainsOwnershipAndRollsBack() {
+  const instance = bareCitation(); instance._citationTagsEnabled = true;
+  const item = makeTaggedItem({ saveTx: async () => { throw Error("locked"); } });
+  instance._managedCitationTagIDs = { 7: true }; instance._managedCitationTagNames = { 7: "/Citations" };
+  instance._sessionCitedIDs = { A: [7] }; sandbox.Zotero.Items.get = () => item;
+  const textKey = "extensions.zotero.zoterocitation.citationTags.text";
+  prefStore.set(textKey, "已引用");
+  try {
+    const result = await instance.applyPreferences();
+    assert.equal(result.complete, false); assert.equal(instance._tagPreferencesNeedSync, true);
+    assert.equal(item.tags.has("/Citations"), true); assert.equal(item.tags.has("已引用"), false);
+    assert.equal(instance._managedCitationTagNames[7], "/Citations");
+    let saves = 0; item.saveTx = async () => { saves++; };
+    const recovered = await instance.applyPreferences();
+    assert.equal(recovered.complete, true); assert.equal(saves, 1, "rename must save removal and addition together");
+    assert.equal(item.tags.has("已引用"), true); assert.equal(item.tags.has("/Citations"), false);
+  } finally { prefStore.delete(textKey); }
+}
+
+async function testCorruptedTagStateNeverAssumesOwnershipOfManualDefaultTags() {
+  const instance = bareCitation();
+  const legacyKey = 'extensions.zotero.zotero-citation.managedCitationTagIDs';
+  const stateKey = 'extensions.zotero.zotero-citation.managedCitationTagState';
+  prefStore.set(legacyKey, '["7"]');
+  try {
+    for (const raw of ['{broken', JSON.stringify({ version: 2, tags: { 7: 'Custom' } }), JSON.stringify({ version: 1, tags: { 7: null } })]) {
+      prefStore.set(stateKey, raw);
+      assert.deepEqual(Object.keys(instance._loadManagedTagState().ids), [], raw);
+    }
+    prefStore.delete(stateKey);
+    assert.equal(instance._loadManagedTagState().names[7], '/Citations', 'only missing new-format state allows legacy migration');
+    prefStore.set(stateKey, JSON.stringify({ version: 1, tags: { 7: 'Custom', 8: '/Citations' } }));
+    assert.equal(instance._loadManagedTagState().names[7], 'Custom');
+  } finally { prefStore.delete(legacyKey); prefStore.delete(stateKey); }
+}
+
+async function testReadOnlyCustomTagCleanupRetainsNameAndRecovers() {
+  const instance = bareCitation(); instance._citationTagsEnabled = true;
+  const item = makeTaggedItem({ editable: false }); item.tags.clear(); item.tags.add('已引用');
+  instance._citationTagName = '已引用'; instance._managedCitationTagIDs = { 7: true };
+  instance._managedCitationTagNames = { 7: '已引用' }; instance._sessionCitedIDs = { A: [7] };
+  sandbox.Zotero.Items.get = () => item;
+  const key = 'extensions.zotero.zoterocitation.citationTags.enable'; prefStore.set(key, false);
+  try {
+    const result = await instance.applyPreferences(); assert.equal(result.complete, false);
+    assert.equal(item.tags.has('已引用'), true); assert.equal(instance._managedCitationTagNames[7], '已引用');
+    item.editable = true;
+    const retried = await instance.applyPreferences(); assert.equal(retried.complete, true); assert.equal(item.tags.size, 0);
+  } finally { prefStore.delete(key); }
+}
+
+async function testOwnershipWriteFailureIsReportedAndRetried() {
+  const instance = bareCitation(); instance._citationTagsEnabled = true;
+  const item = makeTaggedItem(); item.tags.clear(); sandbox.Zotero.Items.get = () => item;
+  instance._sessionCitedIDs = { A: [7] }; instance._saveManagedTagIDs = () => false;
+  const result = await instance.syncCitationTags('A', [7]); assert.equal(result.complete, false);
+  let retriedSaves = 0; instance._saveManagedTagIDs = () => { retriedSaves++; return true; };
+  const retried = await instance.syncCitationTags('A', [7]); assert.equal(retried.complete, true);
+  assert.equal(retriedSaves, 1, 'failed ownership persistence must retry even when the item tag already exists');
+  assert.equal(item.tags.has('/Citations'), true); assert.equal(instance._managedCitationTagIDs[7], true);
+}
+
+async function testDisableDuringInFlightTagSaveClearsCommittedTag() {
+  const instance = bareCitation(); instance._citationTagsEnabled = true;
+  const item = makeTaggedItem(); item.tags.clear();
+  let release; item.saveTx = () => new Promise(resolve => { release = resolve; });
+  instance._sessionCitedIDs = { A: [7] }; sandbox.Zotero.Items.get = () => item;
+  const first = instance.syncCitationTags("A", [7]);
+  await new Promise(resolve => setImmediate(resolve));
+  const enableKey = "extensions.zotero.zoterocitation.citationTags.enable";
+  prefStore.set(enableKey, false);
+  const disabling = instance.applyPreferences();
+  item.saveTx = async () => {}; release();
+  try { await Promise.all([first, disabling]); assert.equal(item.tags.size, 0); assert.equal(instance._managedCitationTagIDs[7], undefined); }
+  finally { prefStore.delete(enableKey); }
+}
+
 const tests = [testMalformedCacheFallsBackSafely, testEmptySnapshotNeedsTwoReadsAndMismatchIsPreserved,
   testCleanupFailureKeepsManagedOwnership, testSharedTagUnionAcrossDocuments,
   testGlobalTagQueueWaitsForInFlightWrite, testFailedCollectionEraseKeepsPersistentKey,
-  testTagBatchYieldsOnlyOncePerThirtyWrites];
+  testTagBatchYieldsOnlyOncePerThirtyWrites, testCustomTagToggleRenameAndManualOwnership,
+  testFailedTagRenameRetainsOwnershipAndRollsBack, testDisableDuringInFlightTagSaveClearsCommittedTag,
+  testCorruptedTagStateNeverAssumesOwnershipOfManualDefaultTags, testReadOnlyCustomTagCleanupRetainsNameAndRecovers,
+  testOwnershipWriteFailureIsReportedAndRetried];
 (async () => {
   for (const test of tests) {
     await test();

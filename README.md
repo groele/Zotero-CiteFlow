@@ -58,6 +58,25 @@ Update feed: [update.json](https://github.com/groele/Zotero-CiteFlow/blob/main/u
 
 ## Configuration & Notes
 
+Open **Edit → Settings → CiteFlow** on Windows. The pane remains available when citation tracking is disabled.
+
+| Setting | Default | When it takes effect |
+| --- | --- | --- |
+| Citation tracking | On | After restarting Zotero |
+| Quick citation (apostrophe key) | On | Immediately; ignores text editing and modifier keys |
+| Drag citation | On | Immediately; requires a visible citation column |
+| Automatic citation tags | On | Immediately; turning it off removes plugin-managed tags |
+| Citation tag text | `/Citations` | Immediately; renames plugin-managed tags |
+| Citation-tag sync delay | 150 ms | Subsequent tag sync tasks |
+| Item-list refresh delay | 120 ms | Subsequent refresh tasks |
+| Diagnostic time window | 300000 ms | Subsequent diagnostic queries |
+| Slow-operation threshold | 50 ms | Subsequent performance measurements |
+| Debug logging | Off | Immediately |
+
+Values save automatically. The tag text accepts 1–200 characters, including Chinese text. Numeric fields enforce their displayed integer ranges. **Restore defaults** resets these ten settings only. Existing manual tags and unrelated Zotero preferences are preserved. Tag renaming saves the removal and addition together; failed writes retain the previous tag and ownership for retry. Save/application failures are reported in the pane.
+
+See [settings validation](VALIDATION-settings-panel.md) for native desktop coverage and remaining Word integration limits.
+
 Microsoft Word with Zotero's Word integration is required. Quick-insert behavior is still under investigation; verify it with a test document before production use.
 
 ## Development & Testing
@@ -68,7 +87,7 @@ Run the following commands from the repository root. Follow project-specific tes
 npm ci
 npm test
 npm run package
-``
+```
 
 These commands describe available project tasks, not a claim that every environment or integration test passes.
 

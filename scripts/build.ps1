@@ -11,6 +11,8 @@ $runtimeFiles = @(
     'THIRD_PARTY.md',
     'manifest.json',
     'prefs.js',
+    'chrome/content/preferences.xhtml',
+    'chrome/content/preferences.css',
     'chrome/content/scripts/index.js',
     'chrome/content/icons/favicon.png',
     'chrome/content/icons/favicon@0.5x.png',

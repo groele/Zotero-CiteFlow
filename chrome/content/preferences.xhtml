@@ -1,0 +1,66 @@
+<linkset>
+  <html:link rel="localization" href="zoterocitation-addon.ftl"/>
+</linkset>
+<vbox id="zoterocitation-settings" onload="Zotero.ZoteroCitation.api.initPreferences(window)">
+  <html:p class="zoterocitation-description" data-l10n-id="zoterocitation-settings-description"/>
+  <groupbox>
+    <html:h2 data-l10n-id="zoterocitation-settings-functions"/>
+    <html:label class="zoterocitation-option">
+      <html:input id="zoterocitation-setting-enable" type="checkbox"/>
+      <html:span data-l10n-id="zoterocitation-settings-enable"/>
+    </html:label>
+    <html:p class="zoterocitation-description" data-l10n-id="zoterocitation-settings-enable-help"/>
+    <html:label class="zoterocitation-option">
+      <html:input id="zoterocitation-setting-quickCite" type="checkbox"/>
+      <html:span data-l10n-id="zoterocitation-settings-quick-cite"/>
+    </html:label>
+    <html:p class="zoterocitation-description" data-l10n-id="zoterocitation-settings-quick-help"/>
+    <html:label class="zoterocitation-option">
+      <html:input id="zoterocitation-setting-dragCite" type="checkbox"/>
+      <html:span data-l10n-id="zoterocitation-settings-drag-cite"/>
+    </html:label>
+    <html:p class="zoterocitation-description" data-l10n-id="zoterocitation-settings-drag-help"/>
+    <html:label class="zoterocitation-option">
+      <html:input id="zoterocitation-setting-citationTags" type="checkbox"/>
+      <html:span data-l10n-id="zoterocitation-settings-citation-tags"/>
+    </html:label>
+    <html:p class="zoterocitation-description" data-l10n-id="zoterocitation-settings-citation-tags-help"/>
+    <html:div class="zoterocitation-number-row">
+      <html:label for="zoterocitation-setting-citationTagText" data-l10n-id="zoterocitation-settings-tag-text"/>
+      <html:input id="zoterocitation-setting-citationTagText" type="text" maxlength="200" required="required"/>
+    </html:div>
+    <html:p class="zoterocitation-description" data-l10n-id="zoterocitation-settings-tag-text-help"/>
+  </groupbox>
+  <groupbox>
+    <html:h2 data-l10n-id="zoterocitation-settings-performance"/>
+    <html:p class="zoterocitation-description" data-l10n-id="zoterocitation-settings-performance-help"/>
+    <html:div class="zoterocitation-number-row">
+      <html:label for="zoterocitation-setting-citationTagDebounceMs" data-l10n-id="zoterocitation-settings-tag-delay"/>
+      <html:input id="zoterocitation-setting-citationTagDebounceMs" type="number" min="0" max="2000" step="1" required="required"/>
+    </html:div>
+    <html:div class="zoterocitation-number-row">
+      <html:label for="zoterocitation-setting-itemsViewRefreshDebounceMs" data-l10n-id="zoterocitation-settings-view-delay"/>
+      <html:input id="zoterocitation-setting-itemsViewRefreshDebounceMs" type="number" min="0" max="2000" step="1" required="required"/>
+    </html:div>
+    <html:div class="zoterocitation-number-row">
+      <html:label for="zoterocitation-setting-healthWindowMs" data-l10n-id="zoterocitation-settings-health-window"/>
+      <html:input id="zoterocitation-setting-healthWindowMs" type="number" min="10000" max="3600000" step="1" required="required"/>
+    </html:div>
+    <html:div class="zoterocitation-number-row">
+      <html:label for="zoterocitation-setting-perfSlowThresholdMs" data-l10n-id="zoterocitation-settings-slow-threshold"/>
+      <html:input id="zoterocitation-setting-perfSlowThresholdMs" type="number" min="5" max="5000" step="1" required="required"/>
+    </html:div>
+  </groupbox>
+  <groupbox>
+    <html:h2 data-l10n-id="zoterocitation-settings-diagnostics"/>
+    <html:label class="zoterocitation-option">
+      <html:input id="zoterocitation-setting-debug" type="checkbox"/>
+      <html:span data-l10n-id="zoterocitation-settings-debug"/>
+    </html:label>
+    <html:p class="zoterocitation-description" data-l10n-id="zoterocitation-settings-debug-help"/>
+  </groupbox>
+  <html:div class="zoterocitation-settings-footer">
+    <html:button id="zoterocitation-settings-reset" type="button" data-l10n-id="zoterocitation-settings-reset"/>
+    <html:p id="zoterocitation-settings-status" role="status" aria-live="polite"/>
+  </html:div>
+</vbox>

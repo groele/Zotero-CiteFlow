@@ -4,6 +4,7 @@ var TEMP_COLLECTION_MARKER = "https://github.com/MuiseDestiny/zotero-citation#te
 var TEMP_COLLECTION_KEYS_PREF = "zotero-citation.temporaryCollectionKeys";
 var TEMP_SEARCH_KEYS_PREF = "zotero-citation.managedSearchKeys";
 var MANAGED_TAG_IDS_PREF = "zotero-citation.managedCitationTagIDs";
+var MANAGED_TAG_STATE_PREF = "zotero-citation.managedCitationTagState";
 var Citation = class {
   constructor() {
     this.sessions = {};
@@ -34,10 +35,13 @@ var Citation = class {
       addon.data.citationDebugEnabled = this._debugEnabled;
     } catch (e) {
     }
-    this._citationTagName = "/Citations";
+    this._citationTagName = this._getCitationTagName();
+    this._citationTagsEnabled = Zotero.Prefs.get("extensions.zotero.zoterocitation.citationTags.enable", true) !== false;
     this._lastTagSyncSig = {};
     this._sessionCitedIDs = {};
-    this._managedCitationTagIDs = this._loadManagedTagIDs();
+    const managedTags = this._loadManagedTagState();
+    this._managedCitationTagIDs = managedTags.ids;
+    this._managedCitationTagNames = managedTags.names;
     this._temporaryCollectionKeys = this._loadKeySet(TEMP_COLLECTION_KEYS_PREF);
     this._managedSearchKeys = this._loadKeySet(TEMP_SEARCH_KEYS_PREF);
     this._tagSyncInFlightBySession = {};
@@ -172,12 +176,31 @@ var Citation = class {
       this.logError(`Failed to save preference ${prefKey}`, error);
     }
   }
-  _loadManagedTagIDs() {
+  _loadManagedTagState() {
+    let raw;
+    try {
+      raw = Zotero.Prefs.get(MANAGED_TAG_STATE_PREF);
+      const state = raw && JSON.parse(raw);
+      if (state?.version === 1 && state.tags && typeof state.tags === "object" && !Array.isArray(state.tags)) {
+        const entries = Object.entries(state.tags).filter(([id, name]) => Number.isSafeInteger(Number(id)) && Number(id) > 0
+          && typeof name === "string" && name.trim() && name.length <= 200 && !/[\x00-\x1f\x7f]/.test(name));
+        return { ids: Object.fromEntries(entries.map(([id]) => [id, true])), names: Object.fromEntries(entries) };
+      }
+      if (raw) throw new Error("Unsupported managed citation tag state");
+    } catch (error) { this.logError("Failed to read managed citation tag state", error); }
+    // Existing but unreadable new-format state must not turn a custom tag's
+    // legacy ID into ownership of a user's unrelated /Citations tag.
+    if (raw) return { ids: {}, names: {} };
     const keys = this._loadKeySet(MANAGED_TAG_IDS_PREF);
-    return Object.fromEntries([...keys].map((key) => [key, true]));
+    return { ids: Object.fromEntries([...keys].map(key => [key, true])), names: Object.fromEntries([...keys].map(key => [key, "/Citations"])) };
   }
   _saveManagedTagIDs() {
+    try {
+      const tags = Object.fromEntries(Object.keys(this._managedCitationTagIDs).map(id => [id, this._managedCitationTagNames?.[id] || "/Citations"]));
+      Zotero.Prefs.set(MANAGED_TAG_STATE_PREF, JSON.stringify({ version: 1, tags }));
+    } catch (error) { this.logError("Failed to save managed citation tag state", error); return false; }
     this._saveKeySet(MANAGED_TAG_IDS_PREF, new Set(Object.keys(this._managedCitationTagIDs)));
+    return true;
   }
   async clearStaleArtifacts() {
     const libraryID = Zotero.Libraries.userLibraryID;
@@ -397,14 +420,39 @@ var Citation = class {
   }
   _getBoolPref(key, fallback) {
     try {
-      return !!Zotero.Prefs.get(key, true);
+      const value = Zotero.Prefs.get(key, true);
+      return typeof value === "boolean" ? value : fallback;
     } catch (e) {
       return fallback;
     }
   }
+  applyPreferences() {
+    const tagsEnabled = Zotero.Prefs.get("extensions.zotero.zoterocitation.citationTags.enable", true) !== false;
+    const tagsChanged = this._citationTagsEnabled !== undefined && this._citationTagsEnabled !== tagsEnabled;
+    const tagName = this._getCitationTagName();
+    const tagRenamed = this._citationTagName !== undefined && this._citationTagName !== tagName;
+    this._citationTagsEnabled = tagsEnabled;
+    this._citationTagName = tagName;
+    this._debugEnabled = this._getBoolPref("extensions.zotero.zoterocitation.debug", false);
+    addon.data.citationDebugEnabled = this._debugEnabled;
+    this._tagSyncDebounceMs = this._getClampedIntPref("extensions.zotero.zoterocitation.citationTagDebounceMs", 150, 0, 2000);
+    this._itemsViewRefreshDebounceMs = this._getClampedIntPref("extensions.zotero.zoterocitation.itemsViewRefreshDebounceMs", 120, 0, 2000);
+    this._healthWindowMs = this._getClampedIntPref("extensions.zotero.zoterocitation.healthWindowMs", 300000, 10000, 3600000);
+    this._perfSlowThresholdMs = this._getClampedIntPref("extensions.zotero.zoterocitation.perfSlowThresholdMs", 50, 5, 5000);
+    if (tagsChanged || tagRenamed || this._tagPreferencesNeedSync) {
+      this._lastTagSyncSig = {};
+      this._tagPreferencesNeedSync = true;
+      return this.syncCitationTags("__preferences__", []).then(result => {
+        this._tagPreferencesNeedSync = result?.complete === false;
+        return result;
+      });
+    }
+  }
   _getClampedIntPref(key, fallback, min, max) {
     try {
-      const value = Number(Zotero.Prefs.get(key, true));
+      const raw = Zotero.Prefs.get(key, true);
+      if ((typeof raw !== "number" && typeof raw !== "string") || (typeof raw === "string" && !raw.trim())) return fallback;
+      const value = Number(raw);
       if (!Number.isFinite(value)) {
         return fallback;
       }
@@ -412,6 +460,11 @@ var Citation = class {
     } catch (e) {
       return fallback;
     }
+  }
+  _getCitationTagName() {
+    const name = Zotero.Prefs.get("extensions.zotero.zoterocitation.citationTags.text", true);
+    return typeof name === "string" && name.trim() && name.trim().length <= 200 && !/[\x00-\x1f\x7f]/.test(name)
+      ? name.trim() : "/Citations";
   }
   _sanitizeFolderName(rawName) {
     const fallback = "Untitled Document";
@@ -1075,17 +1128,22 @@ var Citation = class {
   }
   async _syncCitationTags(sessionID, sortedItemIDs) {
     if (this._listenerStopped && sessionID !== "__shutdown__") return;
+    const tagName = this._citationTagName;
+    this._managedCitationTagNames ??= {};
     const perfStart = Date.now();
     let touchedCount = 0;
     let lastYieldedTouchCount = 0;
     let hadFailures = false;
+    let skipped = false;
     let ownershipChanged = false;
     this._bumpDebugCounter("syncCitationTagsRuns");
     try {
       const activeCitedIDSet = new Set();
-      for (const sid in this._sessionCitedIDs) {
-        const ids = this._sessionCitedIDs[sid] || [];
-        ids.forEach((id) => activeCitedIDSet.add(Number(id)));
+      if (Zotero.Prefs.get("extensions.zotero.zoterocitation.citationTags.enable", true) !== false) {
+        for (const sid in this._sessionCitedIDs) {
+          const ids = this._sessionCitedIDs[sid] || [];
+          ids.forEach((id) => activeCitedIDSet.add(Number(id)));
+        }
       }
       for (const itemID of activeCitedIDSet) {
         if (!Number.isInteger(itemID) || itemID <= 0) {
@@ -1100,38 +1158,46 @@ var Citation = class {
             continue;
           }
           if (!this._isWritableCitationItem(item)) {
+            if (item.libraryID === Zotero.Libraries?.userLibraryID || this._managedCitationTagIDs[itemID]) skipped = true;
             continue;
           }
-          const hasCitationTag = typeof item.hasTag === "function"
-            ? item.hasTag(this._citationTagName)
-            : (() => {
-              const tags = typeof item.getTags === "function" ? item.getTags() : [];
-              return Array.isArray(tags) && tags.some((tag) => {
-                const tagName = typeof tag === "string" ? tag : tag?.tag;
-                return tagName === this._citationTagName;
-              });
-            })();
-          let addedByPlugin = false;
-          if (!hasCitationTag && typeof item.addTag === "function") {
-            item.addTag(this._citationTagName);
+          // A preference change may arrive while resolving an item asynchronously.
+          // The queued preference sync then removes any earlier managed tags.
+          if (Zotero.Prefs.get("extensions.zotero.zoterocitation.citationTags.enable", true) === false || this._citationTagName !== tagName) break;
+          const oldName = this._managedCitationTagIDs[itemID] && (this._managedCitationTagNames[itemID] || "/Citations");
+          const hasTag = name => typeof item.hasTag === "function" ? item.hasTag(name)
+            : (item.getTags?.() || []).some(tag => (typeof tag === "string" ? tag : tag?.tag) === name);
+          const removeOld = oldName && oldName !== tagName && hasTag(oldName);
+          const addNew = !hasTag(tagName);
+          if ((removeOld && typeof item.removeTag !== "function") || (addNew && typeof item.addTag !== "function")) {
+            skipped = true;
+            continue;
+          }
+          if (removeOld || addNew) {
+            if (removeOld) item.removeTag(oldName);
+            if (addNew) item.addTag(tagName);
             try {
               await item.saveTx();
               touchedCount += 1;
-              addedByPlugin = true;
               ownershipChanged = true;
             } catch (saveError) {
               try {
-                if (typeof item.removeTag === "function") {
-                  item.removeTag(this._citationTagName);
-                }
+                if (addNew) item.removeTag(tagName);
+                if (removeOld) item.addTag(oldName);
               } catch (rollbackError) {
-                runtime.log("[Citation syncCitationTags] Failed to roll back tag add", itemID, rollbackError);
+                this.logError(`Failed to roll back citation tag change for item ${itemID}`, rollbackError);
               }
               throw saveError;
             }
           }
-          if (addedByPlugin || this._managedCitationTagIDs[itemID]) {
+          if (oldName && oldName !== tagName) {
+            delete this._managedCitationTagIDs[itemID];
+            delete this._managedCitationTagNames[itemID];
+            ownershipChanged = true;
+          }
+          if (addNew || (oldName === tagName && this._managedCitationTagIDs[itemID])) {
             this._managedCitationTagIDs[itemID] = true;
+            this._managedCitationTagNames[itemID] = tagName;
           }
           if (touchedCount > 0 && touchedCount % 30 === 0 && touchedCount !== lastYieldedTouchCount) {
             lastYieldedTouchCount = touchedCount;
@@ -1140,7 +1206,7 @@ var Citation = class {
         } catch (e) {
           hadFailures = true;
           this._bumpDebugCounter("syncCitationTagsFailures");
-          runtime.log("[Citation syncCitationTags] Failed to add/sync tag for item", itemID, e);
+          this.logError(`Failed to add or rename citation tag for item ${itemID}`, e);
         }
       }
       const managedIDs = Object.keys(this._managedCitationTagIDs).map((id) => Number(id));
@@ -1155,6 +1221,7 @@ var Citation = class {
           }
           if (!item) {
             delete this._managedCitationTagIDs[itemID];
+            delete this._managedCitationTagNames[itemID];
             ownershipChanged = true;
             continue;
           }
@@ -1162,26 +1229,28 @@ var Citation = class {
             // Keep the ownership record while the item cannot be written.
             // The tag may still be present and must be retried once the
             // library becomes writable again.
+            skipped = true;
             continue;
           }
+          const managedName = this._managedCitationTagNames[itemID] || "/Citations";
           const hasCitationTag = typeof item.hasTag === "function"
-            ? item.hasTag(this._citationTagName)
+            ? item.hasTag(managedName)
             : (() => {
               const tags = typeof item.getTags === "function" ? item.getTags() : [];
               return Array.isArray(tags) && tags.some((tag) => {
                 const tagName = typeof tag === "string" ? tag : tag?.tag;
-                return tagName === this._citationTagName;
+                return tagName === managedName;
               });
           })();
           if (hasCitationTag && typeof item.removeTag === "function") {
-            item.removeTag(this._citationTagName);
+            item.removeTag(managedName);
             try {
               await item.saveTx();
               touchedCount += 1;
             } catch (saveError) {
               try {
                 if (typeof item.addTag === "function") {
-                  item.addTag(this._citationTagName);
+                  item.addTag(managedName);
                 }
               } catch (rollbackError) {
                 runtime.log("[Citation syncCitationTags] Failed to roll back tag removal", itemID, rollbackError);
@@ -1190,6 +1259,7 @@ var Citation = class {
             }
           }
           delete this._managedCitationTagIDs[itemID];
+          delete this._managedCitationTagNames[itemID];
           ownershipChanged = true;
           if (touchedCount > 0 && touchedCount % 30 === 0 && touchedCount !== lastYieldedTouchCount) {
             lastYieldedTouchCount = touchedCount;
@@ -1198,12 +1268,13 @@ var Citation = class {
         } catch (e) {
           hadFailures = true;
           this._bumpDebugCounter("syncCitationTagsFailures");
-          runtime.log("[Citation syncCitationTags] Failed to remove tag for item", itemID, e);
+          this.logError(`Failed to remove citation tag for item ${itemID}`, e);
         }
       }
     } finally {
-      if (ownershipChanged || hadFailures) {
-        this._saveManagedTagIDs();
+      if (ownershipChanged || hadFailures || this._tagOwnershipDirty) {
+        this._tagOwnershipDirty = this._saveManagedTagIDs() === false;
+        if (this._tagOwnershipDirty) hadFailures = true;
       }
       if (touchedCount > 0) {
         this._bumpDebugCounter("syncCitationTagsTouched", touchedCount);
@@ -1213,6 +1284,7 @@ var Citation = class {
       }
       this._recordPerf("syncCitationTags", Date.now() - perfStart);
     }
+    return { complete: !hadFailures && !skipped, touchedCount };
   }
   scheduleItemsViewRefresh() {
     if (this._itemsViewRefreshTimer || this._listenerStopped) return;

@@ -1,0 +1,15 @@
+#zoterocitation-settings { max-width: 760px; }
+#zoterocitation-settings groupbox { margin-block: 12px; }
+#zoterocitation-settings h2 { margin-block: 4px 12px; font-size: 1.15em; }
+#zoterocitation-settings .zoterocitation-option { display: flex; align-items: center; gap: 8px; margin-block: 10px 4px; }
+#zoterocitation-settings .zoterocitation-description { opacity: 0.8; line-height: 1.5; margin-block: 4px 12px; }
+#zoterocitation-settings .zoterocitation-number-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin-block: 10px; }
+#zoterocitation-settings .zoterocitation-number-row label { flex: 1 1 230px; }
+#zoterocitation-settings input[type="number"] { box-sizing: border-box; width: 125px; padding: 5px 8px; color: inherit; background-color: var(--material-background, transparent); border: 1px solid var(--fill-quaternary, GrayText); border-radius: 4px; }
+#zoterocitation-settings input[type="number"]:invalid { border-color: #c33; }
+#zoterocitation-settings input[type="text"] { box-sizing: border-box; width: min(100%, 260px); padding: 5px 8px; color: inherit; background-color: var(--material-background, transparent); border: 1px solid var(--fill-quaternary, GrayText); border-radius: 4px; }
+#zoterocitation-settings input[type="text"]:invalid { border-color: #c33; }
+#zoterocitation-settings input:focus-visible, #zoterocitation-settings button:focus-visible { outline: 2px solid AccentColor; outline-offset: 2px; }
+#zoterocitation-settings button { padding: 5px 12px; color: inherit; }
+#zoterocitation-settings .zoterocitation-settings-footer { margin-block: 12px; }
+#zoterocitation-settings-status { line-height: 1.5; }
