@@ -58,13 +58,13 @@ Update feed: [update.json](https://github.com/groele/Zotero-CiteFlow/blob/main/u
 
 ## Configuration & Notes
 
-Open **Edit → Settings → CiteFlow** on Windows. The pane remains available when citation tracking is disabled.
+Open **Edit → Settings → Zotero CiteFlow** on Windows. The pane remains available when citation tracking is disabled.
 
 | Setting | Default | When it takes effect |
 | --- | --- | --- |
 | Citation tracking | On | After restarting Zotero |
 | Quick citation (apostrophe key) | On | Immediately; ignores text editing and modifier keys |
-| Drag citation | On | Immediately; requires a visible citation column |
+| Drag citation | On | Immediately; works with the citation column hidden |
 | Automatic citation tags | On | Immediately; turning it off removes plugin-managed tags |
 | Citation tag text | `/Citations` | Immediately; renames plugin-managed tags |
 | Citation-tag sync delay | 150 ms | Subsequent tag sync tasks |

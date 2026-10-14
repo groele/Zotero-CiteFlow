@@ -2,7 +2,8 @@ param(
     [Parameter(Mandatory)][string]$XpiPath,
     [string]$ZoteroExecutable = 'C:/Program Files/Zotero/zotero.exe',
     [int]$Port = 23131,
-    [ValidateSet('zh-CN', 'en-US')][string]$Locale = 'zh-CN'
+    [ValidateSet('zh-CN', 'en-US')][string]$Locale = 'zh-CN',
+    [switch]$KeepRunning
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
@@ -89,7 +90,14 @@ function Stop-TestHost {
 }
 try {
     $initial = Start-TestHost
+    if ($KeepRunning) {
+        @{ root=$testRoot; profile=$profile; dataDir=$dataDir; port=$Port } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $testRoot 'session.json') -Encoding utf8NoBOM
+        @{ root=$testRoot; profile=$profile; dataDir=$dataDir; port=$Port; ready=$true } | ConvertTo-Json -Compress
+        $passed = $true # Host readiness only; acceptance checks run separately in this mode.
+        return
+    }
     Assert-Settings ($initial.tracking -and $initial.paneRegistered) 'Tracking starts and settings register' $initial
+    Assert-Settings ($initial.paneLabel -eq 'Zotero CiteFlow') 'Settings sidebar uses the full Zotero CiteFlow name' $initial
     $opened = Invoke-SettingsTest @{ action = 'open' }
     Assert-Settings ($opened.controls.Count -eq 10 -and @($opened.controls | Where-Object { $_.width -le 0 -or $_.height -le 0 }).Count -eq 0) 'All ten native controls render with positive dimensions' $opened
     $localized = if ($Locale -eq 'zh-CN') { $opened.text -match '功能设置' -and $opened.text -match '恢复默认设置' } else { $opened.text -match 'Features' -and $opened.text -match 'Restore defaults' }
@@ -170,7 +178,7 @@ try {
     $passed = $true
     Write-Output "Native settings acceptance passed: $($checks.Count) checks. Results: $testRoot/results.json"
 } finally {
-    Stop-TestHost
-    @{ ok = $passed; locale = $Locale; root = $testRoot; xpiSHA256 = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash; checks = @($checks.ToArray()) } |
+    if (-not $KeepRunning -or -not $passed) { Stop-TestHost }
+    @{ ok = $passed; mode = $(if ($KeepRunning) { 'host-only' } else { 'settings-acceptance' }); locale = $Locale; root = $testRoot; xpiSHA256 = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash; checks = @($checks.ToArray()) } |
         ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $testRoot 'results.json') -Encoding utf8NoBOM
 }

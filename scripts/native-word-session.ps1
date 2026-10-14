@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 $Root = [IO.Path]::GetFullPath($Root)
 if (-not (Test-Path -LiteralPath (Join-Path $Root 'session.json'))) { throw 'A prepared isolated test session is required' }
 $word = New-Object -ComObject Word.Application
-$word.Visible = $true
+$word.Visible = $false
 $word.DisplayAlerts = 0
 $documents = @{}
 @{ ready = $true; version = $word.Version; build = $word.Build; root = $Root } | ConvertTo-Json -Compress

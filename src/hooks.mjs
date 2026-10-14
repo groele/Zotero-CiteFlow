@@ -35,9 +35,10 @@ async function onStartup() {
     if (!addon.data.alive) return;
     const views = new Views();
     addon.data.views = views;
+    for (const win of Zotero.getMainWindows?.() || [mainWindow]) await attachWindow(win);
+    if (!addon.data.alive) return;
     await views.createCitationColumn();
     if (!addon.data.alive) return;
-    for (const win of Zotero.getMainWindows?.() || [mainWindow]) await attachWindow(win);
   })();
   try {
     return await startupPromise;
@@ -69,6 +70,8 @@ async function attachWindow(win) {
   const binding = { views, keydownHandler, closed: false };
   windowBindings.set(win, binding);
   try {
+    await views.prepareWindow?.();
+    if (binding.closed || !addon.data.alive) return;
     await views.patchIcon();
     if (binding.closed || !addon.data.alive) return;
     await views.dragCite();

@@ -45,7 +45,7 @@ test('quick citation preference gates the actual keyboard handler, including edi
   await context.testHooks.onMainWindowUnload(win); assert.equal(handlers.size, 0);
 });
 
-test('drag citation applies live, does not duplicate wrappers, and cancels when disabled or the column is hidden', async () => {
+test('drag citation applies live independently of column visibility, without duplicate wrappers', async () => {
   const { NativeRuntime } = await import('../src/runtime.mjs'); const runtime = new NativeRuntime();
   const prefs = new Map([[prefix + 'dragCite.enable', false]]); const handlers = new Map(); let nativeStarts = 0, cites = 0;
   const column = { dataKey: 'citation', hidden: false };
@@ -66,11 +66,32 @@ test('drag citation applies live, does not duplicate wrappers, and cancels when 
   assert.equal(startDrag()[0][1], ''); drop({}); assert.equal(cites, 1);
   startDrag(); prefs.set(prefix + 'dragCite.enable', false); drop({}); assert.equal(cites, 1);
   startDrag(); assert.equal(nativeStarts, 1);
-  prefs.set(prefix + 'dragCite.enable', true); column.hidden = true; startDrag(); assert.equal(nativeStarts, 2);
+  prefs.set(prefix + 'dragCite.enable', true); column.hidden = true; startDrag(); assert.equal(nativeStarts, 1);
+  win.ZoteroPane.itemsView.getColumns = () => [];
+  startDrag(); drop({}); assert.equal(cites, 2, 'drag works without a registered or visible citation column');
+  cites = 1;
   column.hidden = false; startDrag(); drop({ dataTransfer: { dropEffect: 'none' } }); assert.equal(cites, 1);
   startDrag(); drop({ screenX: 100, screenY: 100 }); assert.equal(cites, 1);
   await view.dispose(); assert.equal(handlers.size, 0); assert.equal(runtime.pendingPatchCount, 0);
   assert.equal(win.ZoteroPane.itemsView.onDragStart, original);
+});
+
+test('window preparation waits for collection context and safely refreshes an empty library', async () => {
+  const { NativeRuntime } = await import('../src/runtime.mjs'); const runtime = new NativeRuntime();
+  const events = []; let waits = 0;
+  const tree = { collectionTreeRows: [], waitForLoad: async () => events.push('mount'),
+    _ensureSortContextReady: async () => events.push('sort-ready'), _refreshPromise: Promise.resolve(),
+    forceUpdate(callback) { events.push('render'); callback(); },
+    _resetColumns() { throw Error('host reset cannot use a missing tree'); } };
+  const context = vm.createContext({ runtime, config: { addonRef: 'zoterocitation' }, addon: { data: { alive: true } },
+    Zotero: { Promise: { delay: async () => { waits++; tree.collectionTreeRows.push({}); } } } });
+  const Views = extractClass(context, 'Views', '\n  };\n  var views_default');
+  const view = new Views({ ZoteroPane: { itemsView: tree } });
+  await view.prepareWindow(); assert.equal(waits, 1);
+  await tree._resetColumns(); assert.deepEqual(events, ['mount', 'sort-ready', 'render']);
+  let resets=0; tree.forceUpdate = callback => { tree.tree = { _resetColumns: async () => { resets++; } }; callback(); };
+  await tree._resetColumns(); assert.equal(resets, 1, 'a table appearing during render is refreshed');
+  await view.dispose(); assert.equal(runtime.pendingPatchCount, 0);
 });
 
 test('all four numeric settings change actual scheduling, health windows, and slow-operation classification', async () => {

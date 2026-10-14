@@ -1824,9 +1824,45 @@
         this._unregisterCitationColumns();
       }
     }
+    async prepareWindow() {
+      for (let attempt = 0; !this.pane?.itemsView && attempt < 200; attempt++) {
+        if (this._disposed || addon.data.alive === false || this.window?.closed) return;
+        await Zotero.Promise.delay(50);
+      }
+      if (this._disposed || addon.data.alive === false || this.window?.closed) return;
+      const itemsView = this.pane?.itemsView;
+      if (!itemsView) throw new Error("Zotero item tree did not initialize");
+      await itemsView.waitForLoad?.();
+      for (let attempt = 0; Array.isArray(itemsView.collectionTreeRows) && !itemsView.collectionTreeRows.length && attempt < 200; attempt++) {
+        if (this._disposed || addon.data.alive === false || this.window?.closed) return;
+        await Zotero.Promise.delay(50);
+      }
+      if (Array.isArray(itemsView.collectionTreeRows) && !itemsView.collectionTreeRows.length) {
+        throw new Error("Zotero item tree collection context did not initialize");
+      }
+      await itemsView._ensureSortContextReady?.();
+      await itemsView._refreshPromise;
+      if (this._disposed || addon.data.alive === false || this.window?.closed) return;
+      if (this._columnResetGuard || typeof itemsView._resetColumns !== "function") return;
+      const restore = runtime.patch(itemsView, "_resetColumns", config.addonRef, (original) => function(...args) {
+        if (!this.tree) {
+          this._columnsId = null;
+          return new Promise((resolve, reject) => this.forceUpdate(async () => {
+            try {
+              await this.tree?._resetColumns();
+              resolve();
+            } catch (error) {
+              reject(error);
+            }
+          }));
+        }
+        return Reflect.apply(original, this, args);
+      });
+      this._columnResetGuard = true;
+      this._patchDisposers.push(restore);
+    }
     _dragEnabled() {
-      const column = this.getColumnInfo("citation");
-      return !this._disposed && addon.data.alive !== false && !!column && column.hidden !== true && Zotero.Prefs.get("extensions.zotero.zoterocitation.dragCite.enable", true) !== false;
+      return !this._disposed && addon.data.alive !== false && Zotero.Prefs.get("extensions.zotero.zoterocitation.dragCite.enable", true) !== false;
     }
     dispose() {
       this._disposed = true;
@@ -1963,12 +1999,13 @@
     }
     getColumnInfo(dataKey) {
       try {
-        const columns = typeof this.pane.itemsView.getColumns === "function" ? this.pane.itemsView.getColumns() : this.pane.itemsView._columns || [];
+        const columns = typeof this.pane.itemsView._getColumns === "function" ? this.pane.itemsView._getColumns() : typeof this.pane.itemsView.getColumns === "function" ? this.pane.itemsView.getColumns() : this.pane.itemsView._columns || [];
         const ownedKeys = /* @__PURE__ */ new Set([
           dataKey,
           `${config.addonID}-${dataKey}`,
           `zoterocitation@polygon.org-${dataKey}`,
-          ...this._registeredColumnKeys || []
+          ...this._registeredColumnKeys || [],
+          ...addon.data.views?._registeredColumnKeys || []
         ]);
         const columnInfo = columns.find((i) => typeof i?.dataKey === "string" && ownedKeys.has(i.dataKey));
         return columnInfo;
@@ -2018,7 +2055,7 @@
       this._paneID = await Zotero.PreferencePanes.register({
         pluginID: config.addonID,
         id: "zoterocitation-preferences",
-        label: "CiteFlow",
+        label: config.addonName,
         src: "chrome://zoterocitation/content/preferences.xhtml",
         stylesheets: ["chrome://zoterocitation/content/preferences.css"]
       });
@@ -2186,9 +2223,10 @@
       if (!addon.data.alive) return;
       const views = new views_default();
       addon.data.views = views;
+      for (const win of Zotero.getMainWindows?.() || [mainWindow]) await attachWindow(win);
+      if (!addon.data.alive) return;
       await views.createCitationColumn();
       if (!addon.data.alive) return;
-      for (const win of Zotero.getMainWindows?.() || [mainWindow]) await attachWindow(win);
     })();
     try {
       return await startupPromise;
@@ -2216,6 +2254,8 @@
     const binding = { views, keydownHandler, closed: false };
     windowBindings.set(win, binding);
     try {
+      await views.prepareWindow?.();
+      if (binding.closed || !addon.data.alive) return;
       await views.patchIcon();
       if (binding.closed || !addon.data.alive) return;
       await views.dragCite();

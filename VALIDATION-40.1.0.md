@@ -1,5 +1,7 @@
 # Zotero CiteFlow 40.1.0 实机验证记录
 
+此文件保留早期候选包验收结果。后续 10.0.0 构建已修复拖拽回归，并通过生产插入路径及真实 Word 字段验证，最新范围及证据见 [VALIDATION-drag-word.md](VALIDATION-drag-word.md)。
+
 日期：2026-10-14。所有桌面功能测试均在独立 profile、独立 dataDir 和 `dist/native-20261014-141648/` 中执行。主 Zotero 配置和用户原始 Word 文档未参与测试。
 
 ## 环境与产物

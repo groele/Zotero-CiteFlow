@@ -108,9 +108,47 @@ var Views = class {
       this._unregisterCitationColumns();
     }
   }
+  async prepareWindow() {
+    for (let attempt = 0; !this.pane?.itemsView && attempt < 200; attempt++) {
+      if (this._disposed || addon.data.alive === false || this.window?.closed) return;
+      await Zotero.Promise.delay(50);
+    }
+    if (this._disposed || addon.data.alive === false || this.window?.closed) return;
+    const itemsView = this.pane?.itemsView;
+    if (!itemsView) throw new Error("Zotero item tree did not initialize");
+    await itemsView.waitForLoad?.();
+    // uiReady can precede the initial library selection in Zotero 10. A
+    // custom-column notification at that point sorts a view with every
+    // built-in column disabled because its collection context is missing.
+    for (let attempt = 0; Array.isArray(itemsView.collectionTreeRows)
+      && !itemsView.collectionTreeRows.length && attempt < 200; attempt++) {
+      if (this._disposed || addon.data.alive === false || this.window?.closed) return;
+      await Zotero.Promise.delay(50);
+    }
+    if (Array.isArray(itemsView.collectionTreeRows) && !itemsView.collectionTreeRows.length) {
+      throw new Error("Zotero item tree collection context did not initialize");
+    }
+    await itemsView._ensureSortContextReady?.();
+    await itemsView._refreshPromise;
+    if (this._disposed || addon.data.alive === false || this.window?.closed) return;
+    if (this._columnResetGuard || typeof itemsView._resetColumns !== "function") return;
+    const restore = runtime.patch(itemsView, "_resetColumns", config.addonRef, original => function(...args) {
+      // Zotero 10's empty-library view can have no virtualized table. Keep
+      // the column cache invalidated without refreshing a missing table.
+      if (!this.tree) {
+        this._columnsId = null;
+        return new Promise((resolve, reject) => this.forceUpdate(async () => {
+          try { await this.tree?._resetColumns(); resolve(); }
+          catch (error) { reject(error); }
+        }));
+      }
+      return Reflect.apply(original, this, args);
+    });
+    this._columnResetGuard = true;
+    this._patchDisposers.push(restore);
+  }
   _dragEnabled() {
-    const column = this.getColumnInfo("citation");
-    return !this._disposed && addon.data.alive !== false && !!column && column.hidden !== true
+    return !this._disposed && addon.data.alive !== false
       && Zotero.Prefs.get("extensions.zotero.zoterocitation.dragCite.enable", true) !== false;
   }
   dispose() {
@@ -248,14 +286,16 @@ var Views = class {
   }
   getColumnInfo(dataKey) {
     try {
-      const columns = typeof this.pane.itemsView.getColumns === "function"
-        ? this.pane.itemsView.getColumns()
+      const columns = typeof this.pane.itemsView._getColumns === "function"
+        ? this.pane.itemsView._getColumns()
+        : typeof this.pane.itemsView.getColumns === "function" ? this.pane.itemsView.getColumns()
         : this.pane.itemsView._columns || [];
       const ownedKeys = new Set([
         dataKey,
         `${config.addonID}-${dataKey}`,
         `zoterocitation@polygon.org-${dataKey}`,
-        ...(this._registeredColumnKeys || [])
+        ...(this._registeredColumnKeys || []),
+        ...(addon.data.views?._registeredColumnKeys || [])
       ]);
       const columnInfo = columns.find((i) => typeof i?.dataKey === "string" && ownedKeys.has(i.dataKey));
       return columnInfo;

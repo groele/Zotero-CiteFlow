@@ -80,6 +80,7 @@ test('disabled tracking still registers a pane, observers, and a restart notice'
   const prefs = new Preferences(() => { applies++; });
   await prefs.register(); prefs.init(f.win);
   assert.equal(f.panes.get('zoterocitation-preferences').pluginID, 'citeflow@groele');
+  assert.equal(f.panes.get('zoterocitation-preferences').label, 'Zotero CiteFlow');
   const enable = f.nodes.get('#zoterocitation-setting-enable');
   assert.equal(enable.checked, false);
   enable.checked = true; enable.dispatch('change'); await prefs.settled;

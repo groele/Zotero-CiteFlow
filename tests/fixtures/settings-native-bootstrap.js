@@ -3,6 +3,9 @@
 const endpoint = "/citeflow-settings-test";
 let preferencesWindow;
 let testItems = [];
+const wordTasks = new Map();
+const wordDocuments = new Map();
+let wordSerial = 0;
 function install() {}
 function uninstall() {}
 async function startup() {
@@ -18,7 +21,10 @@ async function startup() {
     zoteroVersion: Zotero.version,
     tracking: !!Zotero.ZoteroCitation?.data.citation,
     paneRegistered: Zotero.PreferencePanes.pluginPanes.some(pane => pane.id === "zoterocitation-preferences"),
+    paneLabel: Zotero.PreferencePanes.pluginPanes.find(pane => pane.id === "zoterocitation-preferences")?.rawLabel,
     patchCount: Zotero.ZoteroCitation?.data.runtime.pendingPatchCount,
+    columnKeys: Zotero.getMainWindow()?.ZoteroPane.itemsView?.getColumns().map(column => column.dataKey),
+    visibleColumns: Zotero.getMainWindow()?.ZoteroPane.itemsView?._getColumns().filter(column => !column.hidden).map(column => column.dataKey),
     debug: Zotero.ZoteroCitation?.data.citation?._debugEnabled,
     tagDelay: Zotero.ZoteroCitation?.data.citation?._tagSyncDebounceMs,
     runtimeConfig: Zotero.ZoteroCitation?.data.citation ? {
@@ -41,7 +47,75 @@ async function startup() {
   });
   async function run(data) {
     let extra;
-    if (data.action === "tagFixtures") {
+    if (data.action === "wordSetup") {
+      await Zotero.Styles.init();
+      for (let n = 0; n < 3; n++) {
+        const item = new Zotero.Item("journalArticle");
+        item.libraryID = Zotero.Libraries.userLibraryID;
+        item.setField("title", "CiteFlow Word acceptance specimen " + n);
+        item.setField("date", "2024");
+        item.setCreators([{ firstName: "QA", lastName: "Author" + n, creatorType: "author" }]);
+        await item.saveTx(); testItems.push(item.id);
+      }
+      const styles = Zotero.Styles.getVisible();
+      const style = styles.find(style => /American Psychological/.test(style.title)) || styles[0];
+      extra = { itemIDs: testItems, styleID: style.styleID };
+    } else if (["wordPrepare", "wordInsert", "wordDrag", "wordRefresh"].includes(data.action)) {
+      const normalize = path => PathUtils.normalize(path).replaceAll("\\", "/").toLowerCase();
+      if (!data.document || !normalize(data.document).startsWith(normalize(PathUtils.parent(expected)) + "/")) throw Error("Word document outside test directory");
+      const integration = Zotero.Integration;
+      const previousHandler = integration._handleCommandError;
+      integration._handleCommandError = async (_doc, _session, error) => { throw error; };
+      try {
+        if (data.action === "wordPrepare") {
+          const app = integration.getApplication("WinWord");
+          const doc = await app.getDocument(data.document);
+          const metadata = new integration.DocumentData();
+          metadata.style = { styleID: data.styleID, locale: "en-US", hasBibliography: true };
+          metadata.prefs = { fieldType: "Field", noteType: 0, delayCitationUpdates: false,
+            automaticJournalAbbreviations: false, dontAskDelayCitationUpdates: true };
+          metadata.sessionID = Zotero.Utilities.randomString();
+          await doc.setDocumentData(metadata.serialize());
+          await doc.cleanup();
+          wordDocuments.set(data.document, metadata.sessionID);
+          extra = { sessionID: metadata.sessionID, fieldType: metadata.prefs.fieldType };
+        } else if (["wordInsert", "wordDrag"].includes(data.action)) {
+          // Check the actual active document before asking production citeItems
+          // to use its normal active-document path; do not redirect that path.
+          const app = integration.getApplication("WinWord");
+          const active = await app.getDocument("");
+          const metadata = new integration.DocumentData(await active.getDocumentData());
+          await active.cleanup();
+          if (metadata.sessionID !== wordDocuments.get(data.document)) throw Error("Active Word document is not the owned test document");
+          const items = (data.itemIDs || [testItems[0]]).map(id => Zotero.Items.get(id));
+          if (data.action === "wordDrag") {
+            const win = Zotero.getMainWindow(), pane = win.ZoteroPane;
+            const oldSelection = pane.getSelectedItems;
+            let completion;
+            const originalCite = Zotero.ZoteroCitation.api.citeItems;
+            try {
+              pane.getSelectedItems = () => items;
+              Zotero.ZoteroCitation.api.citeItems = requested => (completion = originalCite(requested));
+              const transfer = new win.DataTransfer(); transfer.dropEffect = "copy";
+              pane.itemsView.onDragStart({ dataTransfer: transfer }, 0);
+              if (!transfer.types.includes("text/plain") || transfer.getData("text/plain") !== "") throw Error("Drag leaked native bibliography text");
+              win.document.dispatchEvent(new win.DragEvent("dragend", { bubbles: true, dataTransfer: transfer,
+                screenX: win.screenX + win.outerWidth + 1000, screenY: win.screenY + win.outerHeight + 1000 }));
+              if (!completion) throw Error("Drag did not dispatch citation insertion");
+              await completion;
+            } finally { pane.getSelectedItems = oldSelection; Zotero.ZoteroCitation.api.citeItems = originalCite; }
+          } else await Zotero.ZoteroCitation.api.citeItems(items);
+          wordDocuments.set(data.document, integration.currentSession?.sessionID || metadata.sessionID);
+          await Zotero.Promise.delay(500);
+          extra = { sessionID: wordDocuments.get(data.document) };
+        } else {
+          await integration.execCommand("WinWord", "refresh", data.document, 1);
+        }
+      } finally { integration._handleCommandError = previousHandler; }
+      extra = { ...extra, sessions: Object.fromEntries(Object.entries(Zotero.ZoteroCitation.api.sessions).map(([id, session]) => [id, {
+        collection: session.collection?.name, idData: session.idData, childIDs: session.collection?.getChildItems(true)
+      }])), diagnostics: Zotero.ZoteroCitation.api.getDiagnostics() };
+    } else if (data.action === "tagFixtures") {
       for (let n = 0; n < 2; n++) {
         const item = new Zotero.Item("journalArticle");
         item.libraryID = Zotero.Libraries.userLibraryID;
@@ -86,11 +160,10 @@ async function startup() {
       } finally { pane.getSelectedItems = oldSelection; Zotero.Integration.execCommand = oldCommand; target.remove(); }
     } else if (data.action === "dragProbe") {
       const win = Zotero.getMainWindow(); const pane = win.ZoteroPane;
-      const oldSelection = pane.getSelectedItems; const oldColumns = pane.itemsView.getColumns;
+      const oldSelection = pane.getSelectedItems;
       const oldCite = Zotero.ZoteroCitation.api.citeItems; let calls = 0;
       try {
         pane.getSelectedItems = () => [Zotero.Items.get(testItems[0])];
-        pane.itemsView.getColumns = () => [{ dataKey: "citeflow@groele-citation", hidden: false }];
         Zotero.ZoteroCitation.api.citeItems = async () => { calls++; };
         const transfer = new win.DataTransfer(); transfer.dropEffect = "copy";
         pane.itemsView.onDragStart({ dataTransfer: transfer }, 0);
@@ -103,7 +176,7 @@ async function startup() {
         win.document.dispatchEvent(new win.DragEvent("dragend", { bubbles: true, dataTransfer: transfer,
           screenX: win.screenX + win.outerWidth + 1000, screenY: win.screenY + win.outerHeight + 1000 }));
         await Zotero.Promise.delay(30); extra = { calls, prepared };
-      } finally { pane.getSelectedItems = oldSelection; pane.itemsView.getColumns = oldColumns; Zotero.ZoteroCitation.api.citeItems = oldCite; }
+      } finally { pane.getSelectedItems = oldSelection; Zotero.ZoteroCitation.api.citeItems = oldCite; }
     } else if (data.action === "debugProbe") {
       const oldDebug = Zotero.debug; let lines = 0;
       try { Zotero.debug = () => { lines++; }; Zotero.ZoteroCitation.data.runtime.log("settings debug probe"); }
@@ -148,6 +221,14 @@ async function startup() {
   Zotero.Server.Endpoints[endpoint].prototype = {
     supportedMethods: ["POST"], supportedDataTypes: ["application/json"], permitBookmarklet: false,
     async init({ data }) {
+      if (data.action === "wordResult") return [200, "application/json", JSON.stringify({ ok: true, value: wordTasks.get(data.id) || { pending: true } })];
+      if (data.action.startsWith("word")) {
+        const id = ++wordSerial;
+        wordTasks.set(id, { pending: true });
+        Zotero.Promise.delay(0).then(() => run(data)).then(value => wordTasks.set(id, { pending: false, ok: true, value }),
+          error => wordTasks.set(id, { pending: false, ok: false, error: String(error), stack: error.stack }));
+        return [202, "application/json", JSON.stringify({ ok: true, value: { id, pending: true } })];
+      }
       try { return [200, "application/json", JSON.stringify({ ok: true, value: await run(data) })]; }
       catch (error) { return [200, "application/json", JSON.stringify({ ok: false, error: String(error), stack: error.stack })]; }
     }

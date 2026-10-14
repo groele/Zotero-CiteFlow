@@ -43,7 +43,7 @@ export class Preferences {
     this._paneID = await Zotero.PreferencePanes.register({
       pluginID: config.addonID,
       id: "zoterocitation-preferences",
-      label: "CiteFlow",
+      label: config.addonName,
       src: "chrome://zoterocitation/content/preferences.xhtml",
       stylesheets: ["chrome://zoterocitation/content/preferences.css"]
     });
