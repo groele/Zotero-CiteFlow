@@ -29,7 +29,7 @@ Zotero CiteFlow 是 Zotero Flow Series 中独立维护的插件，连接 Zotero 
 
 ## 界面展示
 
-界面与实现细节可参考[项目文档](https://github.com/groele/Zotero-CiteFlow/tree/main/docs)（如有）。当前版本截图将在核实实际界面后添加，避免使用过期图片。
+实现结构、验收情况和已知风险请见[核心技术与维护手册](CORE-TECHNICAL-MAINTENANCE.md)。
 
 ## 兼容性
 
@@ -75,9 +75,7 @@ Windows 下打开 **编辑 → 设置 → Zotero CiteFlow**。即使关闭引用
 
 设置自动保存。标签文本支持 1–200 个字符，可填写“已引用”等中文文本；数字参数须符合面板标明的整数范围。**恢复默认设置**仅重置这十项设置，保留原先手动添加的同名标签及其他 Zotero 设置。标签重命名在一次条目保存中完成；写入失败时回滚标签并保留管理记录以便重试。设置保存或应用失败时，面板会显示提示。
 
-详见[设置验证记录](VALIDATION-settings-panel.md)，其中列出实机验证覆盖范围和 Word 集成的现存限制。
-
-需要安装 Microsoft Word 及 Zotero Word 集成。快捷插入功能仍在排查中，建议先用测试文档确认后再用于正式写作。
+详见[核心技术与维护手册](CORE-TECHNICAL-MAINTENANCE.md)中的实机验证证据与剩余限制。拖拽引用已在 Windows、Zotero 10.0.6 和 Word 16.0.20430 实测；单引号快捷键已有自动化覆盖，但尚未完成同等级的桌面端验收。
 
 ## 开发与测试
 
@@ -93,7 +91,7 @@ npm run package
 
 ## 文档与支持
 
-[Validation notes](VALIDATION-40.1.0.md) · [Third-party notices](THIRD_PARTY.md)
+[核心技术与维护手册](CORE-TECHNICAL-MAINTENANCE.md) · [第三方声明](THIRD_PARTY.md)
 
 [提交问题](https://github.com/groele/Zotero-CiteFlow/issues) · [查看源码](https://github.com/groele/Zotero-CiteFlow)
 

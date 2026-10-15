@@ -29,7 +29,7 @@ Zotero CiteFlow is an independently maintained Zotero add-on that track citation
 
 ## Screenshots
 
-For interface examples and implementation details, see the [project documentation](https://github.com/groele/Zotero-CiteFlow/tree/main/docs) where available. Screenshots will be added only after they are verified against the current interface.
+See the [core technical and maintenance guide](CORE-TECHNICAL-MAINTENANCE.md) for implementation details, validation status, and known risks.
 
 ## Compatibility
 
@@ -75,9 +75,7 @@ Open **Edit → Settings → Zotero CiteFlow** on Windows. The pane remains avai
 
 Values save automatically. The tag text accepts 1–200 characters, including Chinese text. Numeric fields enforce their displayed integer ranges. **Restore defaults** resets these ten settings only. Existing manual tags and unrelated Zotero preferences are preserved. Tag renaming saves the removal and addition together; failed writes retain the previous tag and ownership for retry. Save/application failures are reported in the pane.
 
-See [settings validation](VALIDATION-settings-panel.md) for native desktop coverage and remaining Word integration limits.
-
-Microsoft Word with Zotero's Word integration is required. Quick-insert behavior is still under investigation; verify it with a test document before production use.
+See the [core technical and maintenance guide](CORE-TECHNICAL-MAINTENANCE.md) for the current verification evidence and remaining Word integration limits. Drag citation was verified on Windows with Zotero 10.0.6 and Word 16.0.20430. The apostrophe shortcut has automated coverage but still needs separate full desktop acceptance.
 
 ## Development & Testing
 
@@ -93,7 +91,7 @@ These commands describe available project tasks, not a claim that every environm
 
 ## Documentation & Support
 
-[Validation notes](VALIDATION-40.1.0.md) · [Third-party notices](THIRD_PARTY.md)
+[Core technical and maintenance guide](CORE-TECHNICAL-MAINTENANCE.md) · [Third-party notices](THIRD_PARTY.md)
 
 [Open an issue](https://github.com/groele/Zotero-CiteFlow/issues) · [Browse source](https://github.com/groele/Zotero-CiteFlow)
 
