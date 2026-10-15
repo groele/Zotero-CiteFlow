@@ -198,6 +198,11 @@ var Views = class {
       const restore = runtime.patch(this.pane.itemsView, "onDragStart", config.addonRef,
         (original) => (event, row) => {
           this._dragItems = null;
+          // Match Zotero's native onDragStart: the row under the pointer must
+          // become the selection before collecting items for the citation.
+          const selection = this.pane.itemsView.selection;
+          if (this._dragEnabled() && Number.isInteger(row) && selection
+            && !selection.isSelected(row)) selection.select(row);
           const items = this.pane.getSelectedItems();
           if (this._dragEnabled() && event.dataTransfer && items?.length
             && items.every((item) => item?.isRegularItem?.() && item.isTopLevelItem())) {

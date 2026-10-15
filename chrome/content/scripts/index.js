@@ -1896,6 +1896,8 @@
           config.addonRef,
           (original) => (event, row) => {
             this._dragItems = null;
+            const selection = this.pane.itemsView.selection;
+            if (this._dragEnabled() && Number.isInteger(row) && selection && !selection.isSelected(row)) selection.select(row);
             const items = this.pane.getSelectedItems();
             if (this._dragEnabled() && event.dataTransfer && items?.length && items.every((item) => item?.isRegularItem?.() && item.isTopLevelItem())) {
               this._dragItems = [...items];

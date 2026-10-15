@@ -61,7 +61,7 @@ test('drag citation applies live independently of column visibility, without dup
   await view.dragCite(); assert.equal(handlers.size, 0);
   prefs.set(prefix + 'dragCite.enable', true); await view.dragCite(); await view.dragCite();
   assert.equal(runtime.pendingPatchCount, 1); assert.equal(handlers.size, 1);
-  const startDrag = () => { const data = []; win.ZoteroPane.itemsView.onDragStart({ dataTransfer: { setData: (...args) => data.push(args) } }, 0); return data; };
+  const startDrag = (row = 0) => { const data = []; win.ZoteroPane.itemsView.onDragStart({ dataTransfer: { setData: (...args) => data.push(args) } }, row); return data; };
   const drop = extra => handlers.get('dragend')({ screenX: 900, screenY: 700, dataTransfer: { dropEffect: 'copy' }, ...extra });
   assert.equal(startDrag()[0][1], ''); drop({}); assert.equal(cites, 1);
   startDrag(); prefs.set(prefix + 'dragCite.enable', false); drop({}); assert.equal(cites, 1);
@@ -72,6 +72,17 @@ test('drag citation applies live independently of column visibility, without dup
   cites = 1;
   column.hidden = false; startDrag(); drop({ dataTransfer: { dropEffect: 'none' } }); assert.equal(cites, 1);
   startDrag(); drop({ screenX: 100, screenY: 100 }); assert.equal(cites, 1);
+  const secondItem = { id: 8, isRegularItem: () => true, isTopLevelItem: () => true };
+  let selectedRow = 0; let citedItemID;
+  win.ZoteroPane.itemsView.selection = {
+    isSelected: row => row === selectedRow,
+    select: row => { selectedRow = row; }
+  };
+  win.ZoteroPane.getSelectedItems = () => [[items[0], secondItem][selectedRow]];
+  context.addon.api.citeItems = async selected => { citedItemID = selected[0].id; };
+  startDrag(1); drop({});
+  assert.equal(selectedRow, 1, 'dragging an unselected row updates Zotero selection');
+  assert.equal(citedItemID, 8, 'the inserted citation matches the row under the pointer');
   await view.dispose(); assert.equal(handlers.size, 0); assert.equal(runtime.pendingPatchCount, 0);
   assert.equal(win.ZoteroPane.itemsView.onDragStart, original);
 });
