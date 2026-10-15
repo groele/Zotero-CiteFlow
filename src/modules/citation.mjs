@@ -682,8 +682,7 @@ var Citation = class {
         const currentBefore = integration?.currentSession;
         const boundBefore = typeof currentBefore?.sessionID === "string" ? currentBefore.sessionID : null;
         const bindingID = ++citationModule._execCommandSerial;
-        const binding = { bindingID, sessionID: null, docId, sessionsBefore, agent, command, ambiguous: false,
-          quickCiteToken: command === "addEditCitation" ? addon.data.quickCiteToken : undefined };
+        const binding = { bindingID, sessionID: null, docId, sessionsBefore, agent, command, ambiguous: false };
         for (const pending of citationModule._execCommandBindings.values()) {
           pending.ambiguous = binding.ambiguous = true;
         }

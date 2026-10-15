@@ -14,11 +14,18 @@ $dataDir = Join-Path $testRoot 'data'
 $extensions = Join-Path $profile 'extensions'
 New-Item -ItemType Directory -Path $dataDir, $extensions -Force | Out-Null
 $archive = (Resolve-Path -LiteralPath $XpiPath).Path
+$sourceManifestZip = [IO.Compression.ZipFile]::OpenRead($archive)
+try {
+    $manifestReader = [IO.StreamReader]::new($sourceManifestZip.GetEntry('manifest.json').Open())
+    try { $testManifest = $manifestReader.ReadToEnd() | ConvertFrom-Json } finally { $manifestReader.Dispose() }
+} finally { $sourceManifestZip.Dispose() }
+$testAddonID = $testManifest.applications.zotero.id
+if (-not $KeepRunning -and $testAddonID -ne 'citeflow@groele') { throw 'Legacy comparison requires KeepRunning mode' }
 # Instrument only this disposable profile's copy. Never alter the deliverable XPI.
 $testCode = [IO.File]::ReadAllText((Join-Path $projectRoot 'tests/fixtures/settings-native-bootstrap.js')).Replace('async function startup()', 'async function startupSettingsTest()').Replace('function shutdown()', 'function shutdownSettingsTest()')
 $testCode += "`nconst originalSettingsTestStartup = startup;`nstartup = async function(...args) { await originalSettingsTestStartup.apply(this, args); startupSettingsTest().catch(error => Zotero.logError(error)); };`nconst originalSettingsTestShutdown = shutdown;`nshutdown = async function(...args) { if (args[1] === APP_SHUTDOWN) shutdownSettingsTest(); await originalSettingsTestShutdown.apply(this, args); };`n"
 $sourceZip = [IO.Compression.ZipFile]::OpenRead($archive)
-$testZip = [IO.Compression.ZipFile]::Open((Join-Path $extensions 'citeflow@groele.xpi'), [IO.Compression.ZipArchiveMode]::Create)
+$testZip = [IO.Compression.ZipFile]::Open((Join-Path $extensions ($testAddonID + '.xpi')), [IO.Compression.ZipArchiveMode]::Create)
 try {
     foreach ($entry in $sourceZip.Entries) {
         $destination = $testZip.CreateEntry($entry.FullName)
@@ -49,6 +56,7 @@ $preferences = @{
     'intl.locale.requested' = $Locale
     'extensions.zotero.zoterocitation.dragCite.enable' = $false
 }
+if ($KeepRunning) { $preferences.Remove('extensions.zotero.zoterocitation.dragCite.enable') }
 function Write-TestPreferences {
     $lines = foreach ($key in $preferences.Keys) {
         'user_pref(' + (ConvertTo-Json $key -Compress) + ', ' + (ConvertTo-Json $preferences[$key] -Compress) + ');'
@@ -61,8 +69,11 @@ $checks = [Collections.Generic.List[object]]::new()
 $passed = $false
 $testProcess = $null
 function Invoke-SettingsTest($request) {
+    $request.expectedDataDir = $dataDir
     $response = Invoke-RestMethod -Uri $uri -Method Post -ContentType 'application/json' -UserAgent 'CiteFlow-Settings-Test/1.0' -Body ($request | ConvertTo-Json -Compress) -TimeoutSec 20
     if (-not $response.ok) { throw $response.error }
+    if ($response.value.testDataDir -and [IO.Path]::GetFullPath($response.value.testDataDir) -ne [IO.Path]::GetFullPath($dataDir)) { throw 'Wrong isolated test host replied' }
+    if ($request.action -eq 'status' -and -not $response.value.testDataDir) { throw 'The responding test host has no identity; refusing stale profile' }
     return $response.value
 }
 function Assert-Settings($condition, $message, $snapshot) {

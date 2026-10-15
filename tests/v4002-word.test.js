@@ -193,6 +193,7 @@ async function testInsertionFailureDeletesNewField(modern = false, existing = fa
   sandbox.Zotero_Tabs = { selectedIndex: 0 };
   sandbox.addon.data.alive = true;
   let deleted = 0;
+  let registered = 0;
   sandbox.Zotero.Integration.CitationField = class {
     constructor(field) { this._field = field; }
     async delete() { deleted += 1; }
@@ -217,6 +218,7 @@ async function testInsertionFailureDeletesNewField(modern = false, existing = fa
     async updateFromDocument() {},
     async _insertCitingResult(index, field, citation) { citation.fieldIndex = 4; return multiple ? [citation, citation] : [citation]; },
     async addCitation(index, noteIndex, citation) {
+      registered++;
       assert.equal(index, 4, "native Zotero 10 fieldIndex must reach addCitation");
       assert.equal(citation.field.getNoteIndex instanceof Function, true);
       if (!modern || (multiple && ++writes === 2)) throw new Error("write failed");
@@ -230,6 +232,7 @@ async function testInsertionFailureDeletesNewField(modern = false, existing = fa
   sandbox.ZoteroPane.getSelectedItems = () => [{ id: 7, isRegularItem: () => true, isTopLevelItem: () => true }];
   if (modern && !multiple) {
     await sandbox.__citeItems();
+    assert.equal(registered, 1, "captured items reach native citation registration");
     assert.equal(deleted, 0, "successful native-shaped insertion preserves its field");
   } else {
     await assert.rejects(sandbox.__citeItems(), /write failed/);
@@ -237,6 +240,12 @@ async function testInsertionFailureDeletesNewField(modern = false, existing = fa
   }
 }
 async function testNative10CitationShape() { await testInsertionFailureDeletesNewField(true); }
+async function testMissingTrackingBindingDoesNotBlockInsertion() {
+  const previous = sandbox.addon.data.citation;
+  sandbox.addon.data.citation = { _execCommandBindings: new Map() };
+  try { await testInsertionFailureDeletesNewField(true); }
+  finally { sandbox.addon.data.citation = previous; }
+}
 async function testExistingFieldFailurePreservesDocument() { await testInsertionFailureDeletesNewField(false, true); }
 async function testPartialRegistrationPreservesCommittedField() { await testInsertionFailureDeletesNewField(true, false, true); }
 
@@ -289,6 +298,7 @@ async function testWrapperChainSurvivesClear() {
 
 const tests = [testNativeSignaturesAndTargetName, testMacWordPlaceholderNeverBecomesDocument,
   testConcurrentCommandsNeverCrossBind, testInsertionFailureDeletesNewField, testNative10CitationShape,
+  testMissingTrackingBindingDoesNotBlockInsertion,
   testExistingFieldFailurePreservesDocument, testPartialRegistrationPreservesCommittedField,
   testWinWordActiveDocumentNullCompatibility, testWrapperChainSurvivesClear];
 (async () => {

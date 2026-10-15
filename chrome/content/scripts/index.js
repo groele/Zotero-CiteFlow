@@ -697,16 +697,7 @@
           const currentBefore = integration?.currentSession;
           const boundBefore = typeof currentBefore?.sessionID === "string" ? currentBefore.sessionID : null;
           const bindingID = ++citationModule._execCommandSerial;
-          const binding = {
-            bindingID,
-            sessionID: null,
-            docId,
-            sessionsBefore,
-            agent,
-            command,
-            ambiguous: false,
-            quickCiteToken: command === "addEditCitation" ? addon.data.quickCiteToken : void 0
-          };
+          const binding = { bindingID, sessionID: null, docId, sessionsBefore, agent, command, ambiguous: false };
           for (const pending of citationModule._execCommandBindings.values()) {
             pending.ambiguous = binding.ambiguous = true;
           }
@@ -1562,13 +1553,9 @@
       }
     }
     if (!Array.isArray(selectedItems) || !selectedItems.length || !selectedItems.every((item) => item?.isRegularItem?.() && item.isTopLevelItem())) return;
-    const selectedIDs = [...new Set(selectedItems.map((item) => Number(item.id)))];
-    if (!selectedIDs.every((id) => Number.isSafeInteger(id) && id > 0)) return;
+    const selectedIDs = [...new Set(selectedItems.map((item) => item.id))];
     if (typeof Zotero.Integration?.Session?.prototype?.cite !== "function") return;
     citeItemsInFlight = true;
-    let requestActive = true;
-    const requestToken = {};
-    addon.data.quickCiteToken = requestToken;
     const cite = Zotero.Integration.Session.prototype.cite;
     const integration = Zotero.Integration;
     const getApplication = integration.getApplication;
@@ -1586,9 +1573,7 @@
       integration.getApplication = wrappedGetApplication;
     }
     const patchedCite = async function(field, addNote = false, addAnnotations = false) {
-      if (!requestActive || addon.data.alive === false) return cite.apply(this, arguments);
-      const bindings = addon.data.citation?._execCommandBindings;
-      if (bindings && ![...bindings.values()].some((binding) => binding.quickCiteToken === requestToken && binding.sessionID === this.sessionID && !binding.ambiguous)) return cite.apply(this, arguments);
+      if (addon.data.alive === false) return cite.apply(this, arguments);
       if (typeof this._insertCitingResult !== "function" || typeof this.addCitation !== "function" || typeof Zotero.Integration.CitationEditInterface !== "function") {
         return cite.apply(this, arguments);
       }
@@ -1702,11 +1687,9 @@
         );
       }
     } finally {
-      requestActive = false;
       if (wrappedGetApplication && integration.getApplication === wrappedGetApplication) {
         integration.getApplication = getApplication;
       }
-      if (addon.data.quickCiteToken === requestToken) delete addon.data.quickCiteToken;
       if (Zotero.Integration.Session.prototype.cite === patchedCite) {
         Zotero.Integration.Session.prototype.cite = cite;
       }

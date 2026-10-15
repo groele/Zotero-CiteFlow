@@ -1,21 +1,27 @@
-param([Parameter(Mandatory)][string]$SessionRoot)
+param([Parameter(Mandatory)][string]$SessionRoot, [switch]$UseRunningWord)
 $ErrorActionPreference = 'Stop'
 $SessionRoot = (Resolve-Path -LiteralPath $SessionRoot).Path
 $session = Get-Content -LiteralPath (Join-Path $SessionRoot 'session.json') -Raw | ConvertFrom-Json
-if ((Get-Process WINWORD -ErrorAction SilentlyContinue)) { throw 'Close the previous owned Word test instance before running this isolated acceptance' }
+if (-not $UseRunningWord -and (Get-Process WINWORD -ErrorAction SilentlyContinue)) { throw 'Close the previous owned Word test instance before running this isolated acceptance' }
 $uri = "http://127.0.0.1:$($session.port)/citeflow-settings-test"
 $checks = [Collections.Generic.List[object]]::new()
 $documents = @{}
 $word = $null
+function Send-WordTestRequest($request) {
+    $request.expectedDataDir = $session.dataDir
+    $payload = [Text.Encoding]::UTF8.GetBytes(($request | ConvertTo-Json -Depth 6 -Compress))
+    $response = Invoke-WebRequest -UseBasicParsing -Uri $uri -Method Post -ContentType 'application/json; charset=utf-8' -UserAgent CiteFlow-Word-Test/1.0 -Body $payload -TimeoutSec 20
+    [Text.Encoding]::UTF8.GetString($response.RawContentStream.ToArray()) | ConvertFrom-Json
+}
 function Invoke-Native($request) {
-    $reply = Invoke-RestMethod -Uri $uri -Method Post -ContentType application/json -UserAgent CiteFlow-Word-Test/1.0 -Body ($request | ConvertTo-Json -Depth 6 -Compress) -TimeoutSec 20
+    $reply = Send-WordTestRequest $request
     if (-not $reply.ok) { throw $reply.error }
     if ($request.action -like 'word*') {
         $taskID = $reply.value.id
         $deadline = [DateTime]::UtcNow.AddSeconds(45)
         do {
             Start-Sleep -Milliseconds 100
-            $reply = Invoke-RestMethod -Uri $uri -Method Post -ContentType application/json -UserAgent CiteFlow-Word-Test/1.0 -Body (@{action='wordResult';id=$taskID}|ConvertTo-Json -Compress) -TimeoutSec 20
+            $reply = Send-WordTestRequest @{action='wordResult';id=$taskID}
             if (-not $reply.value.pending) {
                 if (-not $reply.value.ok) { throw $reply.value.error }
                 return $reply.value.value
@@ -45,8 +51,9 @@ function Move-Outside($doc) {
     $word.Selection.TypeText(' outside citation ')
 }
 try {
-    $word = New-Object -ComObject Word.Application
-    $word.Visible = $false; $word.DisplayAlerts = 0
+    $word = if ($UseRunningWord) { [Runtime.InteropServices.Marshal]::GetActiveObject('Word.Application') } else { New-Object -ComObject Word.Application }
+    $previousDocument = if ($UseRunningWord -and $word.Documents.Count) { $word.ActiveDocument } else { $null }
+    if (-not $UseRunningWord) { $word.Visible = $false; $word.DisplayAlerts = 0 }
     $setup = Invoke-Native @{action='wordSetup'}
     # wordSetup creates three fresh items even when this test host was probed earlier.
     $ids = @($setup.probe.itemIDs | Select-Object -Last 3)
@@ -54,10 +61,12 @@ try {
     $null = Invoke-Native @{action='change';id='dragCite';value=$true}
     foreach ($name in @('A','B')) {
         $doc = $word.Documents.Add()
+        $documents[$name] = $doc
         $doc.Content.Text = "Isolated CiteFlow acceptance $name`r`r"
-        $path = Join-Path $SessionRoot "Word-QA-$name.docx"
+        [string]$path = Join-Path $SessionRoot "Word-QA-$name.docx"
         if (Test-Path -LiteralPath $path) { throw 'Acceptance document already exists' }
-        $doc.SaveAs2($path,16); $documents[$name] = $doc
+        $format = 16
+        $doc.SaveAs([ref]$path, [ref]$format); $documents[$name] = $doc
         $null = Invoke-Native @{action='wordPrepare';document=$path;styleID=$setup.probe.styleID}
     }
     $a=$documents.A; $b=$documents.B
@@ -99,9 +108,10 @@ try {
     Write-Output "Real Word acceptance passed: $($checks.Count) checks. $SessionRoot/word-results.json"
 } finally {
     if ($word) {
-        foreach ($doc in $documents.Values) { $doc.Save(); $doc.Close(0) }
-        $word.Quit(0)
+        foreach ($doc in $documents.Values) { if ($doc.Path) { $doc.Save() }; $doc.Close(0) }
+        if ($previousDocument) { $previousDocument.Activate() }
+        if (-not $UseRunningWord) { $word.Quit(0) }
         [Runtime.InteropServices.Marshal]::FinalReleaseComObject($word)|Out-Null
     }
-    @{ok=[bool]$passed;wordVersion='16.0';checks=@($checks.ToArray());scope='Native Zotero drag handlers plus real Word COM fields; no OS pointer automation'}|ConvertTo-Json -Depth 15|Set-Content -LiteralPath (Join-Path $SessionRoot 'word-results.json') -Encoding utf8NoBOM
+    [IO.File]::WriteAllText((Join-Path $SessionRoot 'word-results.json'), (@{ok=[bool]$passed;wordVersion='16.0';checks=@($checks.ToArray());scope='Native Zotero drag handlers plus real Word COM fields; no OS pointer automation'} | ConvertTo-Json -Depth 15))
 }

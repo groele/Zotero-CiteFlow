@@ -18,6 +18,7 @@ async function startup() {
   const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
   const root = () => preferencesWindow?.document.getElementById("zoterocitation-settings");
   const snapshot = () => ({
+    testDataDir: Zotero.DataDirectory.dir,
     zoteroVersion: Zotero.version,
     tracking: !!Zotero.ZoteroCitation?.data.citation,
     paneRegistered: Zotero.PreferencePanes.pluginPanes.some(pane => pane.id === "zoterocitation-preferences"),
@@ -221,6 +222,9 @@ async function startup() {
   Zotero.Server.Endpoints[endpoint].prototype = {
     supportedMethods: ["POST"], supportedDataTypes: ["application/json"], permitBookmarklet: false,
     async init({ data }) {
+      if (data.expectedDataDir && normalize(data.expectedDataDir) !== normalize(expected)) {
+        return [409, "application/json", JSON.stringify({ ok: false, error: "Wrong isolated test host" })];
+      }
       if (data.action === "wordResult") return [200, "application/json", JSON.stringify({ ok: true, value: wordTasks.get(data.id) || { pending: true } })];
       if (data.action.startsWith("word")) {
         const id = ++wordSerial;
