@@ -1880,7 +1880,7 @@
       this._dragEndHandler = (event) => {
         const items = this._dragItems;
         this._dragItems = null;
-        if (!items?.length || !this._dragEnabled() || !event.dataTransfer || event.dataTransfer.mozUserCancelled || event.dataTransfer.dropEffect === "none") return;
+        if (!items?.length || !this._dragEnabled() || !event.dataTransfer || event.dataTransfer.mozUserCancelled) return;
         const x = event.screenX, y = event.screenY;
         if (!Number.isFinite(x) || !Number.isFinite(y)) return;
         const width = this.window.outerWidth || this.document.documentElement.getBoundingClientRect().width;

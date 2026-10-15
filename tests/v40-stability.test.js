@@ -393,10 +393,11 @@ async function testDragLifecycle() {
   assert.equal(start(), "native-drag"); end(); assert.equal(calls.length, 0);
   sandbox.Zotero.Prefs.set("extensions.zotero.zoterocitation.dragCite.enable", true, true);
   start(); transfer.mozUserCancelled = true; end(); assert.equal(calls.length, 0);
-  transfer.mozUserCancelled = false; start(); transfer.dropEffect = "none"; end(); assert.equal(calls.length, 0);
-  transfer.dropEffect = "copy"; start(); end({screenX: 10, screenY: 10}); assert.equal(calls.length, 0);
-  start(); selected = [regularItem(2)]; end(); assert.deepEqual(calls, [[1]], "must cite drag-start selection");
-  end(); assert.equal(calls.length, 1, "duplicate dragend must not cite again");
+  transfer.mozUserCancelled = false; start(); transfer.dropEffect = "none"; end();
+  assert.deepEqual(calls, [[1]], "Word can reject an empty transfer while the citation drop remains valid");
+  transfer.dropEffect = "copy"; start(); end({screenX: 10, screenY: 10}); assert.equal(calls.length, 1);
+  start(); selected = [regularItem(2)]; end(); assert.deepEqual(calls, [[1], [1]], "must cite drag-start selection");
+  end(); assert.equal(calls.length, 2, "duplicate dragend must not cite again");
   start(); view.dispose(); assert.equal(handlers.size, 0);
   assert.equal(start(), "native-drag", "retained patch is transparent after disposal");
 }

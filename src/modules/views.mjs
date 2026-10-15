@@ -183,8 +183,11 @@ var Views = class {
     this._dragEndHandler = (event) => {
       const items = this._dragItems;
       this._dragItems = null;
+      // Word rejects the intentionally empty text payload, so Gecko reports
+      // dropEffect="none" even after a real drop on the Word page. The
+      // cancellation flag and the source-window bounds remain the guards.
       if (!items?.length || !this._dragEnabled() || !event.dataTransfer
-        || event.dataTransfer.mozUserCancelled || event.dataTransfer.dropEffect === "none") return;
+        || event.dataTransfer.mozUserCancelled) return;
       const x = event.screenX, y = event.screenY;
       if (!Number.isFinite(x) || !Number.isFinite(y)) return;
       const width = this.window.outerWidth || this.document.documentElement.getBoundingClientRect().width;

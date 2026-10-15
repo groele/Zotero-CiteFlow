@@ -70,8 +70,10 @@ test('drag citation applies live independently of column visibility, without dup
   win.ZoteroPane.itemsView.getColumns = () => [];
   startDrag(); drop({}); assert.equal(cites, 2, 'drag works without a registered or visible citation column');
   cites = 1;
-  column.hidden = false; startDrag(); drop({ dataTransfer: { dropEffect: 'none' } }); assert.equal(cites, 1);
-  startDrag(); drop({ screenX: 100, screenY: 100 }); assert.equal(cites, 1);
+  column.hidden = false; startDrag(); drop({ dataTransfer: { dropEffect: 'none', mozUserCancelled: false } });
+  assert.equal(cites, 2, 'Word reports none after rejecting the empty transfer but still requires a native citation');
+  startDrag(); drop({ dataTransfer: { dropEffect: 'none', mozUserCancelled: true } }); assert.equal(cites, 2);
+  startDrag(); drop({ screenX: 100, screenY: 100 }); assert.equal(cites, 2);
   const secondItem = { id: 8, isRegularItem: () => true, isTopLevelItem: () => true };
   let selectedRow = 0; let citedItemID;
   win.ZoteroPane.itemsView.selection = {
