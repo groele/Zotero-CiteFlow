@@ -57,6 +57,7 @@ $preferences = @{
     'extensions.zotero.zoterocitation.dragCite.enable' = $false
 }
 if ($KeepRunning) { $preferences.Remove('extensions.zotero.zoterocitation.dragCite.enable') }
+if ($KeepRunning) { $preferences['extensions.zotero.citationSettingsTest.traceRealDrag'] = $true }
 function Write-TestPreferences {
     $lines = foreach ($key in $preferences.Keys) {
         'user_pref(' + (ConvertTo-Json $key -Compress) + ', ' + (ConvertTo-Json $preferences[$key] -Compress) + ');'
@@ -82,7 +83,8 @@ function Assert-Settings($condition, $message, $snapshot) {
 }
 function Start-TestHost {
     $logStamp = Get-Date -Format 'HHmmss'
-    $script:testProcess = Start-Process -FilePath $ZoteroExecutable -ArgumentList @('-no-remote', '-ZoteroDebugText', '-profile', ('"' + $profile + '"')) -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $testRoot "stdout-$logStamp.log") -RedirectStandardError (Join-Path $testRoot "stderr-$logStamp.log")
+    $windowStyle = if ($KeepRunning) { 'Normal' } else { 'Hidden' }
+    $script:testProcess = Start-Process -FilePath $ZoteroExecutable -ArgumentList @('-no-remote', '-ZoteroDebugText', '-profile', ('"' + $profile + '"')) -WindowStyle $windowStyle -PassThru -RedirectStandardOutput (Join-Path $testRoot "stdout-$logStamp.log") -RedirectStandardError (Join-Path $testRoot "stderr-$logStamp.log")
     $deadline = [DateTime]::UtcNow.AddSeconds(55)
     do {
         try { return Invoke-SettingsTest @{ action = 'status' } } catch { Start-Sleep -Milliseconds 300 }

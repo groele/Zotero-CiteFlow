@@ -6,6 +6,7 @@ let testItems = [];
 const wordTasks = new Map();
 const wordDocuments = new Map();
 let wordSerial = 0;
+const realDragTrace = [];
 function install() {}
 function uninstall() {}
 async function startup() {
@@ -15,6 +16,35 @@ async function startup() {
   if (!expected || normalize(Zotero.DataDirectory.dir) !== normalize(expected)) throw Error("Isolated test profile required");
   for (let n = 0; n < 100 && !Zotero.ZoteroCitation; n++) await Zotero.Promise.delay(100);
   await Zotero.ZoteroCitation?.hooks.onStartup();
+  if (Zotero.Prefs.get("citationSettingsTest.traceRealDrag")) {
+    const win = Zotero.getMainWindow();
+    const record = (phase, event) => {
+      const transfer = event.dataTransfer;
+      realDragTrace.push({ phase, trusted: event.isTrusted, screenX: event.screenX,
+        screenY: event.screenY, effectAllowed: transfer?.effectAllowed,
+        dropEffect: transfer?.dropEffect, cancelled: transfer?.mozUserCancelled,
+        types: transfer ? [...transfer.types] : [],
+        selectedIDs: win.ZoteroPane.getSelectedItems().map(item => item.id),
+        preparedIDs: Zotero.ZoteroCitation?.data.views?._dragItems?.map(item => item.id) || [] });
+    };
+    win.document.addEventListener("dragstart", event => {
+      record("start", event);
+      win.queueMicrotask(() => record("start-after-handler", event));
+    }, true);
+    win.document.addEventListener("dragend", event => record("end", event), true);
+    const originalCite = Zotero.ZoteroCitation.api.citeItems;
+    Zotero.ZoteroCitation.api.citeItems = async (...args) => {
+      realDragTrace.push({ phase: "cite-call", itemIDs: args[0]?.map?.(item => item.id) || [] });
+      try {
+        const result = await originalCite(...args);
+        realDragTrace.push({ phase: "cite-complete" });
+        return result;
+      } catch (error) {
+        realDragTrace.push({ phase: "cite-error", message: String(error) });
+        throw error;
+      }
+    };
+  }
   const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
   const root = () => preferencesWindow?.document.getElementById("zoterocitation-settings");
   const snapshot = () => ({
@@ -23,7 +53,7 @@ async function startup() {
     tracking: !!Zotero.ZoteroCitation?.data.citation,
     paneRegistered: Zotero.PreferencePanes.pluginPanes.some(pane => pane.id === "zoterocitation-preferences"),
     paneLabel: Zotero.PreferencePanes.pluginPanes.find(pane => pane.id === "zoterocitation-preferences")?.rawLabel,
-    patchCount: Zotero.ZoteroCitation?.data.runtime.pendingPatchCount,
+    patchCount: Zotero.ZoteroCitation?.data.runtime?.pendingPatchCount,
     columnKeys: Zotero.getMainWindow()?.ZoteroPane.itemsView?.getColumns().map(column => column.dataKey),
     visibleColumns: Zotero.getMainWindow()?.ZoteroPane.itemsView?._getColumns().filter(column => !column.hidden).map(column => column.dataKey),
     debug: Zotero.ZoteroCitation?.data.citation?._debugEnabled,
@@ -48,7 +78,10 @@ async function startup() {
   });
   async function run(data) {
     let extra;
-    if (data.action === "wordSetup") {
+    if (data.action === "realDragTrace") {
+      extra = { events: [...realDragTrace] };
+      if (data.clear) realDragTrace.length = 0;
+    } else if (data.action === "wordSetup") {
       await Zotero.Styles.init();
       for (let n = 0; n < 3; n++) {
         const item = new Zotero.Item("journalArticle");
@@ -115,7 +148,7 @@ async function startup() {
       } finally { integration._handleCommandError = previousHandler; }
       extra = { ...extra, sessions: Object.fromEntries(Object.entries(Zotero.ZoteroCitation.api.sessions).map(([id, session]) => [id, {
         collection: session.collection?.name, idData: session.idData, childIDs: session.collection?.getChildItems(true)
-      }])), diagnostics: Zotero.ZoteroCitation.api.getDiagnostics() };
+      }])), diagnostics: Zotero.ZoteroCitation.api.getDiagnostics?.() };
     } else if (data.action === "tagFixtures") {
       for (let n = 0; n < 2; n++) {
         const item = new Zotero.Item("journalArticle");

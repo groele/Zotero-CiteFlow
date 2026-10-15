@@ -1,10 +1,12 @@
-param([Parameter(Mandatory)][string]$Root)
+param([Parameter(Mandatory)][string]$Root, [switch]$Visible,
+    [ValidatePattern('^[A-Za-z][A-Za-z0-9-]{0,31}$')][string]$Prefix = 'Citation',
+    [switch]$UseRunningWord)
 $ErrorActionPreference = 'Stop'
 $Root = [IO.Path]::GetFullPath($Root)
 if (-not (Test-Path -LiteralPath (Join-Path $Root 'session.json'))) { throw 'A prepared isolated test session is required' }
-$word = New-Object -ComObject Word.Application
-$word.Visible = $false
-$word.DisplayAlerts = 0
+$word = if ($UseRunningWord) { [Runtime.InteropServices.Marshal]::GetActiveObject('Word.Application') } else { New-Object -ComObject Word.Application }
+if ($Visible) { $word.Visible = $true }
+if (-not $UseRunningWord) { $word.DisplayAlerts = 0 }
 $documents = @{}
 @{ ready = $true; version = $word.Version; build = $word.Build; root = $Root } | ConvertTo-Json -Compress
 try {
@@ -18,9 +20,10 @@ try {
                 if ($documents.ContainsKey($name)) { throw 'Document already created' }
                 $document = $word.Documents.Add()
                 $document.Content.Text = "Native citation regression document $name`r`r"
-                $path = Join-Path $Root "Citation-$name.docx"
+                [string]$path = Join-Path $Root "$Prefix-$name.docx"
                 if (Test-Path -LiteralPath $path) { throw 'Test document already exists' }
-                $document.SaveAs2($path, 16)
+                $format = 16
+                $document.SaveAs([ref]$path, [ref]$format)
                 $documents[$name] = $document
             } else { $document = $documents[$name] }
             if (-not $document) { throw 'Test document is not open' }
@@ -40,6 +43,12 @@ try {
                 }
                 'undo' { $document.Undo() | Out-Null }
                 'save' { $document.Save() }
+                'show' { $word.Visible = $true }
+                'arrange' {
+                    $word.WindowState = 0
+                    $word.Left = [int]$request.left; $word.Top = 0
+                    $word.Width = [int]$request.width; $word.Height = [int]$request.height
+                }
                 'inspect' {}
                 default { throw 'Unsupported Word test action' }
             }
@@ -52,6 +61,6 @@ try {
     }
 } finally {
     foreach ($doc in $documents.Values) { $doc.Save(); $doc.Close(0) }
-    $word.Quit(0)
+    if (-not $UseRunningWord) { $word.Quit(0) }
     [Runtime.InteropServices.Marshal]::FinalReleaseComObject($word) | Out-Null
 }
