@@ -1,7 +1,6 @@
 import { config } from "./config.mjs";
 import { initLocale } from "./modules/locale.mjs";
 import { Citation } from "./modules/citation.mjs";
-import { citeItems } from "./modules/cite.mjs";
 import Views from "./modules/views.mjs";
 import { Preferences } from "./modules/preferences.mjs";
 const windowBindings = new Map();
@@ -52,22 +51,7 @@ async function onStartup() {
 async function attachWindow(win) {
   if (!win?.ZoteroPane || !addon.data.alive || !addon.data.citation || windowBindings.has(win)) return;
   const views = new Views(win);
-  const keydownHandler = event => {
-    if (event.key !== "'" || event.repeat || event.isComposing
-      || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
-    const targets = [event.target, event.originalTarget, ...event.composedPath?.() || []].filter(Boolean);
-    // Firefox's originalTarget can be an anonymous inner node of an input.
-    // Inspect the visible target and composed path as well before intercepting.
-    if (!targets.length || targets.some(target => target.isContentEditable || "value" in target
-      || target.closest?.('input, textarea, select, [role="textbox"], [role="combobox"]'))) return;
-    if (Zotero.Prefs.get("extensions.zotero.zoterocitation.quickCite.enable", true) === false) return;
-    const items = win.ZoteroPane.getSelectedItems();
-    if (!items?.length || !items.every(item => item?.isRegularItem?.() && item.isTopLevelItem())) return;
-    event.preventDefault();
-    event.stopPropagation();
-    void citeItems(items).catch(error => Zotero.logError(error));
-  };
-  const binding = { views, keydownHandler, closed: false };
+  const binding = { views, closed: false };
   windowBindings.set(win, binding);
   try {
     await views.prepareWindow?.();
@@ -76,7 +60,6 @@ async function attachWindow(win) {
     if (binding.closed || !addon.data.alive) return;
     await views.dragCite();
     if (binding.closed || !addon.data.alive) return;
-    win.document.addEventListener("keydown", keydownHandler, true);
   } catch (error) {
     await detachWindow(win);
     throw error;
@@ -87,7 +70,6 @@ async function detachWindow(win) {
   if (!binding) return;
   binding.closed = true;
   windowBindings.delete(win);
-  await runShutdownStep("remove keyboard listener", () => win.document.removeEventListener("keydown", binding.keydownHandler, true));
   await runShutdownStep("dispose window UI", () => binding.views.dispose());
   if (globalThis.window === win) {
     globalThis.window = globalThis.document = globalThis.ZoteroPane = globalThis.Zotero_Tabs = undefined;

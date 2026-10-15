@@ -12,8 +12,16 @@
     if (addon.data.locale) return;
     const Localization = runtime.getGlobal("Localization") ?? ChromeUtils.importESModule("resource://gre/modules/Localization.sys.mjs").Localization;
     const l10n = new Localization([`${config.addonRef}-addon.ftl`]);
-    const value = await l10n.formatValue(`${config.addonRef}-column-citation`);
-    if (addon.data.alive) addon.data.locale = { "column-citation": value || "Citation" };
+    const [value, pending, unknownDrop] = await Promise.all([
+      l10n.formatValue(`${config.addonRef}-column-citation`),
+      l10n.formatValue(`${config.addonRef}-collection-pending`),
+      l10n.formatValue(`${config.addonRef}-drag-target-unknown`)
+    ]);
+    if (addon.data.alive) addon.data.locale = {
+      "column-citation": value || "Citation",
+      "collection-pending": pending || "Word document (pending name)",
+      "drag-target-unknown": unknownDrop || "Could not confirm the Word drop target. Drag the item onto a Word document and try again."
+    };
   }
   function getString(key) {
     return addon.data.locale?.[key] || `${config.addonRef}-${key}`;
@@ -73,6 +81,8 @@
       this._refreshRetryTimerBySession = {};
       this._missingSessionCountBySession = {};
       this._docIdBySession = {};
+      this._pendingCollectionNames = /* @__PURE__ */ new Map();
+      this._pendingCollectionNumber = 0;
       this.activeSessionID = null;
       this._execCommandBindings = /* @__PURE__ */ new Map();
       this._execCommandSerial = 0;
@@ -154,7 +164,7 @@
       if (existing?.collection) return existing;
       this._initializationTasks ??= /* @__PURE__ */ new Map();
       if (this._initializationTasks.has(sessionID)) return this._initializationTasks.get(sessionID);
-      const session = existing || { idData: {}, lastName: sessionID, docId: this._docIdBySession[sessionID], pending: true };
+      const session = existing || { idData: {}, lastName: this._getPendingCollectionName(sessionID), docId: this._docIdBySession[sessionID], pending: true };
       this.sessions[sessionID] = session;
       this._invalidateSessionIndex();
       const task = (async () => {
@@ -492,6 +502,14 @@
       const maxLength = 200;
       return (normalized || fallback).slice(0, maxLength);
     }
+    _getPendingCollectionName(sessionID) {
+      this._pendingCollectionNames ??= /* @__PURE__ */ new Map();
+      if (!this._pendingCollectionNames.has(sessionID)) {
+        this._pendingCollectionNumber = (this._pendingCollectionNumber || 0) + 1;
+        this._pendingCollectionNames.set(sessionID, this._pendingCollectionNumber);
+      }
+      return `${getString("collection-pending")} ${this._pendingCollectionNames.get(sessionID)}`;
+    }
     _getDocumentDisplayName(docId) {
       let raw = typeof docId === "string" ? docId.trim() : String(docId || "").trim();
       if (!raw || raw === "__doc__") {
@@ -503,13 +521,16 @@
       if (!withoutQuery || /[\\\/]$/.test(withoutQuery)) {
         return "";
       }
-      let decoded = withoutQuery;
-      try {
-        decoded = decodeURIComponent(withoutQuery);
-      } catch {
+      const normalizedPath = withoutQuery.replace(/\\/g, "/");
+      let candidate = normalizedPath.slice(normalizedPath.lastIndexOf("/") + 1);
+      if (isURL) {
+        try {
+          candidate = decodeURIComponent(candidate);
+        } catch {
+          return "";
+        }
+        if (/[\\/]/.test(candidate)) return "";
       }
-      const normalizedPath = decoded.replace(/\\/g, "/");
-      const candidate = normalizedPath.slice(normalizedPath.lastIndexOf("/") + 1);
       if (!candidate || candidate === "." || candidate === ".." || /^[a-z][a-z0-9+.-]*:$/i.test(candidate)) {
         return "";
       }
@@ -858,6 +879,7 @@
         }
       }
       this.cleanupSessionState(sessionID, true);
+      this._pendingCollectionNames?.delete(sessionID);
       const collection = session.collection;
       if (!collection?.id) {
         return;
@@ -1396,7 +1418,7 @@
       }
       const collection = new Zotero.Collection();
       collection.libraryID = Zotero.Libraries.userLibraryID;
-      collection.name = sessionID;
+      collection.name = this._getPendingCollectionName(sessionID);
       try {
         if (typeof collection.addRelation === "function") {
           collection.addRelation(TEMP_COLLECTION_RELATION, TEMP_COLLECTION_MARKER);
@@ -1536,166 +1558,93 @@
     }
   };
 
-  // src/modules/cite.mjs
-  var citeItemsInFlight = false;
-  var citeItems = async (requestedItems = null) => {
-    if (citeItemsInFlight || addon.data.alive === false) {
-      return;
-    }
-    let selectedItems = requestedItems;
-    if (!selectedItems) {
-      if (Zotero_Tabs.selectedIndex === 0) {
-        selectedItems = ZoteroPane.getSelectedItems();
-      } else {
-        const reader = Zotero.Reader.getByTabID(Zotero_Tabs.selectedID);
-        const attachment = reader && Zotero.Items.get(reader.itemID);
-        selectedItems = attachment?.parentItem ? [attachment.parentItem] : [];
-      }
-    }
-    if (!Array.isArray(selectedItems) || !selectedItems.length || !selectedItems.every((item) => item?.isRegularItem?.() && item.isTopLevelItem())) return;
-    const selectedIDs = [...new Set(selectedItems.map((item) => item.id))];
-    if (typeof Zotero.Integration?.Session?.prototype?.cite !== "function") return;
-    citeItemsInFlight = true;
-    const cite = Zotero.Integration.Session.prototype.cite;
-    const integration = Zotero.Integration;
-    const getApplication = integration.getApplication;
-    let wrappedGetApplication;
-    if (typeof getApplication === "function") {
-      wrappedGetApplication = function(...args) {
-        const application = Reflect.apply(getApplication, this, args);
-        if (args[0] === "WinWord" && typeof application?.getDocument === "function" && typeof application.getActiveDocument === "function") {
-          application.getActiveDocument = function() {
-            return this.getDocument("");
-          };
-        }
-        return application;
-      };
-      integration.getApplication = wrappedGetApplication;
-    }
-    const patchedCite = async function(field, addNote = false, addAnnotations = false) {
-      if (addon.data.alive === false) return cite.apply(this, arguments);
-      if (typeof this._insertCitingResult !== "function" || typeof this.addCitation !== "function" || typeof Zotero.Integration.CitationEditInterface !== "function") {
-        return cite.apply(this, arguments);
-      }
-      let newField;
-      let citation;
-      let committed = false;
-      try {
-        if (field) {
-          field = await Zotero.Integration.Field.loadExisting(field);
-          if (field.type != 1) {
-            throw new Zotero.Exception.Alert("integration.error.notInCitation");
-          }
-          citation = new Zotero.Integration.Citation(field, await field.unserialize(), await field.getNoteIndex());
-        } else {
-          newField = true;
-          field = new Zotero.Integration.CitationField(await this.addField(true));
-          citation = new Zotero.Integration.Citation(field);
-        }
-        await citation.prepareForEditing();
-        let fieldIndexPromise, citationsByItemIDPromise;
-        if (!this.data.prefs.delayCitationUpdates || !Object.keys(this.citationsByItemID).length || this._sessionUpToDate) {
-          fieldIndexPromise = this.getFields().then(async function(fields2) {
-            for (let i = 0, n = fields2.length; i < n; i++) {
-              if (await fields2[i].equals(field._field)) {
-                field = new Zotero.Integration.CitationField(fields2[i]);
-                return i;
-              }
-            }
-            return -1;
-          });
-          citationsByItemIDPromise = this.updateFromDocument(0).then(() => {
-            return this.citationsByItemID;
-          });
-        } else {
-          fieldIndexPromise = Zotero.Promise.resolve(-1);
-          citationsByItemIDPromise = Zotero.Promise.resolve(this.citationsByItemID);
-        }
-        const io = new Zotero.Integration.CitationEditInterface(
-          citation,
-          this.style.opt.sort_citations,
-          fieldIndexPromise,
-          citationsByItemIDPromise
-        );
-        selectedIDs.forEach((id) => {
-          if (!io.citation.citationItems.some((item) => Number(item.id) === id)) {
-            io.citation.citationItems.push({ id });
-          }
-        });
-        if (!io.citation.citationItems.length) {
-          throw new Zotero.Exception.UserCancelled("inserting citation");
-        }
-        const [fieldIndex] = await Promise.all([fieldIndexPromise, citationsByItemIDPromise]);
-        const citations = await this._insertCitingResult(fieldIndex, field, io.citation);
-        if (!this.data.prefs.delayCitationUpdates) {
-          if (citations.length != 1) {
-            var fields = await this.getFields(true);
-          }
-          await this.updateFromDocument(0);
-        }
-        for (const citation2 of citations) {
-          if (fields) {
-            const index2 = citation2.fieldIndex ?? citation2._fieldIndex;
-            const replacement = new Zotero.Integration.CitationField(fields[index2]);
-            if ("field" in citation2) citation2.field = replacement;
-            else citation2._field = replacement;
-          }
-          const index = citation2.fieldIndex ?? citation2._fieldIndex;
-          const citationField = citation2.field ?? citation2._field;
-          await this.addCitation(index, await citationField.getNoteIndex(), citation2);
-          committed = true;
-        }
-        committed = true;
-        try {
-          const sessionID = this.sessionID;
-          if (addon.data.alive !== false && sessionID && Zotero.ZoteroCitation?.api?.refreshSessionCitations) {
-            await Zotero.ZoteroCitation.api.refreshSessionCitations(sessionID, this);
-          }
-        } catch (error) {
-          Zotero.logError(error);
-        }
-        return citations;
-      } catch (error) {
-        if (newField && !committed && typeof field?.delete === "function") {
-          try {
-            await field.delete();
-            await this.getFields(true);
-            await this.updateFromDocument(0);
-          } catch (cleanupError) {
-            Zotero.logError(cleanupError);
-          }
-        }
-        throw error;
-      }
-    };
-    Zotero.Integration.Session.prototype.cite = patchedCite;
+  // src/modules/drop-target.mjs
+  function resolveWordDropTarget() {
+    if (!Zotero.isWin) return "unknown";
+    let user32;
+    let kernel32;
+    let processHandle;
+    let closeHandle;
     try {
-      if (Zotero.isMac) {
-        await Zotero.Integration.execCommand(
-          "MacWord16",
-          "addEditCitation",
-          "/Applications/Microsoft Word.app/",
-          2
-        );
-      } else {
-        await Zotero.Integration.execCommand(
-          "WinWord",
-          "addEditCitation",
-          null,
-          // Let Word choose its current active document, not a stale stored path.
-          1
-        );
-      }
+      const { ctypes } = ChromeUtils.importESModule("resource://gre/modules/ctypes.sys.mjs");
+      const POINT = new ctypes.StructType("CiteFlowDropPoint", [
+        { x: ctypes.long },
+        { y: ctypes.long }
+      ]);
+      user32 = ctypes.open("user32.dll");
+      kernel32 = ctypes.open("kernel32.dll");
+      const getCursorPos = user32.declare(
+        "GetCursorPos",
+        ctypes.winapi_abi,
+        ctypes.int32_t,
+        POINT.ptr
+      );
+      const windowFromPoint = user32.declare(
+        "WindowFromPoint",
+        ctypes.winapi_abi,
+        ctypes.voidptr_t,
+        POINT
+      );
+      const getWindowThreadProcessId = user32.declare(
+        "GetWindowThreadProcessId",
+        ctypes.winapi_abi,
+        ctypes.uint32_t,
+        ctypes.voidptr_t,
+        ctypes.uint32_t.ptr
+      );
+      const openProcess = kernel32.declare(
+        "OpenProcess",
+        ctypes.winapi_abi,
+        ctypes.voidptr_t,
+        ctypes.uint32_t,
+        ctypes.int32_t,
+        ctypes.uint32_t
+      );
+      const queryFullProcessImageName = kernel32.declare(
+        "QueryFullProcessImageNameW",
+        ctypes.winapi_abi,
+        ctypes.int32_t,
+        ctypes.voidptr_t,
+        ctypes.uint32_t,
+        ctypes.jschar.ptr,
+        ctypes.uint32_t.ptr
+      );
+      closeHandle = kernel32.declare(
+        "CloseHandle",
+        ctypes.winapi_abi,
+        ctypes.int32_t,
+        ctypes.voidptr_t
+      );
+      const point = POINT();
+      if (!getCursorPos(point.address())) return "unknown";
+      const targetWindow = windowFromPoint(point);
+      if (targetWindow.isNull()) return "unknown";
+      const processID = ctypes.uint32_t();
+      if (!getWindowThreadProcessId(targetWindow, processID.address()) || !processID.value) return "unknown";
+      processHandle = openProcess(4096, false, processID.value);
+      if (processHandle.isNull()) return "unknown";
+      const path = ctypes.jschar.array(32768)();
+      const pathLength = ctypes.uint32_t(path.length);
+      if (!queryFullProcessImageName(processHandle, 0, path, pathLength.address())) return "unknown";
+      const executable = path.readString().split(/[\\/]/).pop().toLowerCase();
+      return executable === "winword.exe" ? "word-confirmed" : "non-word";
+    } catch (error) {
+      return "unknown";
     } finally {
-      if (wrappedGetApplication && integration.getApplication === wrappedGetApplication) {
-        integration.getApplication = getApplication;
+      if (processHandle && closeHandle) try {
+        closeHandle(processHandle);
+      } catch {
       }
-      if (Zotero.Integration.Session.prototype.cite === patchedCite) {
-        Zotero.Integration.Session.prototype.cite = cite;
+      try {
+        kernel32?.close();
+      } catch {
       }
-      citeItemsInFlight = false;
+      try {
+        user32?.close();
+      } catch {
+      }
     }
-  };
+  }
 
   // src/modules/views.mjs
   var Views = class {
@@ -1705,6 +1654,7 @@
       this._disposed = false;
       this._dragItems = null;
       this._dragEndHandler = null;
+      this._lastUnknownDropNotice = 0;
       this._registeredColumnKeys = /* @__PURE__ */ new Set();
       this._iconNodeStates = /* @__PURE__ */ new Map();
     }
@@ -1847,6 +1797,22 @@
     _dragEnabled() {
       return !this._disposed && addon.data.alive !== false && Zotero.Prefs.get("extensions.zotero.zoterocitation.dragCite.enable", true) !== false;
     }
+    _resolveDropTarget() {
+      return resolveWordDropTarget();
+    }
+    _notifyUnknownDropTarget() {
+      const now = Date.now();
+      if (now - this._lastUnknownDropNotice < 15e3) return;
+      this._lastUnknownDropNotice = now;
+      try {
+        const notice = new Zotero.ProgressWindow();
+        notice.changeHeadline(getString("drag-target-unknown"));
+        notice.show();
+        notice.startCloseTimer(5e3);
+      } catch (error) {
+        Zotero.logError(error);
+      }
+    }
     dispose() {
       this._disposed = true;
       this._dragItems = null;
@@ -1881,11 +1847,9 @@
         const items = this._dragItems;
         this._dragItems = null;
         if (!items?.length || !this._dragEnabled() || !event.dataTransfer || event.dataTransfer.mozUserCancelled) return;
-        const x = event.screenX, y = event.screenY;
-        if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-        const width = this.window.outerWidth || this.document.documentElement.getBoundingClientRect().width;
-        const height = this.window.outerHeight || this.document.documentElement.getBoundingClientRect().height;
-        if (x >= this.window.screenX && x < this.window.screenX + width && y >= this.window.screenY && y < this.window.screenY + height) return;
+        const target = this._resolveDropTarget();
+        if (target === "unknown") this._notifyUnknownDropTarget();
+        if (target !== "word-confirmed") return;
         void addon.api.citeItems(items).catch((error) => Zotero.logError(error));
       };
       this.document.addEventListener("dragend", this._dragEndHandler, true);
@@ -2005,7 +1969,6 @@
   var prefix = "extensions.zotero.zoterocitation.";
   var settings = [
     { id: "enable", key: "enable", defaultValue: true },
-    { id: "quickCite", key: "quickCite.enable", defaultValue: true },
     { id: "dragCite", key: "dragCite.enable", defaultValue: true },
     { id: "citationTags", key: "citationTags.enable", defaultValue: true },
     { id: "citationTagText", key: "citationTags.text", defaultValue: "/Citations", maxLength: 200 },
@@ -2042,6 +2005,8 @@
         id: "zoterocitation-preferences",
         label: config.addonName,
         src: "chrome://zoterocitation/content/preferences.xhtml",
+        scripts: ["chrome://zoterocitation/content/preferences.js"],
+        defaultXUL: true,
         stylesheets: ["chrome://zoterocitation/content/preferences.css"]
       });
       if (this._disposed) {
@@ -2225,18 +2190,7 @@
   async function attachWindow(win) {
     if (!win?.ZoteroPane || !addon.data.alive || !addon.data.citation || windowBindings.has(win)) return;
     const views = new views_default(win);
-    const keydownHandler = (event) => {
-      if (event.key !== "'" || event.repeat || event.isComposing || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
-      const targets = [event.target, event.originalTarget, ...event.composedPath?.() || []].filter(Boolean);
-      if (!targets.length || targets.some((target) => target.isContentEditable || "value" in target || target.closest?.('input, textarea, select, [role="textbox"], [role="combobox"]'))) return;
-      if (Zotero.Prefs.get("extensions.zotero.zoterocitation.quickCite.enable", true) === false) return;
-      const items = win.ZoteroPane.getSelectedItems();
-      if (!items?.length || !items.every((item) => item?.isRegularItem?.() && item.isTopLevelItem())) return;
-      event.preventDefault();
-      event.stopPropagation();
-      void citeItems(items).catch((error) => Zotero.logError(error));
-    };
-    const binding = { views, keydownHandler, closed: false };
+    const binding = { views, closed: false };
     windowBindings.set(win, binding);
     try {
       await views.prepareWindow?.();
@@ -2245,7 +2199,6 @@
       if (binding.closed || !addon.data.alive) return;
       await views.dragCite();
       if (binding.closed || !addon.data.alive) return;
-      win.document.addEventListener("keydown", keydownHandler, true);
     } catch (error) {
       await detachWindow(win);
       throw error;
@@ -2256,7 +2209,6 @@
     if (!binding) return;
     binding.closed = true;
     windowBindings.delete(win);
-    await runShutdownStep("remove keyboard listener", () => win.document.removeEventListener("keydown", binding.keydownHandler, true));
     await runShutdownStep("dispose window UI", () => binding.views.dispose());
     if (globalThis.window === win) {
       globalThis.window = globalThis.document = globalThis.ZoteroPane = globalThis.Zotero_Tabs = void 0;
@@ -2313,6 +2265,167 @@
     onMainWindowUnload
   };
   var hooks_default2 = hooks_default;
+
+  // src/modules/cite.mjs
+  var citeItemsInFlight = false;
+  var citeItems = async (requestedItems = null) => {
+    if (citeItemsInFlight || addon.data.alive === false) {
+      return;
+    }
+    let selectedItems = requestedItems;
+    if (!selectedItems) {
+      if (Zotero_Tabs.selectedIndex === 0) {
+        selectedItems = ZoteroPane.getSelectedItems();
+      } else {
+        const reader = Zotero.Reader.getByTabID(Zotero_Tabs.selectedID);
+        const attachment = reader && Zotero.Items.get(reader.itemID);
+        selectedItems = attachment?.parentItem ? [attachment.parentItem] : [];
+      }
+    }
+    if (!Array.isArray(selectedItems) || !selectedItems.length || !selectedItems.every((item) => item?.isRegularItem?.() && item.isTopLevelItem())) return;
+    const selectedIDs = [...new Set(selectedItems.map((item) => item.id))];
+    if (typeof Zotero.Integration?.Session?.prototype?.cite !== "function") return;
+    citeItemsInFlight = true;
+    const cite = Zotero.Integration.Session.prototype.cite;
+    const integration = Zotero.Integration;
+    const getApplication = integration.getApplication;
+    let wrappedGetApplication;
+    if (typeof getApplication === "function") {
+      wrappedGetApplication = function(...args) {
+        const application = Reflect.apply(getApplication, this, args);
+        if (args[0] === "WinWord" && typeof application?.getDocument === "function" && typeof application.getActiveDocument === "function") {
+          application.getActiveDocument = function() {
+            return this.getDocument("");
+          };
+        }
+        return application;
+      };
+      integration.getApplication = wrappedGetApplication;
+    }
+    const patchedCite = async function(field, addNote = false, addAnnotations = false) {
+      if (addon.data.alive === false) return cite.apply(this, arguments);
+      if (typeof this._insertCitingResult !== "function" || typeof this.addCitation !== "function" || typeof Zotero.Integration.CitationEditInterface !== "function") {
+        return cite.apply(this, arguments);
+      }
+      let newField;
+      let citation;
+      let committed = false;
+      try {
+        if (field) {
+          field = await Zotero.Integration.Field.loadExisting(field);
+          if (field.type != 1) {
+            throw new Zotero.Exception.Alert("integration.error.notInCitation");
+          }
+          citation = new Zotero.Integration.Citation(field, await field.unserialize(), await field.getNoteIndex());
+        } else {
+          newField = true;
+          field = new Zotero.Integration.CitationField(await this.addField(true));
+          citation = new Zotero.Integration.Citation(field);
+        }
+        await citation.prepareForEditing();
+        let fieldIndexPromise, citationsByItemIDPromise;
+        if (!this.data.prefs.delayCitationUpdates || !Object.keys(this.citationsByItemID).length || this._sessionUpToDate) {
+          fieldIndexPromise = this.getFields().then(async function(fields2) {
+            for (let i = 0, n = fields2.length; i < n; i++) {
+              if (await fields2[i].equals(field._field)) {
+                field = new Zotero.Integration.CitationField(fields2[i]);
+                return i;
+              }
+            }
+            return -1;
+          });
+          citationsByItemIDPromise = this.updateFromDocument(0).then(() => {
+            return this.citationsByItemID;
+          });
+        } else {
+          fieldIndexPromise = Zotero.Promise.resolve(-1);
+          citationsByItemIDPromise = Zotero.Promise.resolve(this.citationsByItemID);
+        }
+        const io = new Zotero.Integration.CitationEditInterface(
+          citation,
+          this.style.opt.sort_citations,
+          fieldIndexPromise,
+          citationsByItemIDPromise
+        );
+        selectedIDs.forEach((id) => {
+          if (!io.citation.citationItems.some((item) => Number(item.id) === id)) {
+            io.citation.citationItems.push({ id });
+          }
+        });
+        if (!io.citation.citationItems.length) {
+          throw new Zotero.Exception.UserCancelled("inserting citation");
+        }
+        const [fieldIndex] = await Promise.all([fieldIndexPromise, citationsByItemIDPromise]);
+        const citations = await this._insertCitingResult(fieldIndex, field, io.citation);
+        if (!this.data.prefs.delayCitationUpdates) {
+          if (citations.length != 1) {
+            var fields = await this.getFields(true);
+          }
+          await this.updateFromDocument(0);
+        }
+        for (const citation2 of citations) {
+          if (fields) {
+            const index2 = citation2.fieldIndex ?? citation2._fieldIndex;
+            const replacement = new Zotero.Integration.CitationField(fields[index2]);
+            if ("field" in citation2) citation2.field = replacement;
+            else citation2._field = replacement;
+          }
+          const index = citation2.fieldIndex ?? citation2._fieldIndex;
+          const citationField = citation2.field ?? citation2._field;
+          await this.addCitation(index, await citationField.getNoteIndex(), citation2);
+          committed = true;
+        }
+        committed = true;
+        try {
+          const sessionID = this.sessionID;
+          if (addon.data.alive !== false && sessionID && Zotero.ZoteroCitation?.api?.refreshSessionCitations) {
+            await Zotero.ZoteroCitation.api.refreshSessionCitations(sessionID, this);
+          }
+        } catch (error) {
+          Zotero.logError(error);
+        }
+        return citations;
+      } catch (error) {
+        if (newField && !committed && typeof field?.delete === "function") {
+          try {
+            await field.delete();
+            await this.getFields(true);
+            await this.updateFromDocument(0);
+          } catch (cleanupError) {
+            Zotero.logError(cleanupError);
+          }
+        }
+        throw error;
+      }
+    };
+    Zotero.Integration.Session.prototype.cite = patchedCite;
+    try {
+      if (Zotero.isMac) {
+        await Zotero.Integration.execCommand(
+          "MacWord16",
+          "addEditCitation",
+          "/Applications/Microsoft Word.app/",
+          2
+        );
+      } else {
+        await Zotero.Integration.execCommand(
+          "WinWord",
+          "addEditCitation",
+          null,
+          // Let Word choose its current active document, not a stale stored path.
+          1
+        );
+      }
+    } finally {
+      if (wrappedGetApplication && integration.getApplication === wrappedGetApplication) {
+        integration.getApplication = getApplication;
+      }
+      if (Zotero.Integration.Session.prototype.cite === patchedCite) {
+        Zotero.Integration.Session.prototype.cite = cite;
+      }
+      citeItemsInFlight = false;
+    }
+  };
 
   // src/runtime.mjs
   var NativeRuntime = class {

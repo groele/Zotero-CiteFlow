@@ -1,4 +1,5 @@
 import { config } from "../config.mjs";
+import { getString } from "./locale.mjs";
 var TEMP_COLLECTION_RELATION = "dc:relation";
 var TEMP_COLLECTION_MARKER = "https://github.com/MuiseDestiny/zotero-citation#temporary-collection";
 var TEMP_COLLECTION_KEYS_PREF = "zotero-citation.temporaryCollectionKeys";
@@ -53,6 +54,8 @@ var Citation = class {
     this._refreshRetryTimerBySession = {};
     this._missingSessionCountBySession = {};
     this._docIdBySession = {};
+    this._pendingCollectionNames = new Map();
+    this._pendingCollectionNumber = 0;
     this.activeSessionID = null;
     this._execCommandBindings = new Map();
     this._execCommandSerial = 0;
@@ -134,7 +137,7 @@ var Citation = class {
     if (existing?.collection) return existing;
     this._initializationTasks ??= new Map();
     if (this._initializationTasks.has(sessionID)) return this._initializationTasks.get(sessionID);
-    const session = existing || { idData: {}, lastName: sessionID, docId: this._docIdBySession[sessionID], pending: true };
+    const session = existing || { idData: {}, lastName: this._getPendingCollectionName(sessionID), docId: this._docIdBySession[sessionID], pending: true };
     this.sessions[sessionID] = session;
     this._invalidateSessionIndex();
     const task = (async () => {
@@ -474,6 +477,14 @@ var Citation = class {
     const maxLength = 200;
     return (normalized || fallback).slice(0, maxLength);
   }
+  _getPendingCollectionName(sessionID) {
+    this._pendingCollectionNames ??= new Map();
+    if (!this._pendingCollectionNames.has(sessionID)) {
+      this._pendingCollectionNumber = (this._pendingCollectionNumber || 0) + 1;
+      this._pendingCollectionNames.set(sessionID, this._pendingCollectionNumber);
+    }
+    return `${getString("collection-pending")} ${this._pendingCollectionNames.get(sessionID)}`;
+  }
   _getDocumentDisplayName(docId) {
     let raw = typeof docId === "string" ? docId.trim() : String(docId || "").trim();
     if (!raw || raw === "__doc__") {
@@ -487,13 +498,14 @@ var Citation = class {
     if (!withoutQuery || /[\\\/]$/.test(withoutQuery)) {
       return "";
     }
-    let decoded = withoutQuery;
-    try {
-      decoded = decodeURIComponent(withoutQuery);
-    } catch {
+    const normalizedPath = withoutQuery.replace(/\\/g, "/");
+    let candidate = normalizedPath.slice(normalizedPath.lastIndexOf("/") + 1);
+    // Split before decoding: an encoded separator belongs to the final URL
+    // segment and must not silently turn into a different document basename.
+    if (isURL) {
+      try { candidate = decodeURIComponent(candidate); } catch { return ""; }
+      if (/[\\/]/.test(candidate)) return "";
     }
-    const normalizedPath = decoded.replace(/\\/g, "/");
-    const candidate = normalizedPath.slice(normalizedPath.lastIndexOf("/") + 1);
     if (!candidate || candidate === "." || candidate === ".." || /^[a-z][a-z0-9+.-]*:$/i.test(candidate)) {
       return "";
     }
@@ -854,6 +866,7 @@ var Citation = class {
       }
     }
     this.cleanupSessionState(sessionID, true);
+    this._pendingCollectionNames?.delete(sessionID);
     const collection = session.collection;
     if (!collection?.id) {
       return;
@@ -1446,7 +1459,7 @@ var Citation = class {
     }
     const collection = new Zotero.Collection();
     collection.libraryID = Zotero.Libraries.userLibraryID;
-    collection.name = sessionID;
+    collection.name = this._getPendingCollectionName(sessionID);
     try {
       if (typeof collection.addRelation === "function") {
         collection.addRelation(TEMP_COLLECTION_RELATION, TEMP_COLLECTION_MARKER);

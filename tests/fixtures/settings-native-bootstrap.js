@@ -73,14 +73,30 @@ async function startup() {
     })) : [],
     text: root()?.textContent.replace(/\s+/g, " ").trim(),
     status: root()?.querySelector("#zoterocitation-settings-status")?.getAttribute("data-l10n-id"),
-    prefValues: Object.fromEntries(["enable", "quickCite.enable", "dragCite.enable", "citationTags.enable", "citationTags.text", "debug", "citationTagDebounceMs", "itemsViewRefreshDebounceMs", "healthWindowMs", "perfSlowThresholdMs"].map(key =>
+    prefValues: Object.fromEntries(["enable", "dragCite.enable", "citationTags.enable", "citationTags.text", "debug", "citationTagDebounceMs", "itemsViewRefreshDebounceMs", "healthWindowMs", "perfSlowThresholdMs"].map(key =>
       [key, Zotero.Prefs.get("extensions.zotero.zoterocitation." + key, true)]))
   });
   async function run(data) {
     let extra;
-    if (data.action === "realDragTrace") {
+    if (data.action === "dropTargetProbe") {
+      extra = { target: Zotero.ZoteroCitation.data.views._resolveDropTarget() };
+    } else if (data.action === "realDragTrace") {
       extra = { events: [...realDragTrace] };
       if (data.clear) realDragTrace.length = 0;
+    } else if (data.action === "selectPhysicalItem") {
+      const itemID = Number(data.itemID);
+      if (!testItems.includes(itemID)) throw Error("Only owned test items may be selected");
+      const win = Zotero.getMainWindow();
+      const selected = await win.ZoteroPane.selectItem(itemID);
+      extra = { selected, selectedIDs: win.ZoteroPane.getSelectedItems().map(item => item.id),
+        activeElementID: win.document.activeElement?.id };
+    } else if (data.action === "physicalStatus") {
+      const win = Zotero.getMainWindow();
+      extra = { selectedIDs: win.ZoteroPane.getSelectedItems().map(item => item.id),
+        activeElementID: win.document.activeElement?.id,
+        sessions: Object.fromEntries(Object.entries(Zotero.ZoteroCitation.api.sessions).map(([id, session]) => [id, {
+          collection: session.collection?.name, childIDs: session.collection?.getChildItems(true)
+        }])), events: [...realDragTrace] };
     } else if (data.action === "wordSetup") {
       await Zotero.Styles.init();
       for (let n = 0; n < 3; n++) {
@@ -127,7 +143,12 @@ async function startup() {
             const oldSelection = pane.getSelectedItems;
             let completion;
             const originalCite = Zotero.ZoteroCitation.api.citeItems;
+            const viewPrototype = Zotero.ZoteroCitation.data.views.constructor.prototype;
+            const originalTarget = viewPrototype._resolveDropTarget;
             try {
+              // A synthetic DragEvent has no native drop target. Isolate the
+              // citation pipeline test from the separate physical-drop test.
+              viewPrototype._resolveDropTarget = () => "word-confirmed";
               pane.getSelectedItems = () => items;
               Zotero.ZoteroCitation.api.citeItems = requested => (completion = originalCite(requested));
               const transfer = new win.DataTransfer(); transfer.dropEffect = "copy";
@@ -137,7 +158,11 @@ async function startup() {
                 screenX: win.screenX + win.outerWidth + 1000, screenY: win.screenY + win.outerHeight + 1000 }));
               if (!completion) throw Error("Drag did not dispatch citation insertion");
               await completion;
-            } finally { pane.getSelectedItems = oldSelection; Zotero.ZoteroCitation.api.citeItems = originalCite; }
+            } finally {
+              viewPrototype._resolveDropTarget = originalTarget;
+              pane.getSelectedItems = oldSelection;
+              Zotero.ZoteroCitation.api.citeItems = originalCite;
+            }
           } else await Zotero.ZoteroCitation.api.citeItems(items);
           wordDocuments.set(data.document, integration.currentSession?.sessionID || metadata.sessionID);
           await Zotero.Promise.delay(500);
@@ -196,7 +221,10 @@ async function startup() {
       const win = Zotero.getMainWindow(); const pane = win.ZoteroPane;
       const oldSelection = pane.getSelectedItems;
       const oldCite = Zotero.ZoteroCitation.api.citeItems; let calls = 0;
+      const viewPrototype = Zotero.ZoteroCitation.data.views.constructor.prototype;
+      const originalTarget = viewPrototype._resolveDropTarget;
       try {
+        viewPrototype._resolveDropTarget = () => data.target || "word-confirmed";
         pane.getSelectedItems = () => [Zotero.Items.get(testItems[0])];
         Zotero.ZoteroCitation.api.citeItems = async () => { calls++; };
         const transfer = new win.DataTransfer(); transfer.dropEffect = "copy";
@@ -210,7 +238,11 @@ async function startup() {
         win.document.dispatchEvent(new win.DragEvent("dragend", { bubbles: true, dataTransfer: transfer,
           screenX: win.screenX + win.outerWidth + 1000, screenY: win.screenY + win.outerHeight + 1000 }));
         await Zotero.Promise.delay(30); extra = { calls, prepared };
-      } finally { pane.getSelectedItems = oldSelection; Zotero.ZoteroCitation.api.citeItems = oldCite; }
+      } finally {
+        viewPrototype._resolveDropTarget = originalTarget;
+        pane.getSelectedItems = oldSelection;
+        Zotero.ZoteroCitation.api.citeItems = oldCite;
+      }
     } else if (data.action === "debugProbe") {
       const oldDebug = Zotero.debug; let lines = 0;
       try { Zotero.debug = () => { lines++; }; Zotero.ZoteroCitation.data.runtime.log("settings debug probe"); }

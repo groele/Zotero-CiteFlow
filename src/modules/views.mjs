@@ -1,5 +1,6 @@
 import { config } from "../config.mjs";
 import { getString } from "./locale.mjs";
+import { resolveWordDropTarget } from "./drop-target.mjs";
 var Views = class {
   constructor(win = null) {
     this._window = win;
@@ -7,6 +8,7 @@ var Views = class {
     this._disposed = false;
     this._dragItems = null;
     this._dragEndHandler = null;
+    this._lastUnknownDropNotice = 0;
     this._registeredColumnKeys = /* @__PURE__ */ new Set();
     this._iconNodeStates = /* @__PURE__ */ new Map();
   }
@@ -151,6 +153,22 @@ var Views = class {
     return !this._disposed && addon.data.alive !== false
       && Zotero.Prefs.get("extensions.zotero.zoterocitation.dragCite.enable", true) !== false;
   }
+  _resolveDropTarget() {
+    return resolveWordDropTarget();
+  }
+  _notifyUnknownDropTarget() {
+    const now = Date.now();
+    if (now - this._lastUnknownDropNotice < 15000) return;
+    this._lastUnknownDropNotice = now;
+    try {
+      const notice = new Zotero.ProgressWindow();
+      notice.changeHeadline(getString("drag-target-unknown"));
+      notice.show();
+      notice.startCloseTimer(5000);
+    } catch (error) {
+      Zotero.logError(error);
+    }
+  }
   dispose() {
     this._disposed = true;
     this._dragItems = null;
@@ -183,17 +201,14 @@ var Views = class {
     this._dragEndHandler = (event) => {
       const items = this._dragItems;
       this._dragItems = null;
-      // Word rejects the intentionally empty text payload, so Gecko reports
-      // dropEffect="none" even after a real drop on the Word page. The
-      // cancellation flag and the source-window bounds remain the guards.
+      // Word can report dropEffect="none" after a real drop. Identify the
+      // process under the native cursor instead of inferring a target from
+      // Gecko's effect or coordinates in a DPI-dependent screen space.
       if (!items?.length || !this._dragEnabled() || !event.dataTransfer
         || event.dataTransfer.mozUserCancelled) return;
-      const x = event.screenX, y = event.screenY;
-      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-      const width = this.window.outerWidth || this.document.documentElement.getBoundingClientRect().width;
-      const height = this.window.outerHeight || this.document.documentElement.getBoundingClientRect().height;
-      if (x >= this.window.screenX && x < this.window.screenX + width
-        && y >= this.window.screenY && y < this.window.screenY + height) return;
+      const target = this._resolveDropTarget();
+      if (target === "unknown") this._notifyUnknownDropTarget();
+      if (target !== "word-confirmed") return;
       void addon.api.citeItems(items).catch((error) => Zotero.logError(error));
     };
     this.document.addEventListener("dragend", this._dragEndHandler, true);

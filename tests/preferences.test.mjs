@@ -145,7 +145,7 @@ test('live changes update citation performance and debug state', () => {
   const f = fixture();
   const code = fs.readFileSync(new URL('../chrome/content/scripts/index.js', import.meta.url), 'utf8');
   const start = code.indexOf('  var Citation = class {');
-  const end = code.indexOf('\n  };\n\n  // src/modules/cite.mjs', start);
+  const end = code.indexOf('\n  };\n\n  // src/modules/drop-target.mjs', start);
   const context = vm.createContext({ Zotero, addon: { data: {} } });
   vm.runInContext(code.slice(start, end + 5) + '; globalThis.CitationClass = Citation;', context);
   const citation = Object.create(context.CitationClass.prototype);
@@ -218,4 +218,50 @@ test('all pane controls have unique IDs, labels, locale messages, and packaged d
     if (typeof setting.defaultValue === 'boolean') assert.match(markup, new RegExp(`id="zoterocitation-setting-${setting.id}" type="checkbox"`));
     else assert.ok(markup.includes(`for="zoterocitation-setting-${setting.id}"`));
   }
+});
+
+test('external pane loader initializes after fragment insertion and releases its listeners', async () => {
+  const f = fixture();
+  const prefs = new Preferences(() => {});
+  await prefs.register();
+  assert.deepEqual(f.panes.get('zoterocitation-preferences').scripts,
+    ['chrome://zoterocitation/content/preferences.js']);
+  assert.equal(f.panes.get('zoterocitation-preferences').defaultXUL, true);
+  const markup = fs.readFileSync(new URL('../chrome/content/preferences.xhtml', import.meta.url), 'utf8');
+  assert.doesNotMatch(markup, /\son(?:load|click|command)\s*=/i);
+
+  const script = fs.readFileSync(new URL('../chrome/content/preferences.js', import.meta.url), 'utf8');
+  const listeners = new Map();
+  let mounted = false;
+  let initCalls = 0;
+  const root = f.win.document.getElementById('zoterocitation-settings');
+  const document = {
+    getElementById: id => id === 'zoterocitation-settings' && mounted ? root : null,
+    addEventListener: (type, handler, capture) => listeners.set(type, { handler, capture }),
+    removeEventListener: (type, handler) => {
+      if (listeners.get(type)?.handler === handler) listeners.delete(type);
+    }
+  };
+  const window = {
+    addEventListener: (type, handler) => listeners.set(`window:${type}`, { handler }),
+    removeEventListener: (type, handler) => {
+      if (listeners.get(`window:${type}`)?.handler === handler) listeners.delete(`window:${type}`);
+    }
+  };
+  const Zotero = { ZoteroCitation: { api: { initPreferences: () => { initCalls++; prefs.init(f.win); } } } };
+  const context = vm.createContext({ document, window, Zotero });
+  vm.runInContext(script, context);
+  assert.equal(initCalls, 0);
+  assert.equal(listeners.get('load').capture, true);
+  listeners.get('load').handler({ target: { id: 'unrelated-pane' } });
+  assert.equal(initCalls, 0);
+  mounted = true;
+  listeners.get('load').handler({ target: { id: 'zoterocitation-settings' } });
+  assert.equal(initCalls, 1);
+  assert.equal(prefs._panels.size, 1);
+  vm.runInContext(script, context);
+  assert.equal(listeners.size, 2, 'reloading the script replaces the previous listener');
+  listeners.get('window:unload').handler();
+  assert.equal(listeners.size, 0);
+  prefs.dispose();
 });

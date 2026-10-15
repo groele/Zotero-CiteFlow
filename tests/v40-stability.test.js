@@ -9,7 +9,8 @@ const sourcePath = path.join(__dirname, "..", sourceDirectory, "chrome", "conten
 const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "..", sourceDirectory, "manifest.json"), "utf8"));
 const source = fs.readFileSync(sourcePath, "utf8").replace(/\r\n/g, "\n");
 const start = source.indexOf("  var Citation = class {");
-const endMarker = "\n  };\n\n  // src/modules/cite.mjs";
+const endMarker = source.includes("\n  // src/modules/drop-target.mjs")
+  ? "\n  };\n\n  // src/modules/drop-target.mjs" : "\n  };\n\n  // src/modules/cite.mjs";
 const end = source.indexOf(endMarker, start);
 assert.ok(start >= 0 && end > start, "Citation class must be extractable from the bundle");
 
@@ -173,7 +174,15 @@ async function testDocumentNames() {
     assert.equal(instance._getDocumentDisplayName("\\\\server\\share\\report#part?.docx"), "report#part?.docx");
   }
   assert.equal(instance._getDocumentDisplayName("https://example.test/a/%E6%B5%8B%E8%AF%95.docx?x=1"), "测试.docx");
+  assert.equal(instance._getDocumentDisplayName("https://example.test/a/part%2Fother.docx"), "",
+    "encoded URL separators must not be mistaken for a document basename");
+  assert.equal(instance._getDocumentDisplayName("C:\\Work\\literal%20name.docx"), "literal%20name.docx",
+    "a literal percent sequence in a Windows filename must not be decoded");
   assert.equal(instance._getDocumentDisplayName("/Applications/Microsoft Word.app/"), "");
+  const pendingA = instance._getPendingCollectionName("A");
+  assert.match(pendingA, /pending/i);
+  assert.equal(instance._getPendingCollectionName("A"), pendingA);
+  assert.notEqual(instance._getPendingCollectionName("B"), pendingA);
 }
 
 async function testGroupAndReadOnlyTagWritesAreSkipped() {
@@ -373,7 +382,12 @@ async function testMalformedSnapshotsAndCacheIsolation() {
 
 function regularItem(id) { return {id, isRegularItem: () => true, isTopLevelItem: () => true}; }
 async function testDragLifecycle() {
-  const handlers = new Map(); let startDrag; const calls = [];
+  const handlers = new Map(); let startDrag; const calls = []; const notices = [];
+  sandbox.Zotero.ProgressWindow = class {
+    changeHeadline(value) { notices.push(value); }
+    show() {}
+    startCloseTimer() {}
+  };
   sandbox.document = { addEventListener: (type, fn) => handlers.set(type, fn), removeEventListener: (type, fn) => {
     if (handlers.get(type) === fn) handlers.delete(type);
   }, documentElement: { getBoundingClientRect: () => ({width: 800, height: 600}) } };
@@ -384,6 +398,8 @@ async function testDragLifecycle() {
   let selected = [regularItem(1)];
   sandbox.ZoteroPane.getSelectedItems = () => selected;
   const view = Object.create(Views.prototype);
+  let target = 'word-confirmed';
+  view._resolveDropTarget = () => target;
   view.getColumnInfo = () => ({hidden: false});
   await view.dragCite();
   const transfer = {setData() {}, dropEffect: "copy", mozUserCancelled: false};
@@ -395,7 +411,11 @@ async function testDragLifecycle() {
   start(); transfer.mozUserCancelled = true; end(); assert.equal(calls.length, 0);
   transfer.mozUserCancelled = false; start(); transfer.dropEffect = "none"; end();
   assert.deepEqual(calls, [[1]], "Word can reject an empty transfer while the citation drop remains valid");
-  transfer.dropEffect = "copy"; start(); end({screenX: 10, screenY: 10}); assert.equal(calls.length, 1);
+  transfer.dropEffect = "copy"; target = 'non-word'; start(); end(); assert.equal(calls.length, 1);
+  target = 'unknown'; start(); end(); assert.equal(calls.length, 1);
+  assert.deepEqual(notices, ['drag-target-unknown'], 'unknown target explains the safe fallback');
+  start(); end(); assert.equal(notices.length, 1, 'rapid repeated drops do not flood notices');
+  target = 'word-confirmed';
   start(); selected = [regularItem(2)]; end(); assert.deepEqual(calls, [[1], [1]], "must cite drag-start selection");
   end(); assert.equal(calls.length, 2, "duplicate dragend must not cite again");
   start(); view.dispose(); assert.equal(handlers.size, 0);
@@ -455,7 +475,8 @@ async function testRenameRollbackAndObsoleteRename() {
 }
 async function testCiteSelectionAndNativeFailureRecovery() {
   const a = source.indexOf("  var citeItemsInFlight = false;");
-  const b = source.indexOf("  // src/modules/views.mjs", a);
+  const b = source.indexOf(source.includes("\n  // src/modules/drop-target.mjs")
+    ? "  // src/runtime.mjs" : "  // src/modules/views.mjs", a);
   vm.runInContext(source.slice(a, b), sandbox);
   sandbox.Zotero_Tabs = {selectedIndex: 0};
   sandbox.addon.data.alive = true;

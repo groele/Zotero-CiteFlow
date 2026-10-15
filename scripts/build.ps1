@@ -12,6 +12,7 @@ $runtimeFiles = @(
     'manifest.json',
     'prefs.js',
     'chrome/content/preferences.xhtml',
+    'chrome/content/preferences.js',
     'chrome/content/preferences.css',
     'chrome/content/scripts/index.js',
     'chrome/content/icons/favicon.png',

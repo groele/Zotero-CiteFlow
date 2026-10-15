@@ -1,10 +1,10 @@
 zoterocitation-column-citation=引用
+zoterocitation-collection-pending = Word 文档（待识别）
+zoterocitation-drag-target-unknown = 无法确认拖拽目标是 Word。请将文献拖放到 Word 文档页面后重试。
 zoterocitation-settings-description = 管理 Zotero 与 Word 之间的引用跟踪和插入功能。设置自动保存。
 zoterocitation-settings-functions = 功能设置
 zoterocitation-settings-enable = 启用 CiteFlow 引用跟踪
 zoterocitation-settings-enable-help = 控制 Word 引用跟踪、临时文档分类和引用列。修改此项后需要重启 Zotero；设置面板仍可使用。
-zoterocitation-settings-quick-cite = 启用快捷引用
-zoterocitation-settings-quick-help = 在文献列表选中条目后，按英文单引号键（'）启动 Word 引用插入。立即生效；编辑文本时不会触发。
 zoterocitation-settings-drag-cite = 启用拖拽引用
 zoterocitation-settings-drag-help = 将选中文献拖入 Word，可在光标处插入引用。立即生效；引用列隐藏时也可使用。
 zoterocitation-settings-citation-tags = 引用后自动添加标签

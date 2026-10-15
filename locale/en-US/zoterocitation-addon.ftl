@@ -1,10 +1,10 @@
 zoterocitation-column-citation=Citation
+zoterocitation-collection-pending = Word document (pending name)
+zoterocitation-drag-target-unknown = Could not confirm the Word drop target. Drag the item onto a Word document and try again.
 zoterocitation-settings-description = Manage citation tracking and insertion between Zotero and Word. Settings save automatically.
 zoterocitation-settings-functions = Features
 zoterocitation-settings-enable = Enable CiteFlow citation tracking
 zoterocitation-settings-enable-help = Controls Word citation tracking, temporary document collections, and the citation column. Restart Zotero after changing this option. This settings pane remains available.
-zoterocitation-settings-quick-cite = Enable quick citation
-zoterocitation-settings-quick-help = Select items in the library and press the apostrophe (') key to start inserting a Word citation. Takes effect immediately; does not trigger while editing text.
 zoterocitation-settings-drag-cite = Enable drag citation
 zoterocitation-settings-drag-help = Drag selected items into Word to insert a citation at the cursor. Takes effect immediately; works even when the citation column is hidden.
 zoterocitation-settings-citation-tags = Automatically tag cited items

@@ -7,7 +7,8 @@ const sourceDirectory = process.env.CITATION_SOURCE_DIR || ".";
 const sourcePath = path.join(__dirname, "..", sourceDirectory, "chrome", "content", "scripts", "index.js");
 const source = fs.readFileSync(sourcePath, "utf8").replace(/\r\n/g, "\n");
 const start = source.indexOf("  var Citation = class {");
-const endMarker = "\n  };\n\n  // src/modules/cite.mjs";
+const endMarker = source.includes("\n  // src/modules/drop-target.mjs")
+  ? "\n  };\n\n  // src/modules/drop-target.mjs" : "\n  };\n\n  // src/modules/cite.mjs";
 const end = source.indexOf(endMarker, start);
 assert.ok(start >= 0 && end > start, "Citation class must be extractable from the V40.0.2 bundle");
 

@@ -1,6 +1,5 @@
 pref("extensions.zotero.zoterocitation.enable", true);
 pref("extensions.zotero.zoterocitation.dragCite.enable", true);
-pref("extensions.zotero.zoterocitation.quickCite.enable", true);
 pref("extensions.zotero.zoterocitation.citationTags.enable", true);
 pref("extensions.zotero.zoterocitation.citationTags.text", "/Citations");
 pref("extensions.zotero.zoterocitation.citationTagDebounceMs", 150);

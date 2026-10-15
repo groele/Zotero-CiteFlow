@@ -7,9 +7,11 @@ const sourceDirectory = process.env.CITATION_SOURCE_DIR || ".";
 const sourcePath = path.join(__dirname, "..", sourceDirectory, "chrome", "content", "scripts", "index.js");
 const source = fs.readFileSync(sourcePath, "utf8").replace(/\r\n/g, "\n");
 const classStart = source.indexOf("  var Citation = class {");
-const classEnd = source.indexOf("\n  };\n\n  // src/modules/cite.mjs", classStart);
+const hasDropTarget = source.includes("\n  // src/modules/drop-target.mjs");
+const classEnd = source.indexOf(hasDropTarget
+  ? "\n  };\n\n  // src/modules/drop-target.mjs" : "\n  };\n\n  // src/modules/cite.mjs", classStart);
 const citeStart = source.indexOf("  var citeItemsInFlight = false;");
-const citeEnd = source.indexOf("\n  // src/modules/views.mjs", citeStart);
+const citeEnd = source.indexOf(hasDropTarget ? "\n  // src/runtime.mjs" : "\n  // src/modules/views.mjs", citeStart);
 assert.ok(classStart >= 0 && classEnd > classStart, "Citation class must be extractable");
 assert.ok(citeStart >= 0 && citeEnd > citeStart, "cite module must be extractable");
 

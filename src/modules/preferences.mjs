@@ -3,7 +3,6 @@ import { config } from "../config.mjs";
 const prefix = "extensions.zotero.zoterocitation.";
 export const settings = [
   { id: "enable", key: "enable", defaultValue: true },
-  { id: "quickCite", key: "quickCite.enable", defaultValue: true },
   { id: "dragCite", key: "dragCite.enable", defaultValue: true },
   { id: "citationTags", key: "citationTags.enable", defaultValue: true },
   { id: "citationTagText", key: "citationTags.text", defaultValue: "/Citations", maxLength: 200 },
@@ -45,6 +44,8 @@ export class Preferences {
       id: "zoterocitation-preferences",
       label: config.addonName,
       src: "chrome://zoterocitation/content/preferences.xhtml",
+      scripts: ["chrome://zoterocitation/content/preferences.js"],
+      defaultXUL: true,
       stylesheets: ["chrome://zoterocitation/content/preferences.css"]
     });
     if (this._disposed) {

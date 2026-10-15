@@ -3,7 +3,8 @@ param(
     [string]$ZoteroExecutable = 'C:/Program Files/Zotero/zotero.exe',
     [int]$Port = 23131,
     [ValidateSet('zh-CN', 'en-US')][string]$Locale = 'zh-CN',
-    [switch]$KeepRunning
+    [switch]$KeepRunning,
+    [switch]$HiddenHost
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
@@ -83,7 +84,7 @@ function Assert-Settings($condition, $message, $snapshot) {
 }
 function Start-TestHost {
     $logStamp = Get-Date -Format 'HHmmss'
-    $windowStyle = if ($KeepRunning) { 'Normal' } else { 'Hidden' }
+    $windowStyle = if ($KeepRunning -and -not $HiddenHost) { 'Normal' } else { 'Hidden' }
     $script:testProcess = Start-Process -FilePath $ZoteroExecutable -ArgumentList @('-no-remote', '-ZoteroDebugText', '-profile', ('"' + $profile + '"')) -WindowStyle $windowStyle -PassThru -RedirectStandardOutput (Join-Path $testRoot "stdout-$logStamp.log") -RedirectStandardError (Join-Path $testRoot "stderr-$logStamp.log")
     $deadline = [DateTime]::UtcNow.AddSeconds(55)
     do {
@@ -112,10 +113,10 @@ try {
     Assert-Settings ($initial.tracking -and $initial.paneRegistered) 'Tracking starts and settings register' $initial
     Assert-Settings ($initial.paneLabel -eq 'Zotero CiteFlow') 'Settings sidebar uses the full Zotero CiteFlow name' $initial
     $opened = Invoke-SettingsTest @{ action = 'open' }
-    Assert-Settings ($opened.controls.Count -eq 10 -and @($opened.controls | Where-Object { $_.width -le 0 -or $_.height -le 0 }).Count -eq 0) 'All ten native controls render with positive dimensions' $opened
+    Assert-Settings ($opened.controls.Count -eq 9 -and @($opened.controls | Where-Object { $_.width -le 0 -or $_.height -le 0 }).Count -eq 0) 'All nine native controls render with positive dimensions' $opened
     $localized = if ($Locale -eq 'zh-CN') { $opened.text -match '功能设置' -and $opened.text -match '恢复默认设置' } else { $opened.text -match 'Features' -and $opened.text -match 'Restore defaults' }
     Assert-Settings $localized "$Locale Fluent labels resolve in the native pane" $opened
-    Assert-Settings ($opened.observerCount -eq 10 -and $opened.panelCount -eq 1) 'Ten preference observers and one panel mount are registered' $opened
+    Assert-Settings ($opened.observerCount -eq 9 -and $opened.panelCount -eq 1) 'Nine preference observers and one panel mount are registered' $opened
     Assert-Settings (($opened.controls | Where-Object id -eq 'zoterocitation-setting-citationTagText').value -eq '/Citations') 'Tag text box defaults to /Citations' $opened
     $tagFixtures = Invoke-SettingsTest @{ action = 'tagFixtures' }
     Assert-Settings ($tagFixtures.testTags[0] -contains '/Citations') 'Default tag saves into a real Zotero item' $tagFixtures
@@ -136,14 +137,8 @@ try {
     $cancelDrag = Invoke-SettingsTest @{ action = 'dragProbe'; cancelAfterStart = $true }
     Assert-Settings ($cancelDrag.probe.prepared -and $cancelDrag.probe.calls -eq 0) 'Disabling drag citation during a drag cancels insertion' $cancelDrag
     $null = Invoke-SettingsTest @{ action = 'change'; id = 'dragCite'; value = $true }
-    $quickOff = Invoke-SettingsTest @{ action = 'change'; id = 'quickCite'; value = $false }
-    $quickOffProbe = Invoke-SettingsTest @{ action = 'keyboardProbe' }
-    Assert-Settings ($quickOffProbe.probe.calls -eq 0) 'Quick citation does not dispatch when disabled' $quickOffProbe
-    $null = Invoke-SettingsTest @{ action = 'change'; id = 'quickCite'; value = $true }
-    $quickOnProbe = Invoke-SettingsTest @{ action = 'keyboardProbe' }
-    Assert-Settings ($quickOnProbe.probe.calls -eq 1 -and $quickOnProbe.probe.prevented) 'The native keyboard handler dispatches quick citation when enabled' $quickOnProbe
-    $editingProbe = Invoke-SettingsTest @{ action = 'keyboardProbe'; editing = $true }
-    Assert-Settings ($editingProbe.probe.calls -eq 0) 'Quick citation does not intercept text editing' $editingProbe
+    $keyProbe = Invoke-SettingsTest @{ action = 'keyboardProbe' }
+    Assert-Settings ($keyProbe.probe.calls -eq 0 -and -not $keyProbe.probe.prevented) 'Apostrophe no longer triggers or intercepts quick citation' $keyProbe
     $debugOff = Invoke-SettingsTest @{ action = 'debugProbe' }
     Assert-Settings ($debugOff.probe.lines -eq 0) 'Debug output is suppressed when disabled' $debugOff
     $debug = Invoke-SettingsTest @{ action = 'change'; id = 'debug'; value = $true }
@@ -169,11 +164,11 @@ try {
     $null = Invoke-SettingsTest @{ action = 'close' }
     $reopened = Invoke-SettingsTest @{ action = 'open' }
     Assert-Settings (($reopened.controls | Where-Object id -eq 'zoterocitation-setting-citationTagDebounceMs').value -eq '625') 'Reopening settings restores the saved value' $reopened
-    Assert-Settings ($reopened.panelCount -eq 1 -and $reopened.observerCount -eq 10) 'Reopening does not duplicate observers or panel mounts' $reopened
+    Assert-Settings ($reopened.panelCount -eq 1 -and $reopened.observerCount -eq 9) 'Reopening does not duplicate observers or panel mounts' $reopened
     $disabled = Invoke-SettingsTest @{ action = 'disable' }
     Assert-Settings (-not $disabled.paneRegistered -and $disabled.probe.remainingObservers -eq 0 -and $disabled.probe.remainingPanels -eq 0 -and $disabled.probe.remainingPatches -eq 0) 'Disabling the add-on removes its pane, observers, panels, and wrappers' $disabled
     $enabled = Invoke-SettingsTest @{ action = 'enable' }
-    Assert-Settings ($enabled.tracking -and $enabled.paneRegistered -and $enabled.observerCount -eq 10) 'Re-enabling the add-on restores one settings pane and its observers' $enabled
+    Assert-Settings ($enabled.tracking -and $enabled.paneRegistered -and $enabled.observerCount -eq 9) 'Re-enabling the add-on restores one settings pane and its observers' $enabled
     $null = Invoke-SettingsTest @{ action = 'open' }
     $off = Invoke-SettingsTest @{ action = 'change'; id = 'enable'; value = $false }
     Assert-Settings ($off.status -eq 'zoterocitation-settings-restart') 'Tracking toggle displays restart requirement' $off

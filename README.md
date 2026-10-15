@@ -64,7 +64,6 @@ Open **Edit → Settings → Zotero CiteFlow** on Windows. The pane remains avai
 | Setting | Default | When it takes effect |
 | --- | --- | --- |
 | Citation tracking | On | After restarting Zotero |
-| Quick citation (apostrophe key) | On | Immediately; ignores text editing and modifier keys |
 | Drag citation | On | Immediately; works with the citation column hidden |
 | Automatic citation tags | On | Immediately; turning it off removes plugin-managed tags |
 | Citation tag text | `/Citations` | Immediately; renames plugin-managed tags |
@@ -74,9 +73,9 @@ Open **Edit → Settings → Zotero CiteFlow** on Windows. The pane remains avai
 | Slow-operation threshold | 50 ms | Subsequent performance measurements |
 | Debug logging | Off | Immediately |
 
-Values save automatically. The tag text accepts 1–200 characters, including Chinese text. Numeric fields enforce their displayed integer ranges. **Restore defaults** resets these ten settings only. Existing manual tags and unrelated Zotero preferences are preserved. Tag renaming saves the removal and addition together; failed writes retain the previous tag and ownership for retry. Save/application failures are reported in the pane.
+Values save automatically. The tag text accepts 1–200 characters, including Chinese text. Numeric fields enforce their displayed integer ranges. **Restore defaults** resets these nine settings only. Existing manual tags and unrelated Zotero preferences are preserved. Tag renaming saves the removal and addition together; failed writes retain the previous tag and ownership for retry. Save/application failures are reported in the pane.
 
-See the [core technical and maintenance guide](CORE-TECHNICAL-MAINTENANCE.md) for the current verification evidence and remaining Word integration limits. Drag citation was verified on Windows with Zotero 10.0.6 and Word 16.0.20430. The apostrophe shortcut has automated coverage but still needs separate full desktop acceptance.
+See the [core technical and maintenance guide](CORE-TECHNICAL-MAINTENANCE.md) for verification evidence and remaining Word integration limits. Dragging into Word inserts an editable Zotero citation field; dropping into another application does not insert into Word. The apostrophe shortcut was retired because its implicit insertion target and Word caret position were easy to confuse.
 
 ## Development & Testing
 

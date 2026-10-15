@@ -6,6 +6,7 @@ if (-not $UseRunningWord -and (Get-Process WINWORD -ErrorAction SilentlyContinue
 $uri = "http://127.0.0.1:$($session.port)/citeflow-settings-test"
 $checks = [Collections.Generic.List[object]]::new()
 $documents = @{}
+$documentRunID = Get-Date -Format 'HHmmssfff'
 $word = $null
 function Send-WordTestRequest($request) {
     $request.expectedDataDir = $session.dataDir
@@ -63,7 +64,7 @@ try {
         $doc = $word.Documents.Add()
         $documents[$name] = $doc
         $doc.Content.Text = "Isolated CiteFlow acceptance $name`r`r"
-        [string]$path = Join-Path $SessionRoot "Word-QA-$name.docx"
+        [string]$path = Join-Path $SessionRoot "Word-QA-$name-$documentRunID.docx"
         if (Test-Path -LiteralPath $path) { throw 'Acceptance document already exists' }
         $format = 16
         $doc.SaveAs([ref]$path, [ref]$format); $documents[$name] = $doc
@@ -71,7 +72,10 @@ try {
     }
     $a=$documents.A; $b=$documents.B
     Move-Outside $a
-    $null = Invoke-Native @{action='wordDrag';document=$a.FullName;itemIDs=@($ids[0])}
+    $firstInsertion = Invoke-Native @{action='wordDrag';document=$a.FullName;itemIDs=@($ids[0])}
+    $sessionA = $firstInsertion.probe.sessionID
+    $pendingA = $firstInsertion.probe.sessions.PSObject.Properties[$sessionA].Value.collection
+    Assert-QA ($pendingA -match '^Word ' -and $pendingA -ne $sessionA) 'A plugin-originated Word session has a readable pending collection name' $pendingA
     $fields = Read-Fields $a
     Assert-QA ($fields.Count -eq 1 -and $fields[0].ids[0] -eq $ids[0]) 'Drag inserts a real editable citation into document A' $fields
     Move-Outside $a
@@ -79,7 +83,10 @@ try {
     $fields = Read-Fields $a
     Assert-QA ($fields.Count -eq 2 -and ($fields[1].ids -join ',') -eq ($ids[1..2] -join ',')) 'Multiple dragged items form a second native citation field' $fields
     Move-Outside $b
-    $null = Invoke-Native @{action='wordDrag';document=$b.FullName;itemIDs=@($ids[2])}
+    $firstInsertionB = Invoke-Native @{action='wordDrag';document=$b.FullName;itemIDs=@($ids[2])}
+    $sessionB = $firstInsertionB.probe.sessionID
+    $pendingB = $firstInsertionB.probe.sessions.PSObject.Properties[$sessionB].Value.collection
+    Assert-QA ($pendingB -match '^Word ' -and $pendingB -ne $pendingA) 'Concurrent Word sessions retain distinct pending collection labels' @($pendingA,$pendingB)
     $fields = Read-Fields $b
     Assert-QA ($fields.Count -eq 1 -and $fields[0].ids[0] -eq $ids[2] -and $a.Fields.Count -eq 2) 'Switching to document B preserves document A' $fields
     Move-Outside $a
@@ -89,7 +96,8 @@ try {
     $null = Invoke-Native @{action='wordDrag';document=$b.FullName;itemIDs=@($ids[0])}
     $fields=Read-Fields $b
     Assert-QA ($fields.Count -eq 1 -and $fields[0].ids.Count -eq 2 -and $fields[0].ids -contains $ids[0] -and $fields[0].ids -contains $ids[2]) 'Dropping at an existing citation adds items without duplicating fields' $fields
-    $null = Invoke-Native @{action='wordRefresh';document=$b.FullName}
+    $afterRefresh = Invoke-Native @{action='wordRefresh';document=$b.FullName}
+    Assert-QA ($afterRefresh.probe.sessions.PSObject.Properties[$sessionB].Value.collection -eq $b.Name) 'A trusted Word path renames the existing session collection' $afterRefresh.probe.sessions.PSObject.Properties[$sessionB].Value.collection
     Assert-QA ($b.Fields.Count -eq 1 -and $a.Fields.Count -eq 3) 'Native Word refresh preserves both documents and fields' (Read-Fields $b)
     Assert-QA ($a.Content.Text -notmatch 'CiteFlow Word acceptance specimen' -and $b.Content.Text -notmatch 'CiteFlow Word acceptance specimen') 'Dragged items do not leak plain bibliography text' @{a=$a.Content.Text;b=$b.Content.Text}
     $tagged=Invoke-Native @{action='change';id='citationTagText';value='Word引用验证'}

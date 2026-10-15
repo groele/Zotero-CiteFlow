@@ -13,8 +13,7 @@ function extractClass(context, name, endMarker) {
   return context.TestClass;
 }
 
-test('quick citation preference gates the actual keyboard handler, including editor and modifier guards', async () => {
-  const prefs = new Map([[prefix + 'quickCite.enable', false]]);
+test('main window no longer intercepts apostrophes or registers a quick-cite handler', async () => {
   const handlers = new Map(); let calls = 0;
   const win = { ZoteroPane: { getSelectedItems: () => [{ id: 7, isRegularItem: () => true, isTopLevelItem: () => true }] },
     document: { addEventListener(type, fn) { handlers.set(type, fn); }, removeEventListener(type) { handlers.delete(type); } } };
@@ -22,26 +21,13 @@ test('quick citation preference gates the actual keyboard handler, including edi
     console, addon: { data: { alive: true, citation: {} }, api: {} },
     config: { addonInstance: 'ZoteroCitation' }, runtime: { unregisterAll() {} },
     views_default: class { async patchIcon() {} async dragCite() {} dispose() {} },
-    citeItems: async () => { calls++; }, Zotero: { Prefs: { get: key => prefs.get(key) }, logError() {} }
+    citeItems: async () => { calls++; }, Zotero: { Prefs: { get: () => true }, logError() {} }
   });
   const start = source.indexOf('  // src/hooks.mjs'); const end = source.indexOf('  // src/runtime.mjs', start);
   vm.runInContext(source.slice(start, end) + ';globalThis.testHooks = hooks_default;', context);
   await context.testHooks.onMainWindowLoad(win);
-  const fire = extra => {
-    let prevented = false;
-    handlers.get('keydown')({ key: "'", target: {}, preventDefault() { prevented = true; }, stopPropagation() {}, ...extra });
-    return prevented;
-  };
-  assert.equal(fire({}), false); assert.equal(calls, 0);
-  prefs.set(prefix + 'quickCite.enable', true);
-  assert.equal(fire({}), true); assert.equal(calls, 1);
-  for (const event of [{ target: { value: 'editing' } }, { target: { value: 'editing' }, originalTarget: {} },
-    { target: {}, composedPath: () => [{ value: 'editing' }] }, { target: { isContentEditable: true } },
-    { ctrlKey: true }, { altKey: true }, { shiftKey: true }, { metaKey: true }, { repeat: true }, { isComposing: true }, { key: 'a' }]) {
-    assert.equal(fire(event), false);
-  }
-  assert.equal(calls, 1);
-  prefs.set(prefix + 'quickCite.enable', false); assert.equal(fire({}), false);
+  assert.equal(handlers.size, 0);
+  assert.equal(calls, 0);
   await context.testHooks.onMainWindowUnload(win); assert.equal(handlers.size, 0);
 });
 
@@ -58,6 +44,8 @@ test('drag citation applies live independently of column visibility, without dup
     addon: { data: { alive: true }, api: { citeItems: async () => { cites++; } } },
     Zotero: { Prefs: { get: key => prefs.get(key) }, logError() {}, ItemTreeManager: {} } });
   const Views = extractClass(context, 'Views', '\n  };\n  var views_default'); const view = new Views(win);
+  let target = 'word-confirmed';
+  view._resolveDropTarget = () => target;
   await view.dragCite(); assert.equal(handlers.size, 0);
   prefs.set(prefix + 'dragCite.enable', true); await view.dragCite(); await view.dragCite();
   assert.equal(runtime.pendingPatchCount, 1); assert.equal(handlers.size, 1);
@@ -73,7 +61,9 @@ test('drag citation applies live independently of column visibility, without dup
   column.hidden = false; startDrag(); drop({ dataTransfer: { dropEffect: 'none', mozUserCancelled: false } });
   assert.equal(cites, 2, 'Word reports none after rejecting the empty transfer but still requires a native citation');
   startDrag(); drop({ dataTransfer: { dropEffect: 'none', mozUserCancelled: true } }); assert.equal(cites, 2);
-  startDrag(); drop({ screenX: 100, screenY: 100 }); assert.equal(cites, 2);
+  target = 'non-word'; startDrag(); drop({}); assert.equal(cites, 2, 'other applications never insert into Word');
+  target = 'unknown'; startDrag(); drop({}); assert.equal(cites, 2, 'failed native lookup never inserts');
+  target = 'word-confirmed';
   const secondItem = { id: 8, isRegularItem: () => true, isTopLevelItem: () => true };
   let selectedRow = 0; let citedItemID;
   win.ZoteroPane.itemsView.selection = {
@@ -114,7 +104,7 @@ test('all four numeric settings change actual scheduling, health windows, and sl
     setTimeout: (callback, delay) => { const id = ++serial; timers.set(id, { callback, delay }); return id; }, clearTimeout: id => timers.delete(id),
     Zotero: { Prefs: { get: key => prefs.get(key) }, getMainWindows: () => [{ ZoteroPane: pane }], logError() {} }, runtime: { log() {} }
   });
-  const Citation = extractClass(context, 'Citation', '\n  };\n\n  // src/modules/cite.mjs');
+  const Citation = extractClass(context, 'Citation', '\n  };\n\n  // src/modules/drop-target.mjs');
   const c = Object.create(Citation.prototype);
   Object.assign(c, { _listenerStopped: false, _sessionCitedIDs: {}, _tagSyncTimerBySession: {}, _lastTagSyncSig: {},
     _pendingTagSyncIDsBySession: {}, _tagSyncInFlightBySession: {}, _debugCounters: {},
