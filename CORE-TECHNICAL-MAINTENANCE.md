@@ -4,7 +4,7 @@
 
 ## 1. 当前状态与结论
 
-- 插件显示名称：`Zotero CiteFlow`；插件 ID：`citeflow@groele`；Chrome resource：`zoterocitation`；偏好命名空间：`extensions.zotero.zoterocitation.*`。ID 与偏好命名空间刻意不同，升级时不要随意重命名，否则会造成偏好和兼容性迁移问题。
+- 插件显示名称与作者：`Zotero CiteFlow`；插件 ID：`citeflow@groele`；Chrome resource：`zoterocitation`；偏好命名空间：`extensions.zotero.zoterocitation.*`。ID 与偏好命名空间刻意不同，升级时不要随意重命名，否则会造成偏好和兼容性迁移问题。
 - 当前发布版本：`10.0.0`，GitHub 标签：`v10`。声明 Zotero `8.0` 至 `11.0.*`，但声明范围不等于完整实机认证。
 - 已实机验证环境：Windows、Zotero `10.0.6`、Microsoft Word `16.0.20430`。真实 Zotero→Word 拖拽插入后，Word 中得到 Zotero 原生可刷新的 `ADDIN ZOTERO_ITEM CSL_CITATION` 字段；本轮记录的是脚注样式，因此引用字段位于脚注故事区，不在主文档正文故事区。
 - 本地自动化回归：`npm test` 当前通过，33 个 Node 测试目标全部通过，0 失败。它不替代 Windows 实机验收，也不表示 Zotero 8/9/11、macOS、LibreOffice 已验证。

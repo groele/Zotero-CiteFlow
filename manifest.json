@@ -4,7 +4,7 @@
     "version": "10.0.0",
     "description": "Reference and citation tracking for Zotero and Word",
     "homepage_url": "https://github.com/groele/Zotero-CiteFlow",
-    "author": "Polygon; V30 integration by Hou",
+    "author": "Zotero CiteFlow",
     "icons": {
         "48": "chrome/content/icons/favicon@0.5x.png",
         "96": "chrome/content/icons/favicon.png"

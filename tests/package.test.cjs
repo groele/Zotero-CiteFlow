@@ -33,6 +33,7 @@ test('all runtime assets exist and are nonempty', () => {
 });
 
 test('manifest and bundled addon identity agree', () => {
+  assert.equal(manifest.author, 'Zotero CiteFlow');
   assert.equal(manifest.applications.zotero.id, 'citeflow@groele');
   assert.equal(manifest.applications.zotero.update_url,
     'https://raw.githubusercontent.com/groele/Zotero-CiteFlow/main/update.json');

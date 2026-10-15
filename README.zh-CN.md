@@ -36,6 +36,7 @@ Zotero CiteFlow 是 Zotero Flow Series 中独立维护的插件，连接 Zotero 
 | 项目 | 说明 |
 | --- | --- |
 | 插件版本 | `10.0.0` |
+| 插件作者（安装包信息） | `Zotero CiteFlow` |
 | 插件 ID | `citeflow@groele` |
 | 声明兼容范围 | `8.0–11.0.*` |
 | 验证情况 | 已在 Windows 的 Zotero 10.0.6 与 Microsoft Word 16.0.20430 环境进行实机验证；Zotero 8/9/11 尚未完成实机验收。 |

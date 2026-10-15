@@ -36,6 +36,7 @@ See the [core technical and maintenance guide](CORE-TECHNICAL-MAINTENANCE.md) fo
 | Item | Details |
 | --- | --- |
 | Add-on version | `10.0.0` |
+| Package author | `Zotero CiteFlow` |
 | Add-on ID | `citeflow@groele` |
 | Declared Zotero range | `8.0–11.0.*` |
 | Verification | Zotero 10.0.6 and Microsoft Word 16.0.20430 on Windows; Zotero 8/9/11 desktop validation is incomplete. |
