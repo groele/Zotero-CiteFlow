@@ -1,13 +1,17 @@
 {
     "manifest_version": 2,
     "name": "Zotero CiteFlow",
-    "version": "10.0.0",
+    "version": "12.0.0",
     "description": "Reference and citation tracking for Zotero and Word",
     "homepage_url": "https://github.com/groele/Zotero-CiteFlow",
     "author": "Zotero CiteFlow",
     "icons": {
+        "16": "chrome/content/icons/icon-16.png",
+        "32": "chrome/content/icons/icon-32.png",
         "48": "chrome/content/icons/favicon@0.5x.png",
-        "96": "chrome/content/icons/favicon.png"
+        "64": "chrome/content/icons/icon-64.png",
+        "96": "chrome/content/icons/favicon.png",
+        "128": "chrome/content/icons/icon-128.png"
     },
     "applications": {
         "zotero": {

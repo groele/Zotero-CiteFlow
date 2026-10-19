@@ -17,6 +17,12 @@ $runtimeFiles = @(
     'chrome/content/scripts/index.js',
     'chrome/content/icons/favicon.png',
     'chrome/content/icons/favicon@0.5x.png',
+    'chrome/content/icons/icon-16.png',
+    'chrome/content/icons/icon-32.png',
+    'chrome/content/icons/icon-64.png',
+    'chrome/content/icons/icon-128.png',
+    'chrome/content/icons/citeflow.svg',
+    'chrome/content/icons/icon.svg',
     'chrome/content/icons/word.png',
     'locale/en-US/zoterocitation-addon.ftl',
     'locale/zh-CN/zoterocitation-addon.ftl'
@@ -42,7 +48,7 @@ try {
     New-Item -ItemType Directory -Path $outputPath -Force | Out-Null
     $archivePath = Join-Path $outputPath "zotero-citeflow-$($manifest.version).xpi"
     if (Test-Path -LiteralPath $archivePath) {
-        throw "Archive already exists: $archivePath"
+        Remove-Item -LiteralPath $archivePath -Force
     }
     try {
         $archive = [System.IO.Compression.ZipFile]::Open($archivePath, [System.IO.Compression.ZipArchiveMode]::Create)

@@ -6,9 +6,9 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-![Version](https://img.shields.io/badge/version-10.0.0-blue) ![Zotero](https://img.shields.io/badge/Zotero-8.0%E2%80%9311.0.*-green) ![License](https://img.shields.io/badge/license-AGPL-3.0-only-lightgrey)
+![Version](https://img.shields.io/badge/version-12.0.0-blue) ![Zotero](https://img.shields.io/badge/Zotero-8.0%E2%80%9311.0.*-green) ![License](https://img.shields.io/badge/license-AGPL-3.0-only-lightgrey)
 
-[下载插件](https://github.com/groele/Zotero-CiteFlow/releases/tag/v10) · [问题反馈](https://github.com/groele/Zotero-CiteFlow/issues) · [版本发布](https://github.com/groele/Zotero-CiteFlow/releases)
+[下载插件](https://github.com/groele/Zotero-CiteFlow/releases/tag/v12) · [问题反馈](https://github.com/groele/Zotero-CiteFlow/issues) · [版本发布](https://github.com/groele/Zotero-CiteFlow/releases)
 
 **Zotero Flow Series**
 
@@ -35,7 +35,7 @@ Zotero CiteFlow 是 Zotero Flow Series 中独立维护的插件，连接 Zotero 
 
 | 项目 | 说明 |
 | --- | --- |
-| 插件版本 | `10.0.0` |
+| 插件版本 | `12.0.0` |
 | 插件作者（安装包信息） | `Zotero CiteFlow` |
 | 插件 ID | `citeflow@groele` |
 | 声明兼容范围 | `8.0–11.0.*` |
@@ -45,7 +45,7 @@ Zotero CiteFlow 是 Zotero Flow Series 中独立维护的插件，连接 Zotero 
 
 ## 安装指南
 
-1. [下载当前版本 XPI](https://github.com/groele/Zotero-CiteFlow/releases/tag/v10)（`zotero-citeflow-10.0.0.xpi`）。
+1. [下载当前版本 XPI](https://github.com/groele/Zotero-CiteFlow/releases/tag/v12)（`zotero-citeflow-12.0.0.xpi`）。
 2. 打开 Zotero 的 **工具 → 插件**（不同版本的菜单名称可能不同）。
 3. 选择 **从文件安装插件**，选中 XPI，按提示重启。
 
