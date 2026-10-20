@@ -8,7 +8,7 @@
 
 ![Version](https://img.shields.io/badge/version-12.0.1-blue) ![Zotero](https://img.shields.io/badge/Zotero-8.0%E2%80%9311.0.*-green) ![License](https://img.shields.io/badge/license-AGPL-3.0-only-lightgrey)
 
-[Download](https://github.com/groele/Zotero-CiteFlow/releases/tag/v12) · [Report an Issue](https://github.com/groele/Zotero-CiteFlow/issues) · [Releases](https://github.com/groele/Zotero-CiteFlow/releases)
+[Download](https://github.com/groele/Zotero-CiteFlow/releases/tag/v12.0.1) · [Report an Issue](https://github.com/groele/Zotero-CiteFlow/issues) · [Releases](https://github.com/groele/Zotero-CiteFlow/releases)
 
 **Zotero Flow Series**
 
@@ -45,7 +45,7 @@ The declared compatibility range is not a guarantee that every Zotero version ha
 
 ## Installation
 
-1. [Download the XPI](https://github.com/groele/Zotero-CiteFlow/releases/tag/v12) for the current release (`zotero-citeflow-12.0.1.xpi`).
+1. [Download the XPI](https://github.com/groele/Zotero-CiteFlow/releases/tag/v12.0.1) for the current release (`zotero-citeflow-12.0.1.xpi`).
 2. Open Zotero → **Tools → Plugins** (or the add-on manager in your version).
 3. Choose **Install Add-on From File**, select the XPI, and restart Zotero if requested.
 
