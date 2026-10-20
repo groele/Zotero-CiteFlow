@@ -1,11 +1,7 @@
 #zoterocitation-settings { box-sizing: border-box; width: 100%; max-width: 820px; min-width: 0; padding: 4px 12px 28px 4px; }
 #zoterocitation-settings * { box-sizing: border-box; }
-#zoterocitation-settings .zoterocitation-setting-card { display: block; min-width: 0; margin-block: 10px; border: 1px solid color-mix(in srgb, currentColor 18%, transparent); border-radius: 9px; background: color-mix(in srgb, currentColor 2%, transparent); }
-#zoterocitation-settings .zoterocitation-setting-card > summary { padding: 11px 13px; cursor: pointer; border-radius: 3px; }
-#zoterocitation-settings .zoterocitation-setting-card > summary:focus-visible { outline: 2px solid AccentColor; outline-offset: 2px; }
-#zoterocitation-settings .zoterocitation-setting-card > summary h2 { display: inline; margin: 0; font-size: 1.08em; }
-#zoterocitation-settings .zoterocitation-setting-card[open] { padding-bottom: 8px; }
-#zoterocitation-settings .zoterocitation-setting-card[open] > :not(summary) { margin-inline: 13px; }
+#zoterocitation-settings .zoterocitation-setting-card { display: block; min-width: 0; margin-block: 10px; padding: 12px 13px 8px; border: 1px solid color-mix(in srgb, currentColor 18%, transparent); border-radius: 9px; background: color-mix(in srgb, currentColor 2%, transparent); }
+#zoterocitation-settings .zoterocitation-section-title { margin: 0 0 12px; font-size: 1.08em; }
 #zoterocitation-settings h2 { margin-block: 4px 12px; font-size: 1.15em; }
 #zoterocitation-settings .zoterocitation-option { display: flex; align-items: center; gap: 8px; margin-block: 10px 4px; }
 #zoterocitation-settings .zoterocitation-description { opacity: 0.8; line-height: 1.5; margin-block: 4px 12px; }
@@ -21,6 +17,6 @@
 #zoterocitation-settings-status { line-height: 1.5; }
 @media (max-width: 480px) {
   #zoterocitation-settings { padding-inline: 2px; }
-  #zoterocitation-settings .zoterocitation-setting-card[open] > :not(summary) { margin-inline: 9px; }
+  #zoterocitation-settings .zoterocitation-setting-card { padding-inline: 9px; }
   #zoterocitation-settings .zoterocitation-number-row label { flex-basis: 100%; }
 }
