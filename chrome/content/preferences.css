@@ -1,144 +1,219 @@
 #zoterocitation-settings {
+  --flow-pref-text: light-dark(#20242b, #f1f3f5);
+  --flow-pref-muted: light-dark(#505862, #c4c9d1);
+  --flow-pref-accent: light-dark(#245ac7, #9bbcff);
+  --flow-pref-border: light-dark(#c9cdd3, #646a73);
+  --flow-pref-divider: light-dark(#e2e5e9, #565c65);
+  --flow-pref-surface: light-dark(#ffffff, #35383d);
+  --flow-pref-hover: light-dark(#f3f6fc, #414751);
   box-sizing: border-box;
   width: 100%;
   max-width: 780px;
   min-width: 0;
-  padding: 8px 12px 24px 4px;
-  color: inherit;
-  font-size: 13px;
-  line-height: 1.5;
+  margin-inline: auto;
+  padding: 10px 14px 28px;
+  color: var(--flow-pref-text);
+  font-family: system-ui, "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
 }
 
-#zoterocitation-settings * { box-sizing: border-box; }
+#zoterocitation-settings *,
+#zoterocitation-settings *::before,
+#zoterocitation-settings *::after {
+  box-sizing: border-box;
+}
 
 #zoterocitation-settings .zoterocitation-settings-header {
   margin: 0 0 12px;
   padding: 0 0 10px;
-  border-bottom: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+  border-bottom: 1px solid var(--flow-pref-divider);
 }
 
-#zoterocitation-settings .zoterocitation-settings-header h1 {
+#zoterocitation-settings .zoterocitation-brand {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 7px;
-  margin: 0 0 4px;
+  gap: 8px;
+}
+
+#zoterocitation-settings .zoterocitation-settings-header h1 {
+  display: block;
+  width: auto;
+  margin: 0;
   font-size: 18px;
   font-weight: 600;
-  line-height: 1.35;
+  line-height: 1.45;
 }
 
 #zoterocitation-settings .zoterocitation-version-badge {
-  padding: 1px 7px;
-  border: 1px solid color-mix(in srgb, AccentColor 30%, transparent);
-  border-radius: 999px;
-  color: AccentColor;
-  font-size: 11px;
-  font-weight: 500;
+  padding: 1px 6px;
+  border: 1px solid var(--flow-pref-border);
+  border-radius: 4px;
+  color: var(--flow-pref-muted);
+  background: var(--flow-pref-surface);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
 }
 
 #zoterocitation-settings .zoterocitation-description {
   margin: 3px 0 8px;
-  opacity: 0.78;
-  line-height: 1.5;
+  color: var(--flow-pref-muted);
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 #zoterocitation-settings .zoterocitation-setting-card {
   display: block;
   min-width: 0;
-  margin-block: 8px;
-  border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, currentColor 2%, transparent);
+  margin: 0 0 10px;
+  border: 1px solid var(--flow-pref-border);
+  border-radius: 9px;
+  background: var(--flow-pref-surface);
+}
+
+#zoterocitation-settings .zoterocitation-setting-card:last-of-type {
+  margin-bottom: 0;
 }
 
 #zoterocitation-settings .zoterocitation-section-title {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 38px;
-  padding: 8px 12px;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 13px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
+  line-height: 1.6;
   list-style: none;
 }
 
-#zoterocitation-settings .zoterocitation-section-title::-webkit-details-marker { display: none; }
+#zoterocitation-settings .zoterocitation-section-title::-webkit-details-marker {
+  display: none;
+}
 
-#zoterocitation-settings .zoterocitation-section-title::before {
-  width: 7px;
-  height: 7px;
-  flex: 0 0 7px;
-  border-top: 1.5px solid currentColor;
-  border-right: 1.5px solid currentColor;
-  content: "";
-  opacity: 0.65;
-  transform: rotate(45deg);
+#zoterocitation-settings .zoterocitation-section-title::after {
+  flex: 0 0 auto;
+  content: "›";
+  color: var(--flow-pref-muted);
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1;
+  transform: rotate(0);
   transition: transform 120ms ease;
 }
 
-#zoterocitation-settings details[open] > .zoterocitation-section-title::before { transform: rotate(135deg); }
+#zoterocitation-settings details[open] > .zoterocitation-section-title::after {
+  transform: rotate(90deg);
+}
 
-#zoterocitation-settings .zoterocitation-section-title:hover { background: color-mix(in srgb, currentColor 4%, transparent); }
+#zoterocitation-settings .zoterocitation-section-title:hover {
+  background: var(--flow-pref-hover);
+}
+
+#zoterocitation-settings .zoterocitation-section-title:focus-visible {
+  outline: 2px solid var(--flow-pref-accent);
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+
+#zoterocitation-settings details[open] > .zoterocitation-section-title {
+  border-bottom: 1px solid var(--flow-pref-divider);
+}
 
 #zoterocitation-settings .zoterocitation-setting-content {
-  padding: 0 12px 8px;
-  border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  min-width: 0;
+  padding: 4px 13px 10px;
 }
 
 #zoterocitation-settings .zoterocitation-option {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin-block: 7px 2px;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: start;
+  justify-items: start;
+  column-gap: 8px;
+  min-width: 0;
+  margin-block: 7px 1px;
+  line-height: 1.6;
+  text-align: left;
 }
 
-#zoterocitation-settings .zoterocitation-option input { margin: 3px 0 0; accent-color: AccentColor; }
+#zoterocitation-settings .zoterocitation-option input[type="checkbox"] {
+  appearance: auto;
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  margin: 4px 0 0;
+  accent-color: var(--flow-pref-accent);
+}
 
-#zoterocitation-settings .zoterocitation-setting-content > .zoterocitation-description { margin: 2px 0 7px 22px; }
+#zoterocitation-settings .zoterocitation-option span {
+  min-width: 0;
+  color: var(--flow-pref-text);
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+#zoterocitation-settings .zoterocitation-setting-content > .zoterocitation-description {
+  margin: 1px 0 8px 24px;
+}
 
 #zoterocitation-settings .zoterocitation-number-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(7em, 12em);
   align-items: center;
-  flex-wrap: wrap;
-  gap: 6px 12px;
+  gap: 8px 12px;
   min-width: 0;
-  margin-block: 7px;
+  margin-block: 8px;
 }
 
-#zoterocitation-settings .zoterocitation-number-row label { flex: 1 1 230px; min-width: 0; }
-
-#zoterocitation-settings input[type="number"] {
-  width: 112px;
-  padding: 4px 7px;
-  border: 1px solid var(--fill-quaternary, color-mix(in srgb, currentColor 25%, transparent));
-  border-radius: 4px;
-  color: inherit;
-  background: var(--material-background, transparent);
+#zoterocitation-settings .zoterocitation-number-row label {
+  min-width: 0;
+  color: var(--flow-pref-text);
+  overflow-wrap: anywhere;
 }
 
+#zoterocitation-settings input[type="number"],
 #zoterocitation-settings input[type="text"] {
-  width: min(100%, 260px);
-  padding: 4px 7px;
-  border: 1px solid var(--fill-quaternary, color-mix(in srgb, currentColor 25%, transparent));
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  max-width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--flow-pref-border);
   border-radius: 4px;
-  color: inherit;
-  background: var(--material-background, transparent);
+  color: var(--flow-pref-text);
+  background: Field;
+  font: inherit;
+  line-height: 1.4;
 }
 
 #zoterocitation-settings input[type="number"]:invalid,
-#zoterocitation-settings input[type="text"]:invalid { border-color: #c33; }
+#zoterocitation-settings input[type="text"]:invalid {
+  border-color: #c43b3b;
+}
+
+#zoterocitation-settings button {
+  min-height: 32px;
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--flow-pref-border);
+  border-radius: 4px;
+  color: var(--flow-pref-text);
+  background: Field;
+  font: inherit;
+  font-size: 13px;
+}
 
 #zoterocitation-settings input:focus-visible,
 #zoterocitation-settings button:focus-visible,
-#zoterocitation-settings a:focus-visible,
-#zoterocitation-settings summary:focus-visible {
-  outline: 2px solid AccentColor;
+#zoterocitation-settings a:focus-visible {
+  outline: 2px solid var(--flow-pref-accent);
   outline-offset: 2px;
 }
-
-#zoterocitation-settings button { padding: 4px 10px; color: inherit; }
 
 #zoterocitation-settings .zoterocitation-settings-footer {
   display: flex;
@@ -148,31 +223,76 @@
   margin: 10px 0 14px;
 }
 
-#zoterocitation-settings-status { margin: 0; line-height: 1.5; }
+#zoterocitation-settings-status {
+  margin: 0;
+  color: var(--flow-pref-muted);
+  line-height: 1.6;
+}
 
 #zoterocitation-settings .zoterocitation-version-info {
-  padding-top: 9px;
-  border-top: 1px solid color-mix(in srgb, currentColor 16%, transparent);
-  font-size: 12px;
+  display: grid;
+  gap: 3px;
+  margin-top: 14px;
+  padding: 10px 13px;
+  border: 1px solid var(--flow-pref-border);
+  border-radius: 9px;
+  color: var(--flow-pref-text);
+  background: var(--flow-pref-surface);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+#zoterocitation-settings .zoterocitation-version-title {
+  margin-bottom: 2px;
+  color: var(--flow-pref-text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.6;
 }
 
 #zoterocitation-settings .zoterocitation-version-row {
   display: grid;
-  grid-template-columns: minmax(80px, 112px) minmax(0, 1fr);
+  grid-template-columns: minmax(6em, 8em) minmax(0, 1fr);
   gap: 8px;
-  padding-block: 3px;
+  min-width: 0;
+  padding: 3px 0;
+  color: var(--flow-pref-muted);
   overflow-wrap: anywhere;
 }
 
-#zoterocitation-settings .zoterocitation-version-label { opacity: 0.72; }
-#zoterocitation-settings a { color: LinkText; }
+#zoterocitation-settings .zoterocitation-version-label {
+  color: var(--flow-pref-muted);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.6;
+}
+
+#zoterocitation-settings a {
+  color: var(--flow-pref-accent);
+  text-decoration: none;
+}
+
+#zoterocitation-settings a:hover {
+  text-decoration: underline;
+}
 
 @media (max-width: 520px) {
-  #zoterocitation-settings { padding: 6px 4px 18px; }
-  #zoterocitation-settings .zoterocitation-number-row label { flex-basis: 100%; }
-  #zoterocitation-settings .zoterocitation-version-row { grid-template-columns: 1fr; gap: 0; }
+  #zoterocitation-settings {
+    padding-inline: 8px;
+  }
+
+  #zoterocitation-settings .zoterocitation-number-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  #zoterocitation-settings .zoterocitation-version-row {
+    grid-template-columns: minmax(6em, 8em) minmax(0, 1fr);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #zoterocitation-settings .zoterocitation-section-title::before { transition: none; }
+  #zoterocitation-settings .zoterocitation-section-title::after {
+    transition: none;
+  }
 }
