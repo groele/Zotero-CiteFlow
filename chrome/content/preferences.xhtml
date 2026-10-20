@@ -2,60 +2,87 @@
   <html:link rel="localization" href="zoterocitation-addon.ftl"/>
 </linkset>
 <vbox id="zoterocitation-settings">
-  <html:p class="zoterocitation-description" data-l10n-id="zoterocitation-settings-description"/>
-  <html:section class="zoterocitation-setting-card">
-    <html:h2 class="zoterocitation-section-title" data-l10n-id="zoterocitation-settings-functions"/>
-    <html:label class="zoterocitation-option">
-      <html:input id="zoterocitation-setting-enable" type="checkbox"/>
-      <html:span data-l10n-id="zoterocitation-settings-enable"/>
-    </html:label>
-    <html:p class="zoterocitation-description" data-l10n-id="zoterocitation-settings-enable-help"/>
-    <html:label class="zoterocitation-option">
-      <html:input id="zoterocitation-setting-dragCite" type="checkbox"/>
-      <html:span data-l10n-id="zoterocitation-settings-drag-cite"/>
-    </html:label>
-    <html:p class="zoterocitation-description" data-l10n-id="zoterocitation-settings-drag-help"/>
-    <html:label class="zoterocitation-option">
-      <html:input id="zoterocitation-setting-citationTags" type="checkbox"/>
-      <html:span data-l10n-id="zoterocitation-settings-citation-tags"/>
-    </html:label>
-    <html:p class="zoterocitation-description" data-l10n-id="zoterocitation-settings-citation-tags-help"/>
-    <html:div class="zoterocitation-number-row">
-      <html:label for="zoterocitation-setting-citationTagText" data-l10n-id="zoterocitation-settings-tag-text"/>
-      <html:input id="zoterocitation-setting-citationTagText" type="text" maxlength="200" required="required"/>
+  <html:header class="zoterocitation-settings-header">
+    <html:h1>Zotero CiteFlow <html:span class="zoterocitation-version-badge">v12.3.0</html:span></html:h1>
+    <html:p class="zoterocitation-description" data-l10n-id="zoterocitation-settings-description"/>
+  </html:header>
+  <html:details class="zoterocitation-setting-card" open="open">
+    <html:summary class="zoterocitation-section-title" data-l10n-id="zoterocitation-settings-functions"/>
+    <html:div class="zoterocitation-setting-content">
+      <html:label class="zoterocitation-option">
+        <html:input id="zoterocitation-setting-enable" type="checkbox"/>
+        <html:span data-l10n-id="zoterocitation-settings-enable"/>
+      </html:label>
+      <html:p class="zoterocitation-description" data-l10n-id="zoterocitation-settings-enable-help"/>
+      <html:label class="zoterocitation-option">
+        <html:input id="zoterocitation-setting-dragCite" type="checkbox"/>
+        <html:span data-l10n-id="zoterocitation-settings-drag-cite"/>
+      </html:label>
+      <html:p class="zoterocitation-description" data-l10n-id="zoterocitation-settings-drag-help"/>
+      <html:label class="zoterocitation-option">
+        <html:input id="zoterocitation-setting-citationTags" type="checkbox"/>
+        <html:span data-l10n-id="zoterocitation-settings-citation-tags"/>
+      </html:label>
+      <html:p class="zoterocitation-description" data-l10n-id="zoterocitation-settings-citation-tags-help"/>
+      <html:div class="zoterocitation-number-row">
+        <html:label for="zoterocitation-setting-citationTagText" data-l10n-id="zoterocitation-settings-tag-text"/>
+        <html:input id="zoterocitation-setting-citationTagText" type="text" maxlength="200" required="required"/>
+      </html:div>
+      <html:p class="zoterocitation-description" data-l10n-id="zoterocitation-settings-tag-text-help"/>
     </html:div>
-    <html:p class="zoterocitation-description" data-l10n-id="zoterocitation-settings-tag-text-help"/>
-  </html:section>
-  <html:section class="zoterocitation-setting-card">
-    <html:h2 class="zoterocitation-section-title" data-l10n-id="zoterocitation-settings-performance"/>
-    <html:p class="zoterocitation-description" data-l10n-id="zoterocitation-settings-performance-help"/>
-    <html:div class="zoterocitation-number-row">
-      <html:label for="zoterocitation-setting-citationTagDebounceMs" data-l10n-id="zoterocitation-settings-tag-delay"/>
-      <html:input id="zoterocitation-setting-citationTagDebounceMs" type="number" min="0" max="2000" step="1" required="required"/>
+  </html:details>
+  <html:details class="zoterocitation-setting-card">
+    <html:summary class="zoterocitation-section-title" data-l10n-id="zoterocitation-settings-performance"/>
+    <html:div class="zoterocitation-setting-content">
+      <html:p class="zoterocitation-description" data-l10n-id="zoterocitation-settings-performance-help"/>
+      <html:div class="zoterocitation-number-row">
+        <html:label for="zoterocitation-setting-citationTagDebounceMs" data-l10n-id="zoterocitation-settings-tag-delay"/>
+        <html:input id="zoterocitation-setting-citationTagDebounceMs" type="number" min="0" max="2000" step="1" required="required"/>
+      </html:div>
+      <html:div class="zoterocitation-number-row">
+        <html:label for="zoterocitation-setting-itemsViewRefreshDebounceMs" data-l10n-id="zoterocitation-settings-view-delay"/>
+        <html:input id="zoterocitation-setting-itemsViewRefreshDebounceMs" type="number" min="0" max="2000" step="1" required="required"/>
+      </html:div>
+      <html:div class="zoterocitation-number-row">
+        <html:label for="zoterocitation-setting-healthWindowMs" data-l10n-id="zoterocitation-settings-health-window"/>
+        <html:input id="zoterocitation-setting-healthWindowMs" type="number" min="10000" max="3600000" step="1" required="required"/>
+      </html:div>
+      <html:div class="zoterocitation-number-row">
+        <html:label for="zoterocitation-setting-perfSlowThresholdMs" data-l10n-id="zoterocitation-settings-slow-threshold"/>
+        <html:input id="zoterocitation-setting-perfSlowThresholdMs" type="number" min="5" max="5000" step="1" required="required"/>
+      </html:div>
     </html:div>
-    <html:div class="zoterocitation-number-row">
-      <html:label for="zoterocitation-setting-itemsViewRefreshDebounceMs" data-l10n-id="zoterocitation-settings-view-delay"/>
-      <html:input id="zoterocitation-setting-itemsViewRefreshDebounceMs" type="number" min="0" max="2000" step="1" required="required"/>
+  </html:details>
+  <html:details class="zoterocitation-setting-card">
+    <html:summary class="zoterocitation-section-title" data-l10n-id="zoterocitation-settings-diagnostics"/>
+    <html:div class="zoterocitation-setting-content">
+      <html:label class="zoterocitation-option">
+        <html:input id="zoterocitation-setting-debug" type="checkbox"/>
+        <html:span data-l10n-id="zoterocitation-settings-debug"/>
+      </html:label>
+      <html:p class="zoterocitation-description" data-l10n-id="zoterocitation-settings-debug-help"/>
     </html:div>
-    <html:div class="zoterocitation-number-row">
-      <html:label for="zoterocitation-setting-healthWindowMs" data-l10n-id="zoterocitation-settings-health-window"/>
-      <html:input id="zoterocitation-setting-healthWindowMs" type="number" min="10000" max="3600000" step="1" required="required"/>
-    </html:div>
-    <html:div class="zoterocitation-number-row">
-      <html:label for="zoterocitation-setting-perfSlowThresholdMs" data-l10n-id="zoterocitation-settings-slow-threshold"/>
-      <html:input id="zoterocitation-setting-perfSlowThresholdMs" type="number" min="5" max="5000" step="1" required="required"/>
-    </html:div>
-  </html:section>
-  <html:section class="zoterocitation-setting-card">
-    <html:h2 class="zoterocitation-section-title" data-l10n-id="zoterocitation-settings-diagnostics"/>
-    <html:label class="zoterocitation-option">
-      <html:input id="zoterocitation-setting-debug" type="checkbox"/>
-      <html:span data-l10n-id="zoterocitation-settings-debug"/>
-    </html:label>
-    <html:p class="zoterocitation-description" data-l10n-id="zoterocitation-settings-debug-help"/>
-  </html:section>
+  </html:details>
   <html:div class="zoterocitation-settings-footer">
     <html:button id="zoterocitation-settings-reset" type="button" data-l10n-id="zoterocitation-settings-reset"/>
     <html:p id="zoterocitation-settings-status" role="status" aria-live="polite"/>
   </html:div>
+  <html:section class="zoterocitation-version-info" aria-label="版本信息">
+    <html:div class="zoterocitation-version-row">
+      <html:span class="zoterocitation-version-label">版本说明</html:span>
+      <html:span>设置面板风格统一；一级分组可折叠；版本信息独立列示</html:span>
+    </html:div>
+    <html:div class="zoterocitation-version-row">
+      <html:span class="zoterocitation-version-label">构建日期</html:span>
+      <html:time datetime="2026-10-20">2026-10-20</html:time>
+    </html:div>
+    <html:div class="zoterocitation-version-row">
+      <html:span class="zoterocitation-version-label">安装包</html:span>
+      <html:a href="https://github.com/groele/Zotero-CiteFlow/releases/download/v12.3.0/zotero-citeflow-12.3.0.xpi">下载 CiteFlow 12.3.0</html:a>
+    </html:div>
+    <html:div class="zoterocitation-version-row">
+      <html:span class="zoterocitation-version-label">代码仓库</html:span>
+      <html:a href="https://github.com/groele/Zotero-CiteFlow">GitHub · Zotero-CiteFlow</html:a>
+    </html:div>
+  </html:section>
 </vbox>

@@ -1,5 +1,14 @@
 # Zotero CiteFlow Release Notes
 
+## 12.3.0
+
+- Unify the Zotero Settings preferences style across the Flow plugins.
+- Use collapsible top-level groups only, with a compact layout and a separate release information footer.
+- List version notes, build date, XPI download and repository links on distinct rows.
+- Preserve existing preference IDs, values and handlers.
+
+构建日期 / Build date: 2026-10-20
+
 ## 12.2.0
 
 - The settings page now presents three concise, always-visible groups without disclosure panels.
