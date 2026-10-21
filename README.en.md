@@ -2,6 +2,8 @@
 
 **Zotero Flow Series · Citation**
 
+*让研究的每一步衔接起来。 / Connect each step of research.*
+
 Track Word citations and connect them to Zotero items.
 
 [简体中文](README.md) · [English](README.en.md)

@@ -2,7 +2,7 @@
     "manifest_version": 2,
     "name": "Zotero CiteFlow",
     "version": "12.3.4",
-    "description": "Reference and citation tracking for Zotero and Word",
+    "description": "Track Word citations and connect them to Zotero items.",
     "homepage_url": "https://github.com/groele/Zotero-CiteFlow",
     "author": "Zotero CiteFlow",
     "icons": {

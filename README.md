@@ -2,6 +2,8 @@
 
 **Zotero Flow Series · 写作引用**
 
+*让研究的每一步衔接起来。 / Connect each step of research.*
+
 追踪 Word 文档引用，并连接 Zotero 文献操作。
 
 [简体中文](README.md) · [English](README.en.md)

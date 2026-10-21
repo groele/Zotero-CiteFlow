@@ -15,6 +15,8 @@
 | 同步、兼容性和验证结论表达不一致 | 清单、数据文件位置、既有说明 | 分开列示本地保存、附件归档、Zotero 同步、外部服务及实际验证范围 |
 | 产品职责容易重叠 | 预览、Word 引用、关系发现与两类任务产品的介绍 | 明确 RefFlow／ViewFlow／CiteFlow 及 TaskFlow／PaperFlow 的职责边界 |
 
+| 品牌文本核对 | 七个构建清单/manifest 简介与产品资料不一致；系列标语缺少于 README 首屏；RefFlow、ViewFlow 设置页名称未使用完整产品名 | 统一使用 `docs/brand/product.json` 的简短介绍；在中英文 README 加入系列标语；补齐设置页品牌名。GitHub About 已与来源简介一致，保持原样。 |
+
 ## 下一步优先级
 
 优先级表示建议的工作顺序，不是对所有功能完成情况或产品成熟度的全面评分。

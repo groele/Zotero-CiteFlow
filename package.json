@@ -3,6 +3,7 @@
   "version": "12.3.4",
   "private": true,
   "license": "AGPL-3.0-only",
+  "description": "Track Word citations and connect them to Zotero items.",
   "engines": {
     "node": ">=22"
   },
