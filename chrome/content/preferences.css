@@ -1,11 +1,11 @@
 #zoterocitation-settings {
-  --flow-pref-text: light-dark(#20242b, #f1f3f5);
-  --flow-pref-muted: light-dark(#505862, #c4c9d1);
+  --flow-pref-text: var(--fill-primary, light-dark(#262626, #eeeeee));
+  --flow-pref-muted: light-dark(#555555, #cccccc);
   --flow-pref-accent: light-dark(#245ac7, #9bbcff);
-  --flow-pref-border: light-dark(#c9cdd3, #646a73);
-  --flow-pref-divider: light-dark(#e2e5e9, #565c65);
-  --flow-pref-surface: light-dark(#ffffff, #35383d);
-  --flow-pref-hover: light-dark(#f3f6fc, #414751);
+  --flow-pref-border: color-mix(in srgb, currentColor 18%, transparent);
+  --flow-pref-divider: color-mix(in srgb, currentColor 12%, transparent);
+  --flow-pref-surface: color-mix(in srgb, currentColor 2%, transparent);
+  --flow-pref-hover: color-mix(in srgb, currentColor 4%, transparent);
   box-sizing: border-box;
   width: 100%;
   max-width: 780px;

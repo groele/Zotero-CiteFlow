@@ -6,7 +6,7 @@ Track Word citations and connect them to Zotero items.
 
 [简体中文](README.md) · [English](README.en.md)
 
-[![Release](https://img.shields.io/badge/version-12.3.3-245ac7?style=flat-square)](https://github.com/groele/Zotero-CiteFlow/releases/tag/v12.3.3) · [Download XPI](https://github.com/groele/Zotero-CiteFlow/releases/download/v12.3.3/zotero-citeflow-12.3.3.xpi) · [Report an issue](https://github.com/groele/Zotero-CiteFlow/issues)
+[![Release](https://img.shields.io/badge/version-12.3.4-245ac7?style=flat-square)](https://github.com/groele/Zotero-CiteFlow/releases/tag/v12.3.4) · [Download XPI](https://github.com/groele/Zotero-CiteFlow/releases/download/v12.3.4/zotero-citeflow-12.3.4.xpi) · [Report an issue](https://github.com/groele/Zotero-CiteFlow/issues)
 
 [Overview](#overview) · [Installation and updates](#installation) · [Quick start](#quick-start) · [Key features](#features) · [Settings](#settings) · [Data, sync, and services](#data) · [Compatibility and validation](#compatibility) · [Troubleshooting](#troubleshooting) · [Development and documentation](#development) · [The Flow series](#series) · [Origin and license](#license)
 
@@ -22,7 +22,7 @@ Install this add-on independently and combine it with other Flow products as nee
 
 ## Installation and updates
 
-1. Download [zotero-citeflow-12.3.3.xpi](https://github.com/groele/Zotero-CiteFlow/releases/download/v12.3.3/zotero-citeflow-12.3.3.xpi) (add-on version **12.3.3**), not the Source code ZIP.
+1. Download [zotero-citeflow-12.3.4.xpi](https://github.com/groele/Zotero-CiteFlow/releases/download/v12.3.4/zotero-citeflow-12.3.4.xpi) (add-on version **12.3.4**), not the Source code ZIP.
 2. In Zotero, open **Tools → Plugins/Add-ons**, then choose **Install Add-on From File** from the gear menu.
 3. Select the XPI, complete installation, and restart if requested.
 
@@ -70,9 +70,9 @@ Restart Zotero after changing citation tracking. Configure dragging, tag text, a
 
 | Item | Scope |
 |---|---|
-| Current add-on version | 12.3.3 |
+| Current add-on version | 12.3.4 |
 | Declared Zotero range | `8.0` through `11.0.*` |
-| Evidence boundary | The 12.3.3 settings pane was checked in Windows Zotero 10.0.6 and 34 build tests passed; live Word operations were not rerun, and these results do not establish macOS Word support. |
+| Evidence boundary | The 12.3.4 settings pane was checked in Windows Zotero 10.0.6, including sequential navigation and MetaFlow card palette comparison and 34 build tests passed; live Word operations were not rerun, and these results do not establish macOS Word support. |
 
 Add-on and Zotero versions are separate. Manifest compatibility does not establish testing on every host, operating system, or service. This branding/documentation update does not rerun business workflow tests.
 
@@ -98,7 +98,7 @@ npm run package
 
 - [技术与维护指南 / Technical guide](CORE-TECHNICAL-MAINTENANCE.md)
 - [第三方声明 / Third-party notices](THIRD_PARTY.md)
-- [版本说明 / Release notes](RELEASE_NOTES_v12.3.3.md)
+- [版本说明 / Release notes](RELEASE_NOTES_v12.3.4.md)
 - [产品简介 / Product profile](docs/brand/PRODUCT.md)
 - [品牌规范 / Brand guide](docs/brand/BRAND.md)
 - [README 模板 / README template](docs/brand/README-TEMPLATE.md)
