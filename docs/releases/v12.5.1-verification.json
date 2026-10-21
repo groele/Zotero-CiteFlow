@@ -1,0 +1,33 @@
+{
+  "product": "Zotero CiteFlow",
+  "version": "12.5.1",
+  "tag": "v12.5.1",
+  "asset": "zotero-citeflow-12.5.1.xpi",
+  "sourceBaseCommit": "64743fc7a64dbfd7dea6a0c0bdad111402879fc0",
+  "builtFromWorkingTree": true,
+  "bytes": 73390,
+  "sha256": "a15287f813a19d1299c1618ece62b7075b5a0212e329b8ec6d448a3eedbc81f3",
+  "entries": 20,
+  "addonID": "citeflow@groele",
+  "compatibility": {
+    "id": "citeflow@groele",
+    "strict_min_version": "8.0",
+    "strict_max_version": "11.0.*",
+    "update_url": "https://raw.githubusercontent.com/groele/Zotero-CiteFlow/main/update.json"
+  },
+  "checks": {
+    "build": "passed",
+    "archiveIntegrity": "passed",
+    "runtimeResources": "passed",
+    "sourcePayloadEquality": "passed",
+    "manifestAndSettingsVersion": "passed",
+    "updateFeedVersionLinkAndHash": "passed",
+    "unitTests": {
+      "passed": 34,
+      "failed": 0
+    },
+    "liveZoteroInstall": "not run"
+  },
+  "releaseURL": "https://github.com/groele/Zotero-CiteFlow/releases/tag/v12.5.1",
+  "downloadURL": "https://github.com/groele/Zotero-CiteFlow/releases/download/v12.5.1/zotero-citeflow-12.5.1.xpi"
+}

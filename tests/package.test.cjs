@@ -5,7 +5,8 @@ const path = require('node:path');
 
 const root = path.join(__dirname, '..');
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
-const updateManifest = JSON.parse(fs.readFileSync(path.join(root, 'update.json'), 'utf8'));
+const updateManifestPath = process.env.CITEFLOW_UPDATE_MANIFEST || path.join(root, 'update.json');
+const updateManifest = JSON.parse(fs.readFileSync(updateManifestPath, 'utf8'));
 const runtimeFiles = [
   'bootstrap.js',
   'LICENSE',
@@ -54,6 +55,7 @@ test('manifest and bundled addon identity agree', () => {
 test('published update manifest has a versioned release link and hash', () => {
   const update = updateManifest.addons[manifest.applications.zotero.id].updates[0];
   assert.match(update.version, /^\d+\.\d+\.\d+$/);
+  assert.equal(update.version, manifest.version);
   assert.equal(update.update_link,
     `https://github.com/groele/Zotero-CiteFlow/releases/download/v${update.version}/zotero-citeflow-${update.version}.xpi`);
   assert.match(update.update_hash, /^sha256:[a-f0-9]{64}$/i);

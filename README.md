@@ -1,6 +1,5 @@
 # Zotero CiteFlow
 
-> 源码版本为 12.5.0；目前最新可下载的 XPI 仍为旧版，待发布 12.5.0 安装包后再更新下载地址。
 
 **Zotero Flow Series · 写作引用**
 
@@ -10,7 +9,7 @@
 
 [简体中文](README.md) · [English](README.en.md)
 
-[![当前版本](https://img.shields.io/badge/version-12.5.0-245ac7?style=flat-square)](https://github.com/groele/Zotero-CiteFlow/releases/tag/v12.5.0) · [下载 XPI](https://github.com/groele/Zotero-CiteFlow/releases/download/v12.3.4/zotero-citeflow-12.3.4.xpi) · [问题反馈](https://github.com/groele/Zotero-CiteFlow/issues)
+[![当前版本](https://img.shields.io/badge/version-12.5.1-245ac7?style=flat-square)](https://github.com/groele/Zotero-CiteFlow/releases/tag/v12.5.1) · [下载 XPI](https://github.com/groele/Zotero-CiteFlow/releases/download/v12.5.1/zotero-citeflow-12.5.1.xpi) · [问题反馈](https://github.com/groele/Zotero-CiteFlow/issues)
 
 [产品定位](#overview) · [安装与更新](#installation) · [快速开始](#quick-start) · [核心功能](#features) · [设置与使用](#settings) · [数据、同步与外部服务](#data) · [兼容性与验证范围](#compatibility) · [常见问题](#troubleshooting) · [开发与详细文档](#development) · [系列产品](#series) · [项目来源与许可](#license)
 
@@ -26,7 +25,7 @@
 
 ## 安装与更新
 
-1. 下载 [zotero-citeflow-12.3.4.xpi](https://github.com/groele/Zotero-CiteFlow/releases/download/v12.3.4/zotero-citeflow-12.3.4.xpi)（插件版本 **12.3.4**），不要安装 Source code ZIP。
+1. 下载 [zotero-citeflow-12.5.1.xpi](https://github.com/groele/Zotero-CiteFlow/releases/download/v12.5.1/zotero-citeflow-12.5.1.xpi)（插件版本 **12.5.1**），不要安装 Source code ZIP。
 2. 在 Zotero 打开 **工具 → 插件／附加组件**，从齿轮菜单选择 **从文件安装插件**。
 3. 选择 XPI，完成安装；按提示重启 Zotero。
 
@@ -74,7 +73,7 @@
 
 | 项目 | 范围 |
 |---|---|
-| 当前插件版本 | 12.5.0 |
+| 当前插件版本 | 12.5.1 |
 | 清单声明的 Zotero 范围 | `8.0` 至 `11.0.*` |
 | 当前说明 | 12.3.4 设置页已在 Windows Zotero 10.0.6 原生检查（含同窗连续切换与 MetaFlow 卡片配色对照），构建内 34 项测试通过；本轮未重新执行真实 Word 操作，也不据此承诺 macOS Word 支持。 |
 
@@ -102,7 +101,7 @@ npm run package
 
 - [技术与维护指南 / Technical guide](CORE-TECHNICAL-MAINTENANCE.md)
 - [第三方声明 / Third-party notices](THIRD_PARTY.md)
-- [版本说明 / Release notes](RELEASE_NOTES_v12.3.4.md)
+- [版本说明 / Release notes](docs/releases/v12.5.1.md)
 - [产品简介 / Product profile](docs/brand/PRODUCT.md)
 - [品牌规范 / Brand guide](docs/brand/BRAND.md)
 - [README 模板 / README template](docs/brand/README-TEMPLATE.md)

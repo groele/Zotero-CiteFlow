@@ -36,8 +36,6 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'bootstrap.js syntax check failed' }
     & node --check chrome/content/scripts/index.js
     if ($LASTEXITCODE -ne 0) { throw 'index.js syntax check failed' }
-    & node --test tests/*.test.*
-    if ($LASTEXITCODE -ne 0) { throw 'tests failed' }
 
     $outputPath = if ([System.IO.Path]::IsPathRooted($OutputDirectory)) {
         $OutputDirectory
@@ -115,6 +113,14 @@ try {
         }
     }
     $candidateFeed | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $outputPath 'update.json') -Encoding utf8NoBOM
+    $previousFeed = $env:CITEFLOW_UPDATE_MANIFEST
+    try {
+        $env:CITEFLOW_UPDATE_MANIFEST = Join-Path $outputPath 'update.json'
+        & node --test tests/*.test.*
+        if ($LASTEXITCODE -ne 0) { throw 'tests failed' }
+    } finally {
+        $env:CITEFLOW_UPDATE_MANIFEST = $previousFeed
+    }
     $archiveHash | Select-Object Path, Hash
 } finally {
     Pop-Location
