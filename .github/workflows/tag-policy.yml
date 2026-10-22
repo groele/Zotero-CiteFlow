@@ -16,7 +16,15 @@
         "manifest.json"
       ]
     },
-    "workflow_dispatch": {}
+    "workflow_dispatch": {
+      "inputs": {
+        "release_tag": {
+          "description": "Optional existing canonical tag to validate with the current workflow",
+          "required": false,
+          "type": "string"
+        }
+      }
+    }
   },
   "permissions": {
     "contents": "read"
@@ -28,15 +36,16 @@
         {
           "uses": "actions/checkout@v4",
           "with": {
-            "fetch-depth": 0
+            "fetch-depth": 0,
+            "ref": "${{ inputs.release_tag || github.ref }}"
           }
         },
         {
           "name": "Check version and tag policy",
           "env": {
-            "RELEASE_TAG": "${{ github.ref_type == 'tag' && github.ref_name || '' }}"
+            "RELEASE_TAG": "${{ inputs.release_tag || (github.ref_type == 'tag' && github.ref_name || '') }}"
           },
-          "run": "python3 scripts/release-tags.py --self-test\nif [ -n \"$RELEASE_TAG\" ]; then python3 scripts/release-tags.py --tag \"$RELEASE_TAG\"; fi"
+          "run": "python3 scripts/release-tags.py --self-test\nif [ -n \"$RELEASE_TAG\" ]; then\n  git check-ref-format \"refs/tags/$RELEASE_TAG\"\n  git fetch --no-tags origin \"+refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG\"\n  python3 scripts/release-tags.py --tag \"$RELEASE_TAG\"\nfi"
         }
       ]
     }

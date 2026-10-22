@@ -29,3 +29,5 @@ Applies to Zotero CiteFlow. Established: 2026-10-22.
 Run `python scripts/release-tags.py --self-test` before release preparation. After committing a clean release payload, run `python scripts/release-tags.py --create-tag vX.Y.Z`; it creates only a local tag. Verify it with `python scripts/release-tags.py --tag vX.Y.Z` before the authorized push and GitHub Release publication.
 
 The tag-policy workflow validates new pushed tag syntax, version agreement, annotation and commit identity. It also validates policy changes on pull requests. A failed workflow signals a violation; it is not a server-side prohibition on creating Git references.
+
+The checkout action can replace a runner-local annotated tag with a direct commit reference. Before tag validation, CI fetches the exact tag object from origin back into the disposable checkout. It never changes the remote tag. To verify an existing release using the current workflow, dispatch it on `main` with the optional `release_tag` input; the job checks out and validates that release commit.
