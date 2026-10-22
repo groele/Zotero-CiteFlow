@@ -1,0 +1,35 @@
+{
+  "date": "2026-10-22",
+  "repository": "groele/Zotero-CiteFlow",
+  "migrations": [
+    {
+      "plugin": "CiteFlow",
+      "old": "v10",
+      "new": "v10.0.0",
+      "commit": "251932e6821f37aa6fae8f4794c2e6951f8fd420",
+      "oldObject": "f67db391e5a703bfc8b162863b35ab8ac937bb3c",
+      "alreadyCanonical": false,
+      "releaseIDs": [
+        413420258
+      ],
+      "releaseAssets": [
+        "https://github.com/groele/Zotero-CiteFlow/releases/download/v10/zotero-citeflow-10.0.0.xpi"
+      ]
+    },
+    {
+      "plugin": "CiteFlow",
+      "old": "v12",
+      "new": "v12.0.0",
+      "commit": "75af8a838048e8a7792573807122630138603bea",
+      "oldObject": "75af8a838048e8a7792573807122630138603bea",
+      "alreadyCanonical": false,
+      "releaseIDs": [
+        417263565
+      ],
+      "releaseAssets": [
+        "https://github.com/groele/Zotero-CiteFlow/releases/download/v12/zotero-citeflow-12.0.0.xpi",
+        "https://github.com/groele/Zotero-CiteFlow/releases/download/v12/zotero-citeflow-12.0.1.xpi"
+      ]
+    }
+  ]
+}

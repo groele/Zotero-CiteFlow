@@ -1,0 +1,44 @@
+{
+  "name": "Release tag policy",
+  "on": {
+    "push": {
+      "tags": [
+        "**"
+      ]
+    },
+    "pull_request": {
+      "paths": [
+        "scripts/release-tags.py",
+        "docs/release-tag-policy.md",
+        "docs/release-tag-migrations.json",
+        ".github/workflows/tag-policy.yml",
+        "package.json",
+        "manifest.json"
+      ]
+    },
+    "workflow_dispatch": {}
+  },
+  "permissions": {
+    "contents": "read"
+  },
+  "jobs": {
+    "validate": {
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4",
+          "with": {
+            "fetch-depth": 0
+          }
+        },
+        {
+          "name": "Check version and tag policy",
+          "env": {
+            "RELEASE_TAG": "${{ github.ref_type == 'tag' && github.ref_name || '' }}"
+          },
+          "run": "python3 scripts/release-tags.py --self-test\nif [ -n \"$RELEASE_TAG\" ]; then python3 scripts/release-tags.py --tag \"$RELEASE_TAG\"; fi"
+        }
+      ]
+    }
+  }
+}

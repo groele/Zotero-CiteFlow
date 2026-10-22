@@ -136,3 +136,5 @@ npm run package
 许可: [AGPL-3.0-only](LICENSE).
 
 本系列独立维护，并非 Zotero 官方产品。Zotero 及第三方名称、商标与材料归各自权利人所有。
+
+[Release/tag policy](docs/release-tag-policy.md)
