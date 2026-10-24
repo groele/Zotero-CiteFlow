@@ -1,0 +1,28 @@
+{
+  "product": "Zotero CiteFlow",
+  "version": "12.5.2",
+  "addonID": "citeflow@groele",
+  "file": "zotero-citeflow-12.5.2.xpi",
+  "bytes": 73417,
+  "sha256": "3dd59f20c209313da7cfe217d9664b2c76dc729cb62a3b4f16da27b6013febae",
+  "sha512": "132fe0e4f026920ed32a65c4d1332ca88c126529f5126061cf27c9378dde5deb24f11d7bf97b7fa886870b729be95cee567f0d63966ce299fc55f1179015b461",
+  "entries": 20,
+  "sourcePayloadVerified": true,
+  "updateFeedsVerified": [
+    "update.json"
+  ],
+  "sourceBaseCommit": "9a016a3b55e569505891473be6906e66db4ea5dc",
+  "automatedTests": {
+    "passed": 35,
+    "failed": 0
+  },
+  "nativeZotero": {
+    "version": "10.0.6",
+    "profile": "isolated",
+    "initial": 11,
+    "restart": 11,
+    "boundary": "Combined five-plugin controlled checks. RefFlow/MetaFlow lifetime helpers bundled from maintained sources. Not a full workflow or visual audit."
+  },
+  "mainProfileInstalled": false,
+  "automaticUpdateInstallation": "not performed"
+}

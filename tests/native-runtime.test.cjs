@@ -4,6 +4,30 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
+test('view disposal still releases patches and columns when a DOM cleanup throws', async () => {
+  const source = fs.readFileSync(path.join(__dirname, '../src/modules/views.mjs'), 'utf8')
+    .replace(/^import .*;\r?\n/gm, '').replace('export default Views;', 'globalThis.Views = Views;');
+  const calls = [], errors = [];
+  const context = vm.createContext({ config: { addonID: 'test' },
+    Zotero: { logError: error => errors.push(error.message), ItemTreeManager: {
+      async unregisterColumns(keys) { calls.push('columns:' + keys.join(',')); }
+    } } });
+  vm.runInContext(source, context);
+  const view = new context.Views({ document: { removeEventListener() { throw new Error('closed window'); } } });
+  view._dragEndHandler = () => {};
+  view._iconNodeStates.set({}, {});
+  view._restoreIconNode = () => { throw new Error('detached icon'); };
+  view._patchDisposers.push(() => { calls.push('patch-one'); throw new Error('patch failure'); }, () => calls.push('patch-two'));
+  view._registeredColumnKeys.add('citation');
+  await view.dispose();
+  assert.deepEqual(calls, ['patch-one', 'patch-two', 'columns:citation']);
+  assert.deepEqual(errors, ['closed window', 'detached icon', 'patch failure']);
+  assert.equal(view._window, null);
+  assert.equal(view._iconNodeStates.size, 0);
+  await view.dispose();
+  assert.equal(calls.length, 3);
+});
+
 test('production runtime contains no unused toolkit, debug bridges, or inline event handlers', () => {
   const code = fs.readFileSync(path.join(__dirname, '../chrome/content/scripts/index.js'), 'utf8');
   assert.doesNotMatch(code, /ToolkitGlobal|initializeDebugBridge|initializePluginBridge|GuideHelper|PromptManager|ownerGlobal|oncommand|zotero-plugin-toolkit/);

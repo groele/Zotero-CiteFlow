@@ -1816,14 +1816,21 @@
     dispose() {
       this._disposed = true;
       this._dragItems = null;
-      if (this._dragEndHandler) this.document.removeEventListener("dragend", this._dragEndHandler, true);
+      const cleanup = (action) => {
+        try {
+          action();
+        } catch (error) {
+          Zotero.logError(error);
+        }
+      };
+      if (this._dragEndHandler) cleanup(() => this.document.removeEventListener("dragend", this._dragEndHandler, true));
       this._dragEndHandler = null;
       for (const [iconNode, state] of this._iconNodeStates || []) {
-        this._restoreIconNode(iconNode, state);
+        cleanup(() => this._restoreIconNode(iconNode, state));
       }
       this._iconNodeStates?.clear();
       this._index = null;
-      for (const restore of this._patchDisposers || []) restore();
+      for (const restore of this._patchDisposers || []) cleanup(restore);
       this._patchDisposers = [];
       const pending = this._unregisterCitationColumns();
       this._window = null;
