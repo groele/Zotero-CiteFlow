@@ -1,5 +1,10 @@
 # Zotero CiteFlow Release Notes
 
+## 12.5.3
+
+- Await late native column cleanup after disposal before completing registration.
+- 36 top-level automated tests and isolated Zotero 10.0.6 initial/restart controlled acceptance passed; real Word insertion was not repeated.
+
 ## 12.3.0
 
 - Unify the Zotero Settings preferences style across the Flow plugins.

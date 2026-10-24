@@ -1,0 +1,28 @@
+{
+  "product": "Zotero CiteFlow",
+  "version": "12.5.3",
+  "addonID": "citeflow@groele",
+  "file": "zotero-citeflow-12.5.3.xpi",
+  "bytes": 73417,
+  "sha256": "876277a83e2ed58096cbcb2f1ec734cdae03fa2369b86cc44392234e90c4b7ce",
+  "sha512": "4b3617084e5b4f518843bb729fe5fe35b57d40cc1195e3405eaae6b6f1793cec241071b690148f93d32b0c8ad30138ce0573960ad978e7d6c9e8efc501261061",
+  "entries": 20,
+  "sourcePayloadVerified": true,
+  "updateFeedsVerified": [
+    "update.json"
+  ],
+  "sourceBaseCommit": "de2842ddcf989a5ed87f51df949f7988c45b1154",
+  "automatedTests": {
+    "passed": 36,
+    "failed": 0
+  },
+  "nativeZotero": {
+    "version": "10.0.6",
+    "profile": "isolated",
+    "initial": 9,
+    "restart": 9,
+    "boundary": "Four production plugins. Controlled reminder/AI/column checks plus real loopback Gecko HTTP via MetaFlow helper. Not paid AI, live metadata providers, Word insertion or full visual QA."
+  },
+  "mainProfileInstalled": false,
+  "automaticUpdateInstallation": "not performed"
+}

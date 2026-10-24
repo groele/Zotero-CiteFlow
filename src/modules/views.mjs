@@ -107,7 +107,7 @@ var Views = class {
     // Shutdown may race with the asynchronous registration call. Do not
     // leave a column behind when registration completes after disposal.
     if (this._disposed || addon.data.alive === false) {
-      this._unregisterCitationColumns();
+      await this._unregisterCitationColumns();
     }
   }
   async prepareWindow() {

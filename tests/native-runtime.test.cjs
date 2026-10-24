@@ -4,6 +4,30 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
+test('late column registration waits for its shutdown cleanup before completing', async () => {
+  const source = fs.readFileSync(path.join(__dirname, '../src/modules/views.mjs'), 'utf8')
+    .replace(/^import .*;\r?\n/gm, '').replace('export default Views;', 'globalThis.Views = Views;');
+  let register, unregister;
+  let removed = false, finished = false;
+  const context = vm.createContext({ config: { addonID: 'test' }, getString: () => 'Citation',
+    addon: { data: { alive: true } }, Zotero: { logError() {}, ItemTreeManager: {
+      registerColumns: () => new Promise(resolve => { register = resolve; }),
+      unregisterColumns: async () => { await new Promise(resolve => { unregister = resolve; }); removed = true; }
+    } } });
+  vm.runInContext(source, context);
+  const view = new context.Views();
+  const pending = view.createCitationColumn().then(() => { finished = true; });
+  await view.dispose();
+  register(['late-column']);
+  await new Promise(resolve => setImmediate(resolve));
+  try {
+    assert.equal(typeof unregister, 'function');
+    assert.equal(finished, false, 'registration cannot finish while the late native column still exists');
+  } finally { unregister?.(); await pending; }
+  assert.equal(removed, true);
+  assert.equal(view._registeredColumnKeys.size, 0);
+});
+
 test('view disposal still releases patches and columns when a DOM cleanup throws', async () => {
   const source = fs.readFileSync(path.join(__dirname, '../src/modules/views.mjs'), 'utf8')
     .replace(/^import .*;\r?\n/gm, '').replace('export default Views;', 'globalThis.Views = Views;');

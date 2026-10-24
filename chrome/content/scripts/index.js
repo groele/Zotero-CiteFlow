@@ -1754,7 +1754,7 @@
         }
       }
       if (this._disposed || addon.data.alive === false) {
-        this._unregisterCitationColumns();
+        await this._unregisterCitationColumns();
       }
     }
     async prepareWindow() {
