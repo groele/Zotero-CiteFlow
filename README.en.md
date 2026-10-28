@@ -1,3 +1,5 @@
+> Local development candidate: **12.5.4** (not published). Stable download links below still refer to **12.5.3**. Repeated disposal waits for outstanding column cleanup and serializes late registrations. [Candidate notes](docs/releases/v12.5.4.md).
+
 # Zotero CiteFlow
 
 
@@ -45,12 +47,13 @@ Update feed: [update.json](https://github.com/groele/Zotero-CiteFlow/blob/main/u
 
 ## Key features
 
-| Feature | Scope |
-|---|---|
-| Citation status | Display citation information for identified documents in the Zotero item list. |
-| Editable citations | Insert editable citation fields through Zotero integration when dragging into Word. |
-| Managed tags | Configure citation tag text and maintain plugin-owned tags while preserving unrelated manual tags. |
-| Settings and diagnostics | Configure synchronization delay, list refresh, and diagnostic parameters. |
+| Differentiator | What it does | Boundary |
+|---|---|---|
+| Word citation status | Surfaces recognized Word citation information in Zotero’s item list, so writers can review whether an item has entered a document. | An unrecognized result is not a claim that an item has never been cited. |
+| Editable citation drag-and-drop | Routes a dragged item to Microsoft Word through Zotero integration, producing an editable Zotero citation field rather than plain text. | Applies only to an explicit Word target; it never rewrites existing Word fields or promises insertion into other applications. |
+| Controlled citation tags | Marks citation relationships with add-on-owned tags; tag text and automatic tagging are configurable while manual and unrelated tags are retained. | Disable/rename actions touch only tags the add-on can establish as its own. |
+| Column lifecycle and delayed refresh | Registers citation columns and orders tag sync, list refresh, and late registration with their cleanup lifecycle. | Column rendering and refresh depend on the active Zotero main window; repeated disposal waits for the same cleanup task. |
+| Inspectable settings and diagnostics | Exposes sync delay, refresh delay, performance thresholds, and debug logging for investigating status or write failures. | Diagnostics aid observation; they do not replace Word or Zotero’s native troubleshooting. |
 
 <a id="settings"></a>
 
@@ -131,7 +134,7 @@ Each add-on installs and updates separately. A shared brand does not imply a sha
 
 ## Origin and license
 
-Independently maintained derivative of MuiseDestiny (Polygon)’s zotero-citation; upstream copyright and third-party notices remain in force.
+**Derivative notice:** Zotero CiteFlow is an independently maintained derivative of MuiseDestiny (Polygon)’s open-source [zotero-citation](https://github.com/MuiseDestiny/zotero-citation). Upstream copyright, AGPL obligations, and applicable third-party notices remain in force; this project is neither an upstream nor an official Zotero release.
 
 License: [AGPL-3.0-only](LICENSE).
 

@@ -191,12 +191,17 @@ var Views = class {
   async _unregisterCitationColumns() {
     const keys = [...(this._registeredColumnKeys || [])];
     this._registeredColumnKeys?.clear();
-    if (!keys.length) return;
-    try {
-      const manager = Zotero.ItemTreeManager;
-      if (typeof manager.unregisterColumns === "function") await manager.unregisterColumns(keys);
-      else if (typeof manager.unregisterColumn === "function") await Promise.all(keys.map(key => manager.unregisterColumn(key)));
-    } catch (error) { Zotero.logError(error); }
+    if (!keys.length) return this._columnCleanup;
+    const previous = this._columnCleanup;
+    this._columnCleanup = (async () => {
+      if (previous) await previous;
+      try {
+        const manager = Zotero.ItemTreeManager;
+        if (typeof manager.unregisterColumns === "function") await manager.unregisterColumns(keys);
+        else if (typeof manager.unregisterColumn === "function") await Promise.all(keys.map(key => manager.unregisterColumn(key)));
+      } catch (error) { Zotero.logError(error); }
+    })();
+    return this._columnCleanup;
   }
   async dragCite() {
     if (this._dragEndHandler || this._disposed || addon.data.alive === false

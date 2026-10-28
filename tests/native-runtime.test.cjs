@@ -4,6 +4,23 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
+test('repeated disposal waits for the same outstanding native column cleanup', async () => {
+  const source = fs.readFileSync(path.join(__dirname, '../src/modules/views.mjs'), 'utf8')
+    .replace(/^import .*;\r?\n/gm, '').replace('export default Views;', 'globalThis.Views = Views;');
+  let release, calls = 0, finished = false;
+  const context = vm.createContext({ Zotero: { logError() {}, ItemTreeManager: {
+    unregisterColumns: () => { calls++; return new Promise(resolve => { release = resolve; }); }
+  } } });
+  vm.runInContext(source, context);
+  const view = new context.Views();
+  view._registeredColumnKeys.add('citation');
+  const first = view.dispose();
+  const second = view.dispose().then(() => { finished = true; });
+  await new Promise(resolve => setImmediate(resolve));
+  try { assert.equal(finished, false); assert.equal(calls, 1); }
+  finally { release?.(); await Promise.all([first, second]); }
+});
+
 test('late column registration waits for its shutdown cleanup before completing', async () => {
   const source = fs.readFileSync(path.join(__dirname, '../src/modules/views.mjs'), 'utf8')
     .replace(/^import .*;\r?\n/gm, '').replace('export default Views;', 'globalThis.Views = Views;');
