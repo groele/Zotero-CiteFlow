@@ -40,12 +40,18 @@ CiteFlow follows a modular, decoupled architecture:
    - `NativeRuntime`: Host adapter providing safe patch wrappers (`runtime.patch(owner, key, ref, wrapper)`) with automatic reference counting and unregistering.
    - `hooks.mjs`: Manages lifecycle (`onStartup`, `onShutdown`, `onMainWindowLoad`, `onMainWindowUnload`). Binds windows safely without mutating `globalThis`.
 3. **Citation Coordinator (`src/modules/citation.mjs`)**:
-   Lightweight Facade that orchestrates specialized subsystems:
-   - `word-integration.mjs`: Transparently hooks `Zotero.Integration.execCommand` and `getSession`, resolves active Word document names, and monitors sessions.
-   - `citation-model.mjs`: Pure algorithm calculating document order (`getSortedItemIDs`), session cache with cryptographic signatures, and citation plain-text formatting (note style vs inline).
-   - `collection-manager.mjs`: Manages temporary Word document collections, transactionally synchronizes item changes, and safely purges stale or orphan artifacts without touching user data.
-   - `tag-manager.mjs`: Maintains `/Citations` tags on cited user-library items, respects `item.isEditable()` and read-only libraries, manages rollback on save failure, and handles tag renames.
-   - `diagnostics.mjs`: Telemetry, diagnostics, health checks, and slow-operation thresholds.
+   Organized into 11 strict architectural domain sections with complete JSDoc annotations:
+   - Section 1: Constants & Preference Keys
+   - Section 2: Constructor & Subsystem Initialization (`_initSessionTracking`, `_initDiagnosticsAndTelemetry`, `_bindPublicApi`, `_initPreferencesAndConfig`, `_initWordIntegrationState`, `_initTimersAndDebounce`)
+   - Section 3: Telemetry, Metrics & Health Diagnostics (`logError`, `_bumpDebugCounter`, `_recordPerf`, `assertHealth`, `getHealthSummary`, `getPerformanceStats`)
+   - Section 4: Configuration & State Serialization (`applyPreferences`, `_loadKeySet`, `_loadManagedTagState`, `_saveManagedTagIDs`)
+   - Section 5: Document Name Sanitization & Formatting (`_sanitizeFolderName`, `_getDocumentDisplayName`, `_getPendingCollectionName`)
+   - Section 6: Temporary Collection Lifecycle & Cleanup (`clearStaleArtifacts`, `initCollection`, `syncCollectionItems`)
+   - Section 7: Word Process Hooks & Integration Engine (`listener`, `_installWordIntegrationHooks`, `ensureSession`, `_renameCollection`)
+   - Section 8: Citation Order Calculation & Signature Cache (`getSortedItemIDs`, `_getSortedCache`, `_setSortedCache`, `cleanupSessionState`)
+   - Section 9: Citation Tag Governance & Read-Only Protection (`syncCitationTags`, `_syncCitationTags`, `scheduleCitationTagSync`, `_isWritableCitationItem`)
+   - Section 10: Citation Plain-Text Formatting & Tree View Refresh (`updateCitations`, `_applyCitations`, `refreshSessionCitations`, `scheduleItemsViewRefresh`)
+   - Section 11: Lifecycle Teardown & Resource Disposal (`clear`, `_performClear`)
 4. **UI & Window View Adapter (`src/modules/views.mjs`, `src/modules/cite.mjs`, `src/modules/drop-target.mjs`)**:
    - `createCitationColumn`: Registers native custom column in `Zotero.ItemTreeManager`.
    - `dragCite`: Listens to item drag events, verifies drop target via `resolveWordDropTarget` (Windows Win32 ctypes), and triggers citation insertion.

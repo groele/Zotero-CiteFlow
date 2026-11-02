@@ -5,7 +5,7 @@
         {
           "version": "13.0.0",
           "update_link": "https://github.com/groele/Zotero-CiteFlow/releases/download/v13.0.0/zotero-citeflow-13.0.0.xpi",
-          "update_hash": "sha256:72c7573bd13944874166c276fa4f874a9224b2478e533cdaf9c6cc2b3e518f3b",
+          "update_hash": "sha256:965fb06fe6c73fc619ddb49c3c6233ab7c0ec7c376d1bcc40f6395c3974cce0f",
           "applications": {
             "zotero": {
               "strict_min_version": "10.0",

@@ -3,13 +3,19 @@
 ## 13.0.0 (2026-11-02) — Major Architectural & Quality Milestone
 
 ### 核心重大架构升级 (Major Architecture Decoupling)
-- **微内核服务解耦**：彻底重构历史单体大类（1596 行），划分为五大高内聚低耦合的领域服务模块：
-  - `citation-model.mjs`：纯数学与算法层，负责序号推断、引用格式计算与数据状态映射，纯净无 DOM/UI 依赖；
-  - `collection-manager.mjs`：Word 临时集合生命周期管理，支持文档重命名侦测、集合同步与孤儿集合自动自愈清理；
-  - `tag-manager.mjs`：自动化引用标签治理中心，严格执行 `item.isEditable()` 原生权限防护，只读群组与回收站文献防脏写；
-  - `word-integration.mjs`：Microsoft Word 进程拦截器与文档名称标准化，增强异常恢复与多文档切换鲁棒性；
-  - `diagnostics.mjs`：遥测诊断与健康监控引擎，提供慢操作统计、滑动窗口健康自检与内存安全清理；
-  - `citation.mjs`：轻量级门面协同中心，统一事件总线与外部生命周期对接。
+- **函数级深度治理与 11 大领域分层**：彻底清理历史无序堆砌代码，对全量函数进行分门别类的体系化重构，明确划分 11 大职责领域：
+  - 常量与配置键管理（Section 1）
+  - 构造与子系统细粒度初始化（Section 2: `_initSessionTracking`, `_initDiagnosticsAndTelemetry`, `_bindPublicApi`, `_initPreferencesAndConfig`, `_initWordIntegrationState`, `_initTimersAndDebounce`）
+  - 遥测诊断、指标统计与健康自检（Section 3: `logError`, `_bumpDebugCounter`, `_recordPerf`, `assertHealth`, `getHealthSummary`, `getPerformanceStats`）
+  - 配置读取、数值限幅与状态持久化（Section 4: `applyPreferences`, `_loadKeySet`, `_loadManagedTagState`, `_saveManagedTagIDs`）
+  - Word 文档路径解析与名称规范化（Section 5: `_sanitizeFolderName`, `_getDocumentDisplayName`, `_getPendingCollectionName`）
+  - 临时引文集合生命周期与孤儿资产治理（Section 6: `clearStaleArtifacts`, `initCollection`, `syncCollectionItems`）
+  - Word 进程拦截器与集成轮询引擎（Section 7: `listener`, `_installWordIntegrationHooks`, `ensureSession`, `_renameCollection`）
+  - 文档引文顺序推断与签名缓存（Section 8: `getSortedItemIDs`, `_getSortedCache`, `_setSortedCache`, `cleanupSessionState`）
+  - 自动化引用标签治理与只读保护（Section 9: `syncCitationTags`, `_syncCitationTags`, `scheduleCitationTagSync`, `_isWritableCitationItem`）
+  - 格式化引文生成与列表刷新（Section 10: `updateCitations`, `_applyCitations`, `refreshSessionCitations`, `scheduleItemsViewRefresh`）
+  - 完整生命周期销毁与资源重置（Section 11: `clear`, `_performClear`）
+- **剔除无用死代码**：彻底清理历史孤立未引用文件，保证每一个模块与函数均具备严密的调用链路与 100% 自动化测试覆盖。
 
 ### 视觉与无障碍标杆 (Settings Grid & Visual Standards)
 - **三级 40px 黄金基准对齐**：全面贯彻 Zotero Flow 2026-11-02 设置规范：

@@ -1,7 +1,16 @@
 import { config } from "../config.mjs";
 import { getString } from "./locale.mjs";
 import { resolveWordDropTarget } from "./drop-target.mjs";
+
+// ============================================================================
+// Section 1: Views Coordinator Definition & Window State
+// ============================================================================
+
 var Views = class {
+  /**
+   * Initializes view coordinator for a Zotero window.
+   * @param {Window|null} [win=null] - Optional specific window instance
+   */
   constructor(win = null) {
     this._window = win;
     this._patchDisposers = [];
@@ -13,13 +22,43 @@ var Views = class {
     this._iconNodeStates = /* @__PURE__ */ new Map();
   }
 
-  get pane() { return this._window?.ZoteroPane ?? Zotero.getActiveZoteroPane?.() ?? globalThis.ZoteroPane; }
-  get document() { return this._window?.document ?? globalThis.document; }
-  get window() { return this._window ?? Zotero.getMainWindow?.() ?? globalThis.window; }
+  /**
+   * Resolves the active ZoteroPane instance.
+   * @type {object}
+   */
+  get pane() {
+    return this._window?.ZoteroPane ?? Zotero.getActiveZoteroPane?.() ?? globalThis.ZoteroPane;
+  }
+
+  /**
+   * Resolves the active document instance.
+   * @type {Document}
+   */
+  get document() {
+    return this._window?.document ?? globalThis.document;
+  }
+
+  /**
+   * Resolves the active window instance.
+   * @type {Window}
+   */
+  get window() {
+    return this._window ?? Zotero.getMainWindow?.() ?? globalThis.window;
+  }
+
+  /**
+   * Computes an indexed lookup cache from collection keys and item IDs to active sessions.
+   * Invalidation is governed by api.sessionRevision.
+   * @param {object} api - Coordinator API object
+   * @returns {object} Indexed session cache
+   * @private
+   */
   _getSessionIndex(api) {
     const sessions = api.sessions || {};
     const revision = api.sessionRevision;
-    if (Number.isSafeInteger(revision) && this._index?.sessions === sessions && this._index.revision === revision) return this._index;
+    if (Number.isSafeInteger(revision) && this._index?.sessions === sessions && this._index.revision === revision) {
+      return this._index;
+    }
     const index = { sessions, revision, byKey: new Map(), byItem: new Map() };
     for (const session of Object.values(sessions)) {
       const key = session?.collection?.key;
@@ -37,6 +76,13 @@ var Views = class {
     this._index = index;
     return index;
   }
+
+  /**
+   * Resolves the formatted plain citation text for a library item.
+   * Prioritizes selected collections, then active Word session, then unique item match.
+   * @param {number|string} itemID - Zotero item ID
+   * @returns {string} Formatted citation string or empty string
+   */
   getCitationText(itemID) {
     try {
       const api = Zotero.ZoteroCitation?.api || {};
@@ -46,12 +92,16 @@ var Views = class {
       let selected = [];
       try {
         if (getSelected) selected = getSelected.call(pane.getSelectedCollections ? pane : pane.collectionsView) || [];
-      } catch (error) { runtime.log("Cannot resolve citation collection selection", error); }
+      } catch (error) {
+        runtime.log("Cannot resolve citation collection selection", error);
+      }
       const wordSessions = new Set();
       for (const collection of selected) {
         let candidates = index.byKey.get(collection?.key) || [];
         if (collection.libraryID == null && candidates.length !== 1) continue;
-        if (collection.libraryID != null) candidates = candidates.filter(session => session.collection.libraryID == null || session.collection.libraryID === collection.libraryID);
+        if (collection.libraryID != null) {
+          candidates = candidates.filter(session => session.collection.libraryID == null || session.collection.libraryID === collection.libraryID);
+        }
         for (const session of candidates) wordSessions.add(session);
       }
       if (wordSessions.size) {
@@ -69,6 +119,14 @@ var Views = class {
     }
   }
 
+  // ============================================================================
+  // Section 2: Tree Column Registration & Lifecycle
+  // ============================================================================
+
+  /**
+   * Registers the "citation" column with Zotero.ItemTreeManager.
+   * @returns {Promise<void>}
+   */
   async createCitationColumn() {
     if (this._disposed) {
       return;
@@ -89,8 +147,6 @@ var Views = class {
         if (data == "") {
           return span;
         } else {
-          // 保留 updateCitations 生成的文档顺序前缀，例如
-          // "1: (Author, Year)"；脚注样式则直接显示 "1"。
           span.innerText = data ?? "";
           return span;
         }
@@ -104,12 +160,67 @@ var Views = class {
         this._registeredColumnKeys.add(registeredKey);
       }
     }
-    // Shutdown may race with the asynchronous registration call. Do not
-    // leave a column behind when registration completes after disposal.
     if (this._disposed || addon.data.alive === false) {
       await this._unregisterCitationColumns();
     }
   }
+
+  /**
+   * Unregisters all tracked citation columns asynchronously.
+   * @returns {Promise<void>}
+   * @private
+   */
+  async _unregisterCitationColumns() {
+    const keys = [...(this._registeredColumnKeys || [])];
+    this._registeredColumnKeys?.clear();
+    if (!keys.length) return this._columnCleanup;
+    const previous = this._columnCleanup;
+    this._columnCleanup = (async () => {
+      if (previous) await previous;
+      try {
+        const manager = Zotero.ItemTreeManager;
+        if (typeof manager.unregisterColumns === "function") await manager.unregisterColumns(keys);
+        else if (typeof manager.unregisterColumn === "function") await Promise.all(keys.map(key => manager.unregisterColumn(key)));
+      } catch (error) {
+        Zotero.logError(error);
+      }
+    })();
+    return this._columnCleanup;
+  }
+
+  /**
+   * Retrieves column metadata from the active itemsView for CiteFlow keys.
+   * @param {string} dataKey - Column data key
+   * @returns {object|null} Column metadata or null
+   */
+  getColumnInfo(dataKey) {
+    try {
+      const columns = typeof this.pane.itemsView._getColumns === "function"
+        ? this.pane.itemsView._getColumns()
+        : typeof this.pane.itemsView.getColumns === "function" ? this.pane.itemsView.getColumns()
+        : this.pane.itemsView._columns || [];
+      const ownedKeys = new Set([
+        dataKey,
+        `${config.addonID}-${dataKey}`,
+        `zoterocitation@polygon.org-${dataKey}`,
+        ...(this._registeredColumnKeys || []),
+        ...(addon.data.views?._registeredColumnKeys || [])
+      ]);
+      const columnInfo = columns.find((i) => typeof i?.dataKey === "string" && ownedKeys.has(i.dataKey));
+      return columnInfo;
+    } catch {
+      return null;
+    }
+  }
+
+  // ============================================================================
+  // Section 3: Tree View Context Preparation & Empty-Library Guard
+  // ============================================================================
+
+  /**
+   * Prepares the window itemsView by awaiting load, sort context, and patching _resetColumns.
+   * @returns {Promise<void>}
+   */
   async prepareWindow() {
     for (let attempt = 0; !this.pane?.itemsView && attempt < 200; attempt++) {
       if (this._disposed || addon.data.alive === false || this.window?.closed) return;
@@ -119,9 +230,7 @@ var Views = class {
     const itemsView = this.pane?.itemsView;
     if (!itemsView) throw new Error("Zotero item tree did not initialize");
     await itemsView.waitForLoad?.();
-    // uiReady can precede the initial library selection in Zotero 10. A
-    // custom-column notification at that point sorts a view with every
-    // built-in column disabled because its collection context is missing.
+
     for (let attempt = 0; Array.isArray(itemsView.collectionTreeRows)
       && !itemsView.collectionTreeRows.length && attempt < 200; attempt++) {
       if (this._disposed || addon.data.alive === false || this.window?.closed) return;
@@ -135,8 +244,6 @@ var Views = class {
     if (this._disposed || addon.data.alive === false || this.window?.closed) return;
     if (this._columnResetGuard || typeof itemsView._resetColumns !== "function") return;
     const restore = runtime.patch(itemsView, "_resetColumns", config.addonRef, original => function(...args) {
-      // Zotero 10's empty-library view can have no virtualized table. Keep
-      // the column cache invalidated without refreshing a missing table.
       if (!this.tree) {
         this._columnsId = null;
         return new Promise((resolve, reject) => this.forceUpdate(async () => {
@@ -149,13 +256,34 @@ var Views = class {
     this._columnResetGuard = true;
     this._patchDisposers.push(restore);
   }
+
+  // ============================================================================
+  // Section 4: Drag Citation & Word Target Interception
+  // ============================================================================
+
+  /**
+   * Checks whether drag-to-cite feature is enabled and active.
+   * @returns {boolean}
+   * @private
+   */
   _dragEnabled() {
     return !this._disposed && addon.data.alive !== false
       && Zotero.Prefs.get("extensions.zotero.zoterocitation.dragCite.enable", true) !== false;
   }
+
+  /**
+   * Probes the native process under cursor to determine if the target is Microsoft Word.
+   * @returns {"word-confirmed"|"non-word"|"unknown"}
+   * @private
+   */
   _resolveDropTarget() {
     return resolveWordDropTarget();
   }
+
+  /**
+   * Displays a transient notice when a drop target cannot be confirmed as Word.
+   * @private
+   */
   _notifyUnknownDropTarget() {
     const now = Date.now();
     if (now - this._lastUnknownDropNotice < 15000) return;
@@ -169,49 +297,17 @@ var Views = class {
       Zotero.logError(error);
     }
   }
-  dispose() {
-    this._disposed = true;
-    this._dragItems = null;
-    const cleanup = action => {
-      try { action(); } catch (error) { Zotero.logError(error); }
-    };
-    if (this._dragEndHandler) cleanup(() => this.document.removeEventListener("dragend", this._dragEndHandler, true));
-    this._dragEndHandler = null;
-    for (const [iconNode, state] of this._iconNodeStates || []) {
-      cleanup(() => this._restoreIconNode(iconNode, state));
-    }
-    this._iconNodeStates?.clear();
-    this._index = null;
-    for (const restore of this._patchDisposers || []) cleanup(restore);
-    this._patchDisposers = [];
-    const pending = this._unregisterCitationColumns();
-    this._window = null;
-    return pending;
-  }
-  async _unregisterCitationColumns() {
-    const keys = [...(this._registeredColumnKeys || [])];
-    this._registeredColumnKeys?.clear();
-    if (!keys.length) return this._columnCleanup;
-    const previous = this._columnCleanup;
-    this._columnCleanup = (async () => {
-      if (previous) await previous;
-      try {
-        const manager = Zotero.ItemTreeManager;
-        if (typeof manager.unregisterColumns === "function") await manager.unregisterColumns(keys);
-        else if (typeof manager.unregisterColumn === "function") await Promise.all(keys.map(key => manager.unregisterColumn(key)));
-      } catch (error) { Zotero.logError(error); }
-    })();
-    return this._columnCleanup;
-  }
+
+  /**
+   * Installs drag-and-drop citation handler for Microsoft Word.
+   * @returns {Promise<void>}
+   */
   async dragCite() {
     if (this._dragEndHandler || this._disposed || addon.data.alive === false
       || Zotero.Prefs.get("extensions.zotero.zoterocitation.dragCite.enable", true) === false) return;
     this._dragEndHandler = (event) => {
       const items = this._dragItems;
       this._dragItems = null;
-      // Word can report dropEffect="none" after a real drop. Identify the
-      // process under the native cursor instead of inferring a target from
-      // Gecko's effect or coordinates in a DPI-dependent screen space.
       if (!items?.length || !this._dragEnabled() || !event.dataTransfer
         || event.dataTransfer.mozUserCancelled) return;
       const target = this._resolveDropTarget();
@@ -224,8 +320,6 @@ var Views = class {
       const restore = runtime.patch(this.pane.itemsView, "onDragStart", config.addonRef,
         (original) => (event, row) => {
           this._dragItems = null;
-          // Match Zotero's native onDragStart: the row under the pointer must
-          // become the selection before collecting items for the citation.
           const selection = this.pane.itemsView.selection;
           if (this._dragEnabled() && Number.isInteger(row) && selection
             && !selection.isSelected(row)) selection.select(row);
@@ -245,6 +339,15 @@ var Views = class {
       throw error;
     }
   }
+
+  // ============================================================================
+  // Section 5: Collection Icon Patching & Visual State Management
+  // ============================================================================
+
+  /**
+   * Patches collectionsView.renderItem to display the Word icon for CiteFlow temporary collections.
+   * @returns {Promise<void>}
+   */
   async patchIcon() {
     try {
       const view = this;
@@ -282,6 +385,12 @@ var Views = class {
       runtime.log("[Views] Failed to patch citation collection icon:", error);
     }
   }
+
+  /**
+   * Caches original visual properties of an icon DOM node before patching.
+   * @param {Element} iconNode - Cell icon element
+   * @private
+   */
   _rememberIconNode(iconNode) {
     this._iconNodeStates ??= new Map();
     for (const node of this._iconNodeStates.keys()) {
@@ -297,12 +406,17 @@ var Views = class {
       hadPublications: iconNode.classList?.contains("icon-publications") === true
     });
   }
+
+  /**
+   * Restores an icon node to its pre-patch visual state.
+   * @param {Element} iconNode - Cell icon element
+   * @param {object} [state] - Cached visual state
+   * @private
+   */
   _restoreIconNode(iconNode, state = this._iconNodeStates?.get(iconNode)) {
     if (!iconNode || !state) {
       return;
     }
-    // CSSStyleDeclaration may serialize the value with quotes, so compare
-    // the stable chrome URL rather than the exact serialized spelling.
     if (String(iconNode.style?.backgroundImage || "").includes(`/content/icons/word.png`)) {
       iconNode.style.backgroundImage = state.backgroundImage;
     }
@@ -315,24 +429,34 @@ var Views = class {
       else iconNode.classList.remove("icon-publications");
     }
   }
-  getColumnInfo(dataKey) {
-    try {
-      const columns = typeof this.pane.itemsView._getColumns === "function"
-        ? this.pane.itemsView._getColumns()
-        : typeof this.pane.itemsView.getColumns === "function" ? this.pane.itemsView.getColumns()
-        : this.pane.itemsView._columns || [];
-      const ownedKeys = new Set([
-        dataKey,
-        `${config.addonID}-${dataKey}`,
-        `zoterocitation@polygon.org-${dataKey}`,
-        ...(this._registeredColumnKeys || []),
-        ...(addon.data.views?._registeredColumnKeys || [])
-      ]);
-      const columnInfo = columns.find((i) => typeof i?.dataKey === "string" && ownedKeys.has(i.dataKey));
-      return columnInfo;
-    } catch {
-      return null;
+
+  // ============================================================================
+  // Section 6: Cleanup & Teardown
+  // ============================================================================
+
+  /**
+   * Disposes the view coordinator, listeners, patched nodes, and registered columns.
+   * @returns {Promise<void>}
+   */
+  dispose() {
+    this._disposed = true;
+    this._dragItems = null;
+    const cleanup = action => {
+      try { action(); } catch (error) { Zotero.logError(error); }
+    };
+    if (this._dragEndHandler) cleanup(() => this.document.removeEventListener("dragend", this._dragEndHandler, true));
+    this._dragEndHandler = null;
+    for (const [iconNode, state] of this._iconNodeStates || []) {
+      cleanup(() => this._restoreIconNode(iconNode, state));
     }
+    this._iconNodeStates?.clear();
+    this._index = null;
+    for (const restore of this._patchDisposers || []) cleanup(restore);
+    this._patchDisposers = [];
+    const pending = this._unregisterCitationColumns();
+    this._window = null;
+    return pending;
   }
 };
+
 export default Views;
