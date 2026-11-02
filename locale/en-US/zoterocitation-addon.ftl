@@ -32,6 +32,6 @@ zoterocitation-settings-version-desc-label = Release Notes
 zoterocitation-settings-version-desc = Decoupled architecture; 40px golden alignment settings grid; Zotero 10–12 forward-looking compatibility
 zoterocitation-settings-build-date-label = Build Date
 zoterocitation-settings-package-label = Package
-zoterocitation-settings-package-link = Download CiteFlow 12.6.0
+zoterocitation-settings-package-link = Download CiteFlow 13.0.0
 zoterocitation-settings-repo-label = Repository
 zoterocitation-settings-repo-link = GitHub · Zotero-CiteFlow

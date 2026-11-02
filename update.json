@@ -3,9 +3,9 @@
     "citeflow@groele": {
       "updates": [
         {
-          "version": "12.6.0",
-          "update_link": "https://github.com/groele/Zotero-CiteFlow/releases/download/v12.6.0/zotero-citeflow-12.6.0.xpi",
-          "update_hash": "sha256:e1b49f3f025bc84e3fbeaecb4e789674c1291431ea25edcac1e469919389a425",
+          "version": "13.0.0",
+          "update_link": "https://github.com/groele/Zotero-CiteFlow/releases/download/v13.0.0/zotero-citeflow-13.0.0.xpi",
+          "update_hash": "sha256:72c7573bd13944874166c276fa4f874a9224b2478e533cdaf9c6cc2b3e518f3b",
           "applications": {
             "zotero": {
               "strict_min_version": "10.0",

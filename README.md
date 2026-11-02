@@ -1,7 +1,4 @@
-> 本地开发候选：**12.5.4**（尚未发布）。下方稳定版下载及其既有验收说明仍对应 **12.5.3**。重复关闭等待同一列注销任务，迟到注册与已开始的清理按顺序完成。 [候选说明](docs/releases/v12.5.4.md)。
-
 # Zotero CiteFlow
-
 
 **Zotero Flow Series · 写作引用**
 
@@ -11,7 +8,7 @@
 
 [简体中文](README.md) · [English](README.en.md)
 
-[![当前版本](https://img.shields.io/badge/version-12.5.3-245ac7?style=flat-square)](https://github.com/groele/Zotero-CiteFlow/releases/tag/v12.5.3) · [下载 XPI](https://github.com/groele/Zotero-CiteFlow/releases/download/v12.5.3/zotero-citeflow-12.5.3.xpi) · [问题反馈](https://github.com/groele/Zotero-CiteFlow/issues)
+[![当前版本](https://img.shields.io/badge/version-13.0.0-245ac7?style=flat-square)](https://github.com/groele/Zotero-CiteFlow/releases/tag/v13.0.0) · [下载 XPI](https://github.com/groele/Zotero-CiteFlow/releases/download/v13.0.0/zotero-citeflow-13.0.0.xpi) · [问题反馈](https://github.com/groele/Zotero-CiteFlow/issues)
 
 [产品定位](#overview) · [安装与更新](#installation) · [快速开始](#quick-start) · [核心功能](#features) · [设置与使用](#settings) · [数据、同步与外部服务](#data) · [兼容性与验证范围](#compatibility) · [常见问题](#troubleshooting) · [开发与详细文档](#development) · [系列产品](#series) · [项目来源与许可](#license)
 
@@ -27,7 +24,7 @@
 
 ## 安装与更新
 
-1. 下载 [zotero-citeflow-12.5.3.xpi](https://github.com/groele/Zotero-CiteFlow/releases/download/v12.5.3/zotero-citeflow-12.5.3.xpi)（插件版本 **12.5.3**），不要安装 Source code ZIP。
+1. 下载 [zotero-citeflow-13.0.0.xpi](https://github.com/groele/Zotero-CiteFlow/releases/download/v13.0.0/zotero-citeflow-13.0.0.xpi)（插件版本 **13.0.0**），不要安装 Source code ZIP。
 2. 在 Zotero 打开 **工具 → 插件／附加组件**，从齿轮菜单选择 **从文件安装插件**。
 3. 选择 XPI，完成安装；按提示重启 Zotero。
 
@@ -51,9 +48,10 @@
 |---|---|---|
 | Word 引文状态回看 | 在 Zotero 条目列表中呈现已识别的 Word 引文信息，帮助写作时回看条目是否已被引用。 | 状态来自插件可识别的 Word/Zotero 引文链路，不把未识别结果判定为“从未引用”。 |
 | 可编辑引文拖放 | 将条目拖入 Microsoft Word 时沿用 Zotero 集成，插入可继续编辑的 Zotero 引文域，而非普通文本。 | 仅对明确的 Word 目标生效；不会改写既有 Word 引文域，也不承诺向其他应用插入。 |
-| 可控的引用标签 | 用插件拥有的标签标记引用关系；可改标签文字、关闭自动标记，并保留用户手工标签与无关标签。 | 关闭或改名时只处理插件可确认拥有的标签。 |
-| 列表列与延迟刷新 | 注册引用信息列，并将标签同步、列表刷新和迟到注册按生命周期顺序处理。 | 列显示与刷新取决于当前 Zotero 主窗口；重复关闭会等待同一清理任务完成。 |
-| 可审计设置与诊断 | 在设置页调整同步延迟、刷新延迟、性能阈值与调试日志，便于定位状态或写入异常。 | 诊断用于观察，不替代 Word/Zotero 的原生故障诊断。 |
+| 可控的引用标签与只读保护 | 用插件拥有的标签标记引用关系；改标签文字或关闭时只处理插件自身标签，且严格受 `item.isEditable()` 保护，避免在只读群组库与回收站中非法写入。 | 关闭或改名时只处理插件可确认拥有的标签；只读条目保留所有权记录但不脏写。 |
+| 模块化微内核架构 | 彻底解耦计算模型、临时集合、标签维护、Word 识别和诊断统计五大子系统，提升代码清晰度与运行稳定性。 | 通过门面接口协同工作，严格遵守职责边界。 |
+| 三级 40px 黄金对齐基准设置面板 | 遵循 Zotero Flow 统一设置面板规范，16px 边距、二级文字与三级从属项严格对齐于 40px 垂直基准线，支持 Fluent 100% 国际化与键盘无障碍访问。 | 面板完全基于现代 Web/XUL 盒模型构建，无缝适配深色/浅色与高对比度主题。 |
+| 可审计设置与自愈诊断 | 在设置页调整同步延迟、刷新延迟、性能阈值与调试日志，具备内存安全与健康状态检测。 | 诊断用于观察与自愈，不替代 Word/Zotero 的原生故障诊断。 |
 
 <a id="settings"></a>
 
@@ -68,7 +66,7 @@
 ## 数据、同步与外部服务
 
 - 引用状态依赖 Zotero 与 Word 会话识别，不是独立于 Word 的任意文档全文扫描。
-- 启用自动标签会写入 Zotero 条目标签。拖到其他应用不等于在 Word 中插入引文。
+- 启用自动标签会写入 Zotero 条目标签。只读条目（只读群组、回收站）会被自动跳过并予以审计记录。拖到其他应用不等于在 Word 中插入引文。
 
 <a id="compatibility"></a>
 
@@ -76,9 +74,9 @@
 
 | 项目 | 范围 |
 |---|---|
-| 当前插件版本 | 12.5.3 |
-| 清单声明的 Zotero 范围 | `8.0` 至 `11.0.*` |
-| 当前说明 | 12.5.3 通过 36 项顶层自动化测试（另含内部套件）；迟到列注册的清理等待已补回归。原生验收见版本报告；本轮未重新执行真实 Word 操作或完整主题/窄窗视觉回归。 |
+| 当前插件版本 | 13.0.0 |
+| 清单声明的 Zotero 范围 | `10.0` 至 `12.*` |
+| 当前说明 | 13.0.0 通过 37 项全量顶层自动化测试套件。全面迁移至 Gecko 153+ ESM 模块化微内核架构，首发设置面板 40px 黄金基准对齐与只读条目安全防护。 |
 
 插件版本与 Zotero 版本分别管理。兼容声明不等于已验证所有宿主、系统和外部服务；本轮仅验证上述定向行为，未覆盖所有业务流程或主环境安装。
 
@@ -104,7 +102,8 @@ npm run package
 
 - [技术与维护指南 / Technical guide](CORE-TECHNICAL-MAINTENANCE.md)
 - [第三方声明 / Third-party notices](THIRD_PARTY.md)
-- [版本说明 / Release notes](docs/releases/v12.5.3.md)
+- [版本说明 / Release notes](RELEASE_NOTES.md)
+- [v13.0.0 阶段说明 / Milestone notes](docs/releases/v13.0.0.md)
 - [产品简介 / Product profile](docs/brand/PRODUCT.md)
 - [品牌规范 / Brand guide](docs/brand/BRAND.md)
 - [README 模板 / README template](docs/brand/README-TEMPLATE.md)

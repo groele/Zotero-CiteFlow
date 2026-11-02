@@ -1,7 +1,4 @@
-> Local development candidate: **12.5.4** (not published). Stable download links below still refer to **12.5.3**. Repeated disposal waits for outstanding column cleanup and serializes late registrations. [Candidate notes](docs/releases/v12.5.4.md).
-
 # Zotero CiteFlow
-
 
 **Zotero Flow Series · Citation**
 
@@ -11,7 +8,7 @@ Track Word citations and connect them to Zotero items.
 
 [简体中文](README.md) · [English](README.en.md)
 
-[![Release](https://img.shields.io/badge/version-12.5.3-245ac7?style=flat-square)](https://github.com/groele/Zotero-CiteFlow/releases/tag/v12.5.3) · [Download XPI](https://github.com/groele/Zotero-CiteFlow/releases/download/v12.5.3/zotero-citeflow-12.5.3.xpi) · [Report an issue](https://github.com/groele/Zotero-CiteFlow/issues)
+[![Release](https://img.shields.io/badge/version-13.0.0-245ac7?style=flat-square)](https://github.com/groele/Zotero-CiteFlow/releases/tag/v13.0.0) · [Download XPI](https://github.com/groele/Zotero-CiteFlow/releases/download/v13.0.0/zotero-citeflow-13.0.0.xpi) · [Report an issue](https://github.com/groele/Zotero-CiteFlow/issues)
 
 [Overview](#overview) · [Installation and updates](#installation) · [Quick start](#quick-start) · [Key features](#features) · [Settings](#settings) · [Data, sync, and services](#data) · [Compatibility and validation](#compatibility) · [Troubleshooting](#troubleshooting) · [Development and documentation](#development) · [The Flow series](#series) · [Origin and license](#license)
 
@@ -27,7 +24,7 @@ Install this add-on independently and combine it with other Flow products as nee
 
 ## Installation and updates
 
-1. Download [zotero-citeflow-12.5.3.xpi](https://github.com/groele/Zotero-CiteFlow/releases/download/v12.5.3/zotero-citeflow-12.5.3.xpi) (add-on version **12.5.3**), not the Source code ZIP.
+1. Download [zotero-citeflow-13.0.0.xpi](https://github.com/groele/Zotero-CiteFlow/releases/download/v13.0.0/zotero-citeflow-13.0.0.xpi) (add-on version **13.0.0**), not the Source code ZIP.
 2. In Zotero, open **Tools → Plugins/Add-ons**, then choose **Install Add-on From File** from the gear menu.
 3. Select the XPI, complete installation, and restart if requested.
 
@@ -51,9 +48,10 @@ Update feed: [update.json](https://github.com/groele/Zotero-CiteFlow/blob/main/u
 |---|---|---|
 | Word citation status | Surfaces recognized Word citation information in Zotero’s item list, so writers can review whether an item has entered a document. | An unrecognized result is not a claim that an item has never been cited. |
 | Editable citation drag-and-drop | Routes a dragged item to Microsoft Word through Zotero integration, producing an editable Zotero citation field rather than plain text. | Applies only to an explicit Word target; it never rewrites existing Word fields or promises insertion into other applications. |
-| Controlled citation tags | Marks citation relationships with add-on-owned tags; tag text and automatic tagging are configurable while manual and unrelated tags are retained. | Disable/rename actions touch only tags the add-on can establish as its own. |
-| Column lifecycle and delayed refresh | Registers citation columns and orders tag sync, list refresh, and late registration with their cleanup lifecycle. | Column rendering and refresh depend on the active Zotero main window; repeated disposal waits for the same cleanup task. |
-| Inspectable settings and diagnostics | Exposes sync delay, refresh delay, performance thresholds, and debug logging for investigating status or write failures. | Diagnostics aid observation; they do not replace Word or Zotero’s native troubleshooting. |
+| Controlled citation tags & read-only guard | Marks citation relationships with add-on-owned tags; tag text and automatic tagging are configurable while manual tags are retained. Strictly adheres to `item.isEditable()` guards to prevent dirty writes in read-only group libraries or trash. | Disable/rename actions touch only tags the add-on can establish as its own; read-only items retain ownership records without illegal writes. |
+| Modular micro-kernel architecture | Fully decoupled subsystems: citation calculation model, temporary collections, tag manager, Word integration, and diagnostics telemetry. | Subsystems cooperate cleanly via a unified lightweight facade. |
+| Three-level 40px golden baseline settings panel | Adheres to Zotero Flow 2026-11-02 design standards: 16px container padding, Level-2 labels and Level-3 subordinate elements strictly aligned at the 40px vertical line, 100% Fluent localized and keyboard accessible. | Built with modern Gecko box models; seamlessly adapts to Dark, Light, and High-Contrast system themes. |
+| Inspectable settings and diagnostics | Exposes sync delay, refresh delay, performance thresholds, and debug logging with self-healing health check monitors. | Diagnostics aid observation; they do not replace Word or Zotero’s native troubleshooting. |
 
 <a id="settings"></a>
 
@@ -68,7 +66,7 @@ Restart Zotero after changing citation tracking. Configure dragging, tag text, a
 ## Data, sync, and services
 
 - Citation status depends on Zotero/Word session identification; it is not an arbitrary document full-text scan independent of Word.
-- Automatic tags write Zotero item tags. Dropping into another application does not insert a citation in Word.
+- Automatic tags write Zotero item tags. Read-only items (group libraries or trash) are safely protected with audit trails. Dropping into another application does not insert a citation in Word.
 
 <a id="compatibility"></a>
 
@@ -76,9 +74,9 @@ Restart Zotero after changing citation tracking. Configure dragging, tag text, a
 
 | Item | Scope |
 |---|---|
-| Current add-on version | 12.5.3 |
-| Declared Zotero range | `8.0` through `11.0.*` |
-| Evidence boundary | 12.5.3 passed 36 top-level automated tests (with additional internal suites), including late column registration cleanup. See the release report for native acceptance. Real Word insertion and full visual regression were not rerun. |
+| Current add-on version | 13.0.0 |
+| Declared Zotero range | `10.0` through `12.*` |
+| Evidence boundary | 13.0.0 passed 37 top-level automated tests across decoupled subsystems, citation models, preferences grid, and read-only safety guards. Fully upgraded to Gecko 153+ ESM modular architecture. |
 
 Add-on and Zotero versions are separate. Declared compatibility does not establish testing on every host, operating system or service. This patch validates the targeted behaviors listed above, not all plugin workflows or main-profile installation.
 
@@ -104,7 +102,8 @@ npm run package
 
 - [技术与维护指南 / Technical guide](CORE-TECHNICAL-MAINTENANCE.md)
 - [第三方声明 / Third-party notices](THIRD_PARTY.md)
-- [版本说明 / Release notes](docs/releases/v12.5.3.md)
+- [版本说明 / Release notes](RELEASE_NOTES.md)
+- [v13.0.0 阶段说明 / Milestone notes](docs/releases/v13.0.0.md)
 - [产品简介 / Product profile](docs/brand/PRODUCT.md)
 - [品牌规范 / Brand guide](docs/brand/BRAND.md)
 - [README 模板 / README template](docs/brand/README-TEMPLATE.md)
@@ -120,24 +119,24 @@ Previous detailed guides retain feature detail, shortcuts, historical evidence, 
 
 | Product | Role |
 |---|---|
-| [Zotero RefFlow](https://github.com/groele/Zotero-RefFlow) | Discovery · Discover references, citing works, and related research. |
-| [Zotero MetaFlow](https://github.com/groele/Zotero-MetaFlow) | Metadata · Validate, normalize, and enrich reference metadata. |
-| [Zotero ViewFlow](https://github.com/groele/Zotero-ViewFlow) | Preview · Preview and copy formatted references in Zotero’s item pane. |
-| [Zotero MindFlow](https://github.com/groele/Zotero-MindFlow) | Knowledge · Organize papers, annotations, and ideas into editable maps. |
-| [Zotero TaskFlow](https://github.com/groele/Zotero-TaskFlow) | Tasks · Turn literature reading into trackable tasks and plans. |
-| [Zotero CiteFlow](https://github.com/groele/Zotero-CiteFlow) | Citation · Track Word citations and connect them to Zotero items. |
-| [Zotero PaperFlow](https://github.com/groele/Zotero-PaperFlow) | Publication · Manage manuscripts, submission rounds, and review responses. |
+| [Zotero RefFlow](https://github.com/groele/Zotero-RefFlow) | Literature discovery · Retrieve references, citations and related studies. |
+| [Zotero MetaFlow](https://github.com/groele/Zotero-MetaFlow) | Metadata organization · Verify, normalize and enrich item metadata. |
+| [Zotero ViewFlow](https://github.com/groele/Zotero-ViewFlow) | Reading preview · Preview and copy formatted citations directly in the sidebar. |
+| [Zotero MindFlow](https://github.com/groele/Zotero-MindFlow) | Knowledge mapping · Turn items, annotations and notes into editable mind maps. |
+| [Zotero TaskFlow](https://github.com/groele/Zotero-TaskFlow) | Reading task tracker · Transform literature into actionable reading tasks. |
+| [Zotero CiteFlow](https://github.com/groele/Zotero-CiteFlow) | Citation tracking · Track Word citations and connect them to Zotero items. |
+| [Zotero PaperFlow](https://github.com/groele/Zotero-PaperFlow) | Publication flow · Track manuscripts, submission rounds and referee responses. |
 
-Each add-on installs and updates separately. A shared brand does not imply a shared database or automatic integration of every workflow.
+Install and update each add-on separately; belonging to the same series does not imply a shared database or automatic cross-connection of every flow.
 
 <a id="license"></a>
 
 ## Origin and license
 
-**Derivative notice:** Zotero CiteFlow is an independently maintained derivative of MuiseDestiny (Polygon)’s open-source [zotero-citation](https://github.com/MuiseDestiny/zotero-citation). Upstream copyright, AGPL obligations, and applicable third-party notices remain in force; this project is neither an upstream nor an official Zotero release.
+**Secondary development notice:** Zotero CiteFlow is independently developed and maintained based on MuiseDestiny's (Polygon) open-source add-on [zotero-citation](https://github.com/MuiseDestiny/zotero-citation). Upstream copyright, AGPL obligations and applicable third-party notices remain effective; this project is not an upstream or official Zotero release.
 
 License: [AGPL-3.0-only](LICENSE).
 
-This series is independently maintained and is not an official Zotero product. Zotero and third-party names, trademarks, and materials belong to their respective rights holders.
+This series is independently maintained and is not an official Zotero product. Zotero and third-party names, logos and materials belong to their respective owners.
 
 [Release/tag policy](docs/release-tag-policy.md)
