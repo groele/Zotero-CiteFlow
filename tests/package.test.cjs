@@ -6,9 +6,10 @@ const path = require('node:path');
 const root = path.join(__dirname, '..');
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
 const product = JSON.parse(fs.readFileSync(path.join(root, 'docs/brand/product.json'), 'utf8'));
+const isCandidateFeed = Boolean(process.env.CITEFLOW_UPDATE_MANIFEST);
 const updateManifestPath = process.env.CITEFLOW_UPDATE_MANIFEST || path.join(root, 'update.json');
 const updateManifest = JSON.parse(fs.readFileSync(updateManifestPath, 'utf8'));
-const isLocalCandidate = product.releaseStatus === 'candidate' && product.version === manifest.version;
+const isLocalCandidate = !isCandidateFeed && product.releaseStatus === 'candidate' && product.version === manifest.version;
 const runtimeFiles = [
   'bootstrap.js',
   'LICENSE',
@@ -62,8 +63,8 @@ test('published update manifest remains separate from an unpublished local candi
   assert.equal(update.update_link,
     `https://github.com/groele/Zotero-CiteFlow/releases/download/v${update.version}/zotero-citeflow-${update.version}.xpi`);
   assert.match(update.update_hash, /^sha256:[a-f0-9]{64}$/i);
-  assert.equal(update.applications.zotero.strict_min_version, '8.0');
-  assert.equal(update.applications.zotero.strict_max_version, '11.0.*');
+  assert.equal(update.applications.zotero.strict_min_version, '10.0');
+  assert.equal(update.applications.zotero.strict_max_version, '12.*');
 });
 
 test('both locale files define the citation column title', () => {

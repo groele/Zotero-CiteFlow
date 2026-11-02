@@ -11,7 +11,7 @@
   max-width: 780px;
   min-width: 0;
   margin-inline: auto;
-  padding: 10px 14px 28px;
+  padding: 12px 16px 28px;
   color: var(--flow-pref-text);
   font-family: system-ui, "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
   font-size: 14px;
@@ -24,8 +24,9 @@
   box-sizing: border-box;
 }
 
+/* Header */
 #zoterocitation-settings .zoterocitation-settings-header {
-  margin: 0 0 12px;
+  margin: 0 0 14px;
   padding: 0 0 10px;
   border-bottom: 1px solid var(--flow-pref-divider);
 }
@@ -58,16 +59,18 @@
 }
 
 #zoterocitation-settings .zoterocitation-description {
-  margin: 3px 0 8px;
+  margin: 4px 0 8px;
   color: var(--flow-pref-muted);
   font-size: 13px;
   line-height: 1.6;
 }
 
+/* Card Container: Base x=0, horizontal padding-inline: 16px */
 #zoterocitation-settings .zoterocitation-setting-card {
   display: block;
   min-width: 0;
-  margin: 0 0 10px;
+  margin: 0 0 12px;
+  padding: 16px;
   border: 1px solid var(--flow-pref-border);
   border-radius: 9px;
   background: var(--flow-pref-surface);
@@ -77,17 +80,20 @@
   margin-bottom: 0;
 }
 
+/* Level 1: Full-width Header with 16px padding */
 #zoterocitation-settings .zoterocitation-section-title {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 11px 13px;
+  margin: -16px;
+  padding: 12px 16px;
   cursor: pointer;
   font-size: 14px;
   font-weight: 600;
-  line-height: 1.6;
+  line-height: 1.5;
   list-style: none;
+  user-select: none;
 }
 
 #zoterocitation-settings .zoterocitation-section-title::-webkit-details-marker {
@@ -123,11 +129,13 @@
   border-bottom: 1px solid var(--flow-pref-divider);
 }
 
+/* Card Content: Starts at Content Line (x=16px inside card) */
 #zoterocitation-settings .zoterocitation-setting-content {
   min-width: 0;
-  padding: 4px 13px 10px;
+  padding-top: 14px;
 }
 
+/* Level 2: Primary Control - Icon at 0px, Text at 24px (40px Golden Line) */
 #zoterocitation-settings .zoterocitation-option {
   display: grid;
   grid-template-columns: 16px minmax(0, 1fr);
@@ -135,7 +143,7 @@
   justify-items: start;
   column-gap: 8px;
   min-width: 0;
-  margin-block: 7px 1px;
+  margin-block: 8px 2px;
   line-height: 1.6;
   text-align: left;
 }
@@ -156,10 +164,14 @@
   text-align: left;
 }
 
+/* Level 3: Subordinate Help Description - Enforce 24px indent to align at 40px line */
 #zoterocitation-settings .zoterocitation-setting-content > .zoterocitation-description {
-  margin: 1px 0 8px 24px;
+  margin: 2px 0 10px 24px;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
+/* Level 3: Number & Text Inputs Grid */
 #zoterocitation-settings .zoterocitation-number-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(7em, 12em);
@@ -167,11 +179,13 @@
   gap: 8px 12px;
   min-width: 0;
   margin-block: 8px;
+  margin-inline-start: 24px;
 }
 
 #zoterocitation-settings .zoterocitation-number-row label {
   min-width: 0;
   color: var(--flow-pref-text);
+  font-size: 13px;
   overflow-wrap: anywhere;
 }
 
@@ -188,6 +202,7 @@
   color: var(--flow-pref-text);
   background: Field;
   font: inherit;
+  font-size: 13px;
   line-height: 1.4;
 }
 
@@ -199,13 +214,14 @@
 #zoterocitation-settings button {
   min-height: 32px;
   margin: 0;
-  padding: 6px 10px;
+  padding: 6px 12px;
   border: 1px solid var(--flow-pref-border);
   border-radius: 4px;
   color: var(--flow-pref-text);
   background: Field;
   font: inherit;
   font-size: 13px;
+  cursor: pointer;
 }
 
 #zoterocitation-settings input:focus-visible,
@@ -215,25 +231,28 @@
   outline-offset: 2px;
 }
 
+/* Footer Controls */
 #zoterocitation-settings .zoterocitation-settings-footer {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px 12px;
-  margin: 10px 0 14px;
+  margin: 14px 0 16px;
 }
 
 #zoterocitation-settings-status {
   margin: 0;
   color: var(--flow-pref-muted);
+  font-size: 13px;
   line-height: 1.6;
 }
 
+/* Version Information Card - Aligned with Standard Card Grid */
 #zoterocitation-settings .zoterocitation-version-info {
   display: grid;
-  gap: 3px;
+  gap: 4px;
   margin-top: 14px;
-  padding: 10px 13px;
+  padding: 12px 16px;
   border: 1px solid var(--flow-pref-border);
   border-radius: 9px;
   color: var(--flow-pref-text);
@@ -243,7 +262,7 @@
 }
 
 #zoterocitation-settings .zoterocitation-version-title {
-  margin-bottom: 2px;
+  margin-bottom: 4px;
   color: var(--flow-pref-text);
   font-size: 14px;
   font-weight: 600;
@@ -278,12 +297,17 @@
 
 @media (max-width: 520px) {
   #zoterocitation-settings {
-    padding-inline: 8px;
+    padding-inline: 10px;
   }
 
   #zoterocitation-settings .zoterocitation-number-row {
     grid-template-columns: minmax(0, 1fr);
+    margin-inline-start: 0;
     gap: 4px;
+  }
+
+  #zoterocitation-settings .zoterocitation-setting-content > .zoterocitation-description {
+    margin-inline-start: 0;
   }
 
   #zoterocitation-settings .zoterocitation-version-row {

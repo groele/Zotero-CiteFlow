@@ -145,7 +145,7 @@ async function startup({ id, version, resourceURI, rootURI }, reason) {
          * Global variables for plugin code.
          * The `_globalThis` is the global root variable of the plugin sandbox environment
          * and all child variables assigned to it is globally accessible.
-         * See `src/index.ts` for details.
+         * See `src/index.mjs` for details.
          */
         const ctx = {
             rootURI,

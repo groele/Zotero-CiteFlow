@@ -10,7 +10,7 @@ const result = await build({
   outfile: "chrome/content/scripts/index.js",
   bundle: true,
   format: "iife",
-  target: ["firefox115"],
+  target: ["firefox140"],
   charset: "utf8",
   treeShaking: true,
   minify: false,
@@ -24,4 +24,4 @@ for (const file of result.outputFiles) {
 }
 await fs.mkdir(path.join(root, "dist"), { recursive: true });
 await fs.writeFile(path.join(root, "dist/build-metafile.json"), JSON.stringify(result.metafile, null, 2));
-console.log(`Built ${result.outputFiles[0].contents.length} bytes from ${Object.keys(result.metafile.inputs).length} source modules (esbuild 0.28.2, Firefox 115+).`);
+console.log(`Built ${result.outputFiles[0].contents.length} bytes from ${Object.keys(result.metafile.inputs).length} source modules (esbuild 0.28.2, Firefox 140+ / Gecko 153+).`);
