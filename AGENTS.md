@@ -39,23 +39,25 @@ CiteFlow follows a modular, decoupled architecture:
 2. **Runtime & Hooks (`src/index.mjs`, `src/hooks.mjs`, `src/runtime.mjs`)**:
    - `NativeRuntime`: Host adapter providing safe patch wrappers (`runtime.patch(owner, key, ref, wrapper)`) with automatic reference counting and unregistering.
    - `hooks.mjs`: Manages lifecycle (`onStartup`, `onShutdown`, `onMainWindowLoad`, `onMainWindowUnload`). Binds windows safely without mutating `globalThis`.
-3. **Citation Coordinator (`src/modules/citation.mjs`)**:
-   Organized into 11 strict architectural domain sections with complete JSDoc annotations:
-   - Section 1: Constants & Preference Keys
-   - Section 2: Constructor & Subsystem Initialization (`_initSessionTracking`, `_initDiagnosticsAndTelemetry`, `_bindPublicApi`, `_initPreferencesAndConfig`, `_initWordIntegrationState`, `_initTimersAndDebounce`)
-   - Section 3: Telemetry, Metrics & Health Diagnostics (`logError`, `_bumpDebugCounter`, `_recordPerf`, `assertHealth`, `getHealthSummary`, `getPerformanceStats`)
-   - Section 4: Configuration & State Serialization (`applyPreferences`, `_loadKeySet`, `_loadManagedTagState`, `_saveManagedTagIDs`)
-   - Section 5: Document Name Sanitization & Formatting (`_sanitizeFolderName`, `_getDocumentDisplayName`, `_getPendingCollectionName`)
-   - Section 6: Temporary Collection Lifecycle & Cleanup (`clearStaleArtifacts`, `initCollection`, `syncCollectionItems`)
-   - Section 7: Word Process Hooks & Integration Engine (`listener`, `_installWordIntegrationHooks`, `ensureSession`, `_renameCollection`)
-   - Section 8: Citation Order Calculation & Signature Cache (`getSortedItemIDs`, `_getSortedCache`, `_setSortedCache`, `cleanupSessionState`)
-   - Section 9: Citation Tag Governance & Read-Only Protection (`syncCitationTags`, `_syncCitationTags`, `scheduleCitationTagSync`, `_isWritableCitationItem`)
-   - Section 10: Citation Plain-Text Formatting & Tree View Refresh (`updateCitations`, `_applyCitations`, `refreshSessionCitations`, `scheduleItemsViewRefresh`)
-   - Section 11: Lifecycle Teardown & Resource Disposal (`clear`, `_performClear`)
-4. **UI & Window View Adapter (`src/modules/views.mjs`, `src/modules/cite.mjs`, `src/modules/drop-target.mjs`)**:
-   - `createCitationColumn`: Registers native custom column in `Zotero.ItemTreeManager`.
-   - `dragCite`: Listens to item drag events, verifies drop target via `resolveWordDropTarget` (Windows Win32 ctypes), and triggers citation insertion.
-   - `patchIcon`: Customizes Word collection icon in collections tree.
+3. **Citation Coordinator (`src/modules/citation.mjs` & `src/modules/citation/*.mjs`)**:
+   Partitioned into 11 focused, single-responsibility domain modules (all under 350 lines):
+   - `src/modules/citation/constants.mjs`: Temporary collection relation markers & preference keys
+   - `src/modules/citation/initializers.mjs`: Subsystem initializers (`_initSessionTracking`, `_initDiagnosticsAndTelemetry`, `_bindPublicApi`, `_initPreferencesAndConfig`, `_initWordIntegrationState`, `_initTimersAndDebounce`)
+   - `src/modules/citation/telemetry.mjs`: Telemetry, metrics & health diagnostics (`logError`, `_bumpDebugCounter`, `_recordPerf`, `assertHealth`, `getHealthSummary`, `getPerformanceStats`, `_sanitizeCheckWaitMs`)
+   - `src/modules/citation/preferences-sync.mjs`: Configuration & state serialization (`applyPreferences`, `_loadKeySet`, `_loadManagedTagState`, `_loadLegacyManagedTagState`, `_saveManagedTagIDs`)
+   - `src/modules/citation/document-naming.mjs`: Document name sanitization & formatting (`_sanitizeFolderName`, `_getDocumentDisplayName`, `_getPendingCollectionName`, `_invalidateSessionIndex`, `_setActiveSessionID`)
+   - `src/modules/citation/collections.mjs`: Temporary collection lifecycle & cleanup (`clearStaleArtifacts`, `_clearStaleTemporaryCollections`, `_clearStaleManagedSearches`, `initCollection`, `syncCollectionItems`, `_renameCollection`)
+   - `src/modules/citation/word-integration.mjs`: Word process hooks & polling engine (`listener`, `_pruneMissingWordSessions`, `_syncActiveWordSessions`, `_installWordIntegrationHooks`, `_createGetSessionWrapper`, `_createExecCommandWrapper`, `_handlePostExecCommand`, `ensureSession`)
+   - `src/modules/citation/order-cache.mjs`: Citation order calculation & signature cache (`getSortedItemIDs`, `_getSortedCache`, `_setSortedCache`, `cleanupSessionState`)
+   - `src/modules/citation/tag-governance.mjs`: Citation tag governance & read-only protection (`syncCitationTags`, `_syncCitationTags`, `_syncActiveItemCitationTag`, `_removeUncitedManagedItemTag`, `scheduleCitationTagSync`, `_isWritableCitationItem`)
+   - `src/modules/citation/formatting.mjs`: Citation plain-text formatting & tree view refresh (`updateCitations`, `_applyCitations`, `_formatItemPlainCitation`, `refreshSessionCitations`, `_readSessionCitationSnapshots`, `_handleEmptyCitationSnapshot`, `scheduleItemsViewRefresh`)
+   - `src/modules/citation/lifecycle.mjs`: Lifecycle teardown & resource disposal (`clear`, `_performClear`, `_restoreWordIntegrationHooks`, `_resetInternalTrackingMaps`)
+4. **UI & Window View Adapter (`src/modules/views.mjs`, `src/modules/views/*.mjs`, `src/modules/cite.mjs`, `src/modules/drop-target.mjs`)**:
+   - `src/modules/views/session-index.mjs`: Session lookup index & `getCitationText` resolution (`_getSessionIndex`, `_resolveSelectedCollectionSessions`, `getCitationText`)
+   - `src/modules/views/column-manager.mjs`: Column metadata lookup (`getColumnInfo`)
+   - `src/modules/views/window-prep.mjs`: Item tree readiness & empty-library guard (`prepareWindow`)
+   - `src/modules/views/drag-cite.mjs`: Drag-and-drop Word citation handler (`dragCite`, `_resolveDropTarget`, `_notifyUnknownDropTarget`)
+   - `src/modules/views/icon-patch.mjs`: Word collection icon customization & DOM restoration (`patchIcon`, `_rememberIconNode`, `_restoreIconNode`)
 5. **Preferences (`src/modules/preferences.mjs`, `chrome/content/preferences.*`)**:
    - Strictly conforms to the **2026-11-02 Settings Three-Level Hierarchy and Edge Distance Standard Specification**:
      - Card container horizontal baseline: `x = 0px`, standard `padding-inline: 16px`;

@@ -27,7 +27,7 @@
     return addon.data.locale?.[key] || `${config.addonRef}-${key}`;
   }
 
-  // src/modules/citation.mjs
+  // src/modules/citation/constants.mjs
   var TEMP_COLLECTION_RELATION = "dc:relation";
   var TEMP_COLLECTION_MARKER = "https://github.com/groele/Zotero-CiteFlow#temporary-collection";
   var LEGACY_UPSTREAM_TEMP_COLLECTION_MARKER = "https://github.com/MuiseDestiny/zotero-citation#temporary-collection";
@@ -35,6 +35,8 @@
   var TEMP_SEARCH_KEYS_PREF = "zotero-citation.managedSearchKeys";
   var MANAGED_TAG_IDS_PREF = "zotero-citation.managedCitationTagIDs";
   var MANAGED_TAG_STATE_PREF = "zotero-citation.managedCitationTagState";
+
+  // src/modules/citation.mjs
   var Citation = class {
     /**
      * Constructs the CiteFlow citation coordinator and initializes all domain subsystems.
@@ -169,9 +171,6 @@
         if (this._debugEnabled) runtime.log(...args);
       };
     }
-    // ============================================================================
-    // Section 3: Telemetry, Metrics & Health Diagnostics
-    // ============================================================================
     /**
      * Records an error message and optional cause into bounded diagnostic error history.
      * @param {string} message - Descriptive error message
@@ -318,6 +317,15 @@
       };
     }
     /**
+     * Clamps an optional check wait duration to [0, 600000] ms.
+     * @param {number} waitMs - Raw wait duration
+     * @returns {number} Safe wait duration in milliseconds
+     * @private
+     */
+    _sanitizeCheckWaitMs(waitMs) {
+      return Number.isFinite(Number(waitMs)) ? Math.max(0, Math.min(6e5, Math.trunc(Number(waitMs)))) : 0;
+    }
+    /**
      * Runs an asynchronous health summary check with optional reset and delay.
      * @param {{ reset?: boolean, waitMs?: number }} [options]
      * @returns {Promise<object>}
@@ -325,7 +333,7 @@
     async runHealthSummaryCheck(options = {}) {
       const { reset = false, waitMs = 0 } = options || {};
       if (reset) this.resetDebugStats();
-      const safeWaitMs = Number.isFinite(Number(waitMs)) ? Math.max(0, Math.min(6e5, Math.trunc(Number(waitMs)))) : 0;
+      const safeWaitMs = this._sanitizeCheckWaitMs(waitMs);
       if (safeWaitMs > 0) await Zotero.Promise.delay(safeWaitMs);
       return { ...this.getHealthSummary(), meta: { resetPerformed: !!reset, waitedMs: safeWaitMs } };
     }
@@ -337,7 +345,7 @@
     async runHealthCheck(options = {}) {
       const { reset = true, waitMs = 0 } = options || {};
       if (reset) this.resetDebugStats();
-      const safeWaitMs = Number.isFinite(Number(waitMs)) ? Math.max(0, Math.min(6e5, Math.trunc(Number(waitMs)))) : 0;
+      const safeWaitMs = this._sanitizeCheckWaitMs(waitMs);
       if (safeWaitMs > 0) await Zotero.Promise.delay(safeWaitMs);
       const result = this.assertHealth();
       return { ...result, meta: { resetPerformed: !!reset, waitedMs: safeWaitMs, checkedAt: Date.now() } };
@@ -381,13 +389,10 @@
     async runPerformanceCheck(options = {}) {
       const { reset = false, waitMs = 0 } = options || {};
       if (reset) this.resetPerformanceStats();
-      const safeWaitMs = Number.isFinite(Number(waitMs)) ? Math.max(0, Math.min(6e5, Math.trunc(Number(waitMs)))) : 0;
+      const safeWaitMs = this._sanitizeCheckWaitMs(waitMs);
       if (safeWaitMs > 0) await Zotero.Promise.delay(safeWaitMs);
       return { ...this.getPerformanceStats(), meta: { resetPerformed: !!reset, waitedMs: safeWaitMs } };
     }
-    // ============================================================================
-    // Section 4: Configuration & State Serialization
-    // ============================================================================
     /**
      * Reads a boolean preference from Zotero.Prefs safely.
      * @param {string} key - Preference key
@@ -515,6 +520,14 @@
         this.logError("Failed to read managed citation tag state", error);
       }
       if (raw) return { ids: {}, names: {} };
+      return this._loadLegacyManagedTagState();
+    }
+    /**
+     * Migrates legacy array-based managed citation tag IDs from preferences.
+     * @returns {{ ids: object, names: object }}
+     * @private
+     */
+    _loadLegacyManagedTagState() {
       try {
         let rawKeys = Zotero.Prefs.get(MANAGED_TAG_IDS_PREF);
         if (!rawKeys) {
@@ -549,9 +562,6 @@
         return false;
       }
     }
-    // ============================================================================
-    // Section 5: Document Name Sanitization & Formatting
-    // ============================================================================
     /**
      * Strips control characters, collapses whitespace, and clamps folder names to 200 characters.
      * @param {string} rawName - Raw folder name candidate
@@ -612,9 +622,6 @@
       }
       return `${getString("collection-pending")} ${this._pendingCollectionNames.get(sessionID)}`;
     }
-    // ============================================================================
-    // Section 6: Temporary Collection Lifecycle & Cleanup
-    // ============================================================================
     /**
      * Increments the session revision index to invalidate cached view mappings.
      * @private
@@ -642,6 +649,16 @@
      */
     async clearStaleArtifacts() {
       const libraryID = Zotero.Libraries.userLibraryID;
+      await this._clearStaleTemporaryCollections(libraryID);
+      await this._clearStaleManagedSearches(libraryID);
+    }
+    /**
+     * Purges tracked and relation-marked stale temporary citation collections.
+     * @param {number} libraryID - Target user library ID
+     * @returns {Promise<void>}
+     * @private
+     */
+    async _clearStaleTemporaryCollections(libraryID) {
       const collections = Zotero.Collections.getByLibrary(libraryID, true, true);
       const collectionsByKey = new Map(collections.map((c) => [c.key, c]));
       const removedKeys = /* @__PURE__ */ new Set();
@@ -671,6 +688,14 @@
       }
       this._temporaryCollectionKeys = remainingKeys;
       this._saveKeySet(TEMP_COLLECTION_KEYS_PREF, this._temporaryCollectionKeys);
+    }
+    /**
+     * Purges legacy plugin-managed saved searches from the user library.
+     * @param {number} libraryID - Target user library ID
+     * @returns {Promise<void>}
+     * @private
+     */
+    async _clearStaleManagedSearches(libraryID) {
       if (!this._managedSearchKeys?.size) return;
       const searchesByKey = new Map(Zotero.Searches.getByLibrary(libraryID).map((s) => [s.key, s]));
       for (const key of [...this._managedSearchKeys]) {
@@ -740,9 +765,6 @@
         if (add.length) await collection.addItems(add);
       });
     }
-    // ============================================================================
-    // Section 7: Word Process Hooks & Integration Engine
-    // ============================================================================
     /**
      * Associates a session with a document ID and clears obsolete rename timers.
      * @param {string} sessionID - Session identifier
@@ -857,30 +879,8 @@
           }
           if (this._isExecCommandRunning) return;
           const sessions = Zotero.Integration.sessions || {};
-          for (const sessionID in this.sessions) {
-            if (!(sessionID in sessions)) {
-              const missingCount = (this._missingSessionCountBySession[sessionID] || 0) + 1;
-              this._missingSessionCountBySession[sessionID] = missingCount;
-              if (missingCount >= 3) {
-                this.debugLog("[Citation] Session absent for three checks, cleaning up:", sessionID);
-                await this.clearSession(sessionID);
-              }
-            } else {
-              delete this._missingSessionCountBySession[sessionID];
-            }
-          }
-          for (const sessionID in sessions) {
-            const session = sessions[sessionID];
-            if (!/(WinWord|MacWord|Word)/i.test(String(session?.agent || ""))) continue;
-            try {
-              const tracked = await this.ensureSession(sessionID, session);
-              if (!tracked || tracked.pending || !tracked.collection || this._listenerStopped) continue;
-            } catch (error) {
-              this.logError("Cannot initialize a Word citation collection", error);
-              continue;
-            }
-            await this.refreshSessionCitations(sessionID, session);
-          }
+          await this._pruneMissingWordSessions(sessions);
+          await this._syncActiveWordSessions(sessions);
         } catch (e) {
           this.logError("Background citation synchronization failed", e);
         } finally {
@@ -898,6 +898,46 @@
       this._installWordIntegrationHooks();
     }
     /**
+     * Cleans up tracked sessions that have been absent from Zotero.Integration.sessions for 3 ticks.
+     * @param {object} sessions - Active integration sessions map
+     * @returns {Promise<void>}
+     * @private
+     */
+    async _pruneMissingWordSessions(sessions) {
+      for (const sessionID in this.sessions) {
+        if (!(sessionID in sessions)) {
+          const missingCount = (this._missingSessionCountBySession[sessionID] || 0) + 1;
+          this._missingSessionCountBySession[sessionID] = missingCount;
+          if (missingCount >= 3) {
+            this.debugLog("[Citation] Session absent for three checks, cleaning up:", sessionID);
+            await this.clearSession(sessionID);
+          }
+        } else {
+          delete this._missingSessionCountBySession[sessionID];
+        }
+      }
+    }
+    /**
+     * Ensures collections and refreshes citations for all active Word sessions.
+     * @param {object} sessions - Active integration sessions map
+     * @returns {Promise<void>}
+     * @private
+     */
+    async _syncActiveWordSessions(sessions) {
+      for (const sessionID in sessions) {
+        const session = sessions[sessionID];
+        if (!/(WinWord|MacWord|Word)/i.test(String(session?.agent || ""))) continue;
+        try {
+          const tracked = await this.ensureSession(sessionID, session);
+          if (!tracked || tracked.pending || !tracked.collection || this._listenerStopped) continue;
+        } catch (error) {
+          this.logError("Cannot initialize a Word citation collection", error);
+          continue;
+        }
+        await this.refreshSessionCitations(sessionID, session);
+      }
+    }
+    /**
      * Installs interception wrappers on Zotero.Integration.execCommand and getSession.
      * @private
      */
@@ -910,25 +950,47 @@
       }
       this._isExecCommandHooked = true;
       this._bumpDebugCounter("execHookInstalled");
-      const citationModule = this;
       const originalExecCommand = this._originalExecCommand;
       const originalGetSession = Zotero.Integration.getSession;
       if (typeof originalGetSession === "function") {
-        const getSessionWrapper = async function(app, doc, agent, command) {
-          const candidates = [...citationModule._execCommandBindings.values()].filter((binding2) => binding2.agent === agent && binding2.command === command);
-          const binding = candidates.length === 1 ? candidates[0] : null;
-          const result = await originalGetSession.apply(this, arguments);
-          if (!citationModule._listenerStopped && binding && !binding.ambiguous && citationModule._execCommandBindings.get(binding.bindingID) === binding) {
-            const sessionID = result?.[0]?.sessionID;
-            if (typeof sessionID === "string" && sessionID) binding.sessionID = sessionID;
-          }
-          return result;
-        };
+        const getSessionWrapper = this._createGetSessionWrapper(originalGetSession);
         this._originalGetSession = originalGetSession;
         this._getSessionWrapper = getSessionWrapper;
         Zotero.Integration.getSession = getSessionWrapper;
       }
-      const execCommandWrapper = async function(agent, command, docId) {
+      const execCommandWrapper = this._createExecCommandWrapper(originalExecCommand, originalGetSession);
+      this._execCommandWrapper = execCommandWrapper;
+      Zotero.Integration.execCommand = execCommandWrapper;
+    }
+    /**
+     * Creates an interception wrapper for Zotero.Integration.getSession to bind command sessions.
+     * @param {Function} originalGetSession - Host getSession function
+     * @returns {Function} Wrapped getSession function
+     * @private
+     */
+    _createGetSessionWrapper(originalGetSession) {
+      const citationModule = this;
+      return async function(app, doc, agent, command) {
+        const candidates = [...citationModule._execCommandBindings.values()].filter((binding2) => binding2.agent === agent && binding2.command === command);
+        const binding = candidates.length === 1 ? candidates[0] : null;
+        const result = await originalGetSession.apply(this, arguments);
+        if (!citationModule._listenerStopped && binding && !binding.ambiguous && citationModule._execCommandBindings.get(binding.bindingID) === binding) {
+          const sessionID = result?.[0]?.sessionID;
+          if (typeof sessionID === "string" && sessionID) binding.sessionID = sessionID;
+        }
+        return result;
+      };
+    }
+    /**
+     * Creates an interception wrapper for Zotero.Integration.execCommand to track Word commands.
+     * @param {Function} originalExecCommand - Host execCommand function
+     * @param {Function} [originalGetSession] - Host getSession function
+     * @returns {Function} Wrapped execCommand function
+     * @private
+     */
+    _createExecCommandWrapper(originalExecCommand, originalGetSession) {
+      const citationModule = this;
+      return async function(agent, command, docId) {
         if (citationModule._listenerStopped || !/(WinWord|MacWord|Word)/i.test(String(agent || ""))) {
           return originalExecCommand.apply(this, arguments);
         }
@@ -957,44 +1019,7 @@
           citationModule._isExecCommandRunning = citationModule._execCommandDepth > 0;
         }
         try {
-          if (citationModule._listenerStopped || binding.ambiguous) return result;
-          if (!binding.sessionID && typeof originalGetSession !== "function") {
-            const currentAfter = integration?.currentSession;
-            const currentAfterID = typeof currentAfter?.sessionID === "string" ? currentAfter.sessionID : null;
-            const sessionsAfter = Object.keys(integration?.sessions || {});
-            const pendingBindings = [...citationModule._execCommandBindings.values()].filter((candidate) => candidate.bindingID !== bindingID);
-            if (currentAfterID && currentAfterID !== boundBefore && pendingBindings.length === 0 && sessionsAfter.includes(currentAfterID)) {
-              binding.sessionID = currentAfterID;
-            }
-          }
-          const sessionID = binding.sessionID;
-          if (!sessionID) {
-            citationModule.debugLog("[Citation execCommand] session binding unavailable; skipping collection rename");
-            return result;
-          }
-          const targetName = citationModule._getDocumentDisplayName(docId);
-          if (targetName) {
-            citationModule._rememberSessionDocument(sessionID, docId);
-          } else if (docId) {
-            citationModule._clearCollectionRenameRetry(sessionID);
-            delete citationModule._docIdBySession[sessionID];
-            if (citationModule.sessions?.[sessionID]) delete citationModule.sessions[sessionID].docId;
-            delete addon.data.docId;
-          }
-          citationModule._setActiveSessionID(sessionID);
-          if (targetName) addon.data.docId = docId;
-          const _session = await citationModule.ensureSession(sessionID);
-          if (!_session?.collection || citationModule._listenerStopped) return result;
-          const nativeSession = integration.sessions?.[sessionID];
-          if (nativeSession) await citationModule.refreshSessionCitations(sessionID, nativeSession);
-          if (targetName && _session.collection.name !== targetName) {
-            try {
-              await citationModule._renameCollection(sessionID, targetName, docId);
-            } catch (error) {
-              citationModule.logError(`Failed to rename Word citation collection for ${sessionID}`, error);
-              citationModule._scheduleCollectionRenameRetry(sessionID, targetName, docId);
-            }
-          }
+          await citationModule._handlePostExecCommand(binding, boundBefore, originalGetSession, docId);
         } catch (error) {
           citationModule.logError("Post-command citation refresh failed", error);
         } finally {
@@ -1002,8 +1027,56 @@
         }
         return result;
       };
-      this._execCommandWrapper = execCommandWrapper;
-      Zotero.Integration.execCommand = execCommandWrapper;
+    }
+    /**
+     * Synchronizes session document name, collection, and citations after a Word command completes.
+     * @param {object} binding - Command binding record
+     * @param {string|null} boundBefore - Session ID prior to command execution
+     * @param {Function} [originalGetSession] - Host getSession function
+     * @param {string} docId - Word document path/URI
+     * @returns {Promise<void>}
+     * @private
+     */
+    async _handlePostExecCommand(binding, boundBefore, originalGetSession, docId) {
+      if (this._listenerStopped || binding.ambiguous) return;
+      const integration = Zotero.Integration;
+      if (!binding.sessionID && typeof originalGetSession !== "function") {
+        const currentAfter = integration?.currentSession;
+        const currentAfterID = typeof currentAfter?.sessionID === "string" ? currentAfter.sessionID : null;
+        const sessionsAfter = Object.keys(integration?.sessions || {});
+        const pendingBindings = [...this._execCommandBindings.values()].filter((candidate) => candidate.bindingID !== binding.bindingID);
+        if (currentAfterID && currentAfterID !== boundBefore && pendingBindings.length === 0 && sessionsAfter.includes(currentAfterID)) {
+          binding.sessionID = currentAfterID;
+        }
+      }
+      const sessionID = binding.sessionID;
+      if (!sessionID) {
+        this.debugLog("[Citation execCommand] session binding unavailable; skipping collection rename");
+        return;
+      }
+      const targetName = this._getDocumentDisplayName(docId);
+      if (targetName) {
+        this._rememberSessionDocument(sessionID, docId);
+      } else if (docId) {
+        this._clearCollectionRenameRetry(sessionID);
+        delete this._docIdBySession[sessionID];
+        if (this.sessions?.[sessionID]) delete this.sessions[sessionID].docId;
+        delete addon.data.docId;
+      }
+      this._setActiveSessionID(sessionID);
+      if (targetName) addon.data.docId = docId;
+      const trackedSession = await this.ensureSession(sessionID);
+      if (!trackedSession?.collection || this._listenerStopped) return;
+      const nativeSession = integration.sessions?.[sessionID];
+      if (nativeSession) await this.refreshSessionCitations(sessionID, nativeSession);
+      if (targetName && trackedSession.collection.name !== targetName) {
+        try {
+          await this._renameCollection(sessionID, targetName, docId);
+        } catch (error) {
+          this.logError(`Failed to rename Word citation collection for ${sessionID}`, error);
+          this._scheduleCollectionRenameRetry(sessionID, targetName, docId);
+        }
+      }
     }
     /**
      * Ensures tracking state and temporary collection exist for a given Word session.
@@ -1045,9 +1118,6 @@
         if (this._initializationTasks.get(sessionID) === task) this._initializationTasks.delete(sessionID);
       }
     }
-    // ============================================================================
-    // Section 8: Citation Sorting & Signature Cache
-    // ============================================================================
     /**
      * Formats a cache key string for session item sort signatures.
      * @param {string} sessionID - Session identifier
@@ -1162,9 +1232,6 @@
       const cacheKey = this._getSortedCacheKey(sessionID);
       delete this._sortedCacheBySession[cacheKey];
     }
-    // ============================================================================
-    // Section 9: Tag Governance & Read-Only Protection
-    // ============================================================================
     /**
      * Constructs a deterministic signature from an array of item IDs.
      * @param {number[]} sortedItemIDs - Array of item IDs
@@ -1239,6 +1306,118 @@
       return true;
     }
     /**
+     * Checks whether an item currently carries the specified tag name.
+     * @param {Zotero.Item} item - Zotero item
+     * @param {string} tagName - Tag string to check
+     * @returns {boolean}
+     * @private
+     */
+    _hasItemTag(item, tagName) {
+      return typeof item.hasTag === "function" ? item.hasTag(tagName) : (item.getTags?.() || []).some((tag) => (typeof tag === "string" ? tag : tag?.tag) === tagName);
+    }
+    /**
+     * Resolves a Zotero item synchronously or asynchronously by ID.
+     * @param {number} itemID - Zotero item ID
+     * @returns {Promise<Zotero.Item|null>}
+     * @private
+     */
+    async _resolveItemByID(itemID) {
+      let item = Zotero.Items.get(itemID);
+      if (!item && typeof Zotero.Items.getAsync === "function") {
+        item = await Zotero.Items.getAsync(itemID);
+      }
+      return item || null;
+    }
+    /**
+     * Collects the union of cited item IDs across all active Word sessions when tags are enabled.
+     * @returns {Set<number>}
+     * @private
+     */
+    _collectActiveCitedIDSet() {
+      const activeCitedIDSet = /* @__PURE__ */ new Set();
+      if (Zotero.Prefs.get("extensions.zotero.zoterocitation.citationTags.enable", true) !== false) {
+        for (const sid in this._sessionCitedIDs) {
+          const ids = this._sessionCitedIDs[sid] || [];
+          ids.forEach((id) => activeCitedIDSet.add(Number(id)));
+        }
+      }
+      return activeCitedIDSet;
+    }
+    /**
+     * Adds or renames the managed citation tag on a single actively cited item with rollback safety.
+     * @param {Zotero.Item} item - Target Zotero item
+     * @param {number} itemID - Item ID
+     * @param {string} tagName - Target citation tag name
+     * @returns {Promise<{ touched: boolean, skipped: boolean, ownershipChanged: boolean }>}
+     * @private
+     */
+    async _syncActiveItemCitationTag(item, itemID, tagName) {
+      let touched = false;
+      let ownershipChanged = false;
+      const oldName = this._managedCitationTagIDs[itemID] && (this._managedCitationTagNames[itemID] || "/Citations");
+      const removeOld = oldName && oldName !== tagName && this._hasItemTag(item, oldName);
+      const addNew = !this._hasItemTag(item, tagName);
+      if (removeOld && typeof item.removeTag !== "function" || addNew && typeof item.addTag !== "function") {
+        return { touched: false, skipped: true, ownershipChanged: false };
+      }
+      if (removeOld || addNew) {
+        if (removeOld) item.removeTag(oldName);
+        if (addNew) item.addTag(tagName);
+        try {
+          await item.saveTx();
+          touched = true;
+          ownershipChanged = true;
+        } catch (saveError) {
+          try {
+            if (addNew) item.removeTag(tagName);
+            if (removeOld) item.addTag(oldName);
+          } catch (rollbackError) {
+            this.logError(`Failed to roll back citation tag change for item ${itemID}`, rollbackError);
+          }
+          throw saveError;
+        }
+      }
+      if (oldName && oldName !== tagName) {
+        delete this._managedCitationTagIDs[itemID];
+        delete this._managedCitationTagNames[itemID];
+        ownershipChanged = true;
+      }
+      if (addNew || oldName === tagName && this._managedCitationTagIDs[itemID]) {
+        this._managedCitationTagIDs[itemID] = true;
+        this._managedCitationTagNames[itemID] = tagName;
+      }
+      return { touched, skipped: false, ownershipChanged };
+    }
+    /**
+     * Removes the plugin-managed citation tag from a single item that is no longer cited.
+     * @param {Zotero.Item} item - Target Zotero item
+     * @param {number} itemID - Item ID
+     * @returns {Promise<{ touched: boolean, ownershipChanged: boolean }>}
+     * @private
+     */
+    async _removeUncitedManagedItemTag(item, itemID) {
+      let touched = false;
+      const managedName = this._managedCitationTagNames[itemID] || "/Citations";
+      const hasCitationTag = this._hasItemTag(item, managedName);
+      if (hasCitationTag && typeof item.removeTag === "function") {
+        item.removeTag(managedName);
+        try {
+          await item.saveTx();
+          touched = true;
+        } catch (saveError) {
+          try {
+            if (typeof item.addTag === "function") item.addTag(managedName);
+          } catch (rollbackError) {
+            runtime?.log?.("[Citation syncCitationTags] Failed to roll back tag removal", itemID, rollbackError);
+          }
+          throw saveError;
+        }
+      }
+      delete this._managedCitationTagIDs[itemID];
+      delete this._managedCitationTagNames[itemID];
+      return { touched, ownershipChanged: true };
+    }
+    /**
      * Serializes tag synchronization through a single sequential promise queue.
      * @param {string} sessionID - Session identifier
      * @param {number[]} sortedItemIDs - Cited item IDs
@@ -1259,11 +1438,11 @@
     /**
      * Synchronizes managed citation tags on user items with transactional rollback on save failures.
      * @param {string} sessionID - Session identifier
-     * @param {number[]} sortedItemIDs - Cited item IDs
+     * @param {number[]} _sortedItemIDs - Cited item IDs
      * @returns {Promise<{ complete: boolean, touchedCount: number }>}
      * @private
      */
-    async _syncCitationTags(sessionID, sortedItemIDs) {
+    async _syncCitationTags(sessionID, _sortedItemIDs) {
       if (this._listenerStopped && sessionID !== "__shutdown__") return;
       const tagName = this._citationTagName;
       this._managedCitationTagNames ??= {};
@@ -1276,58 +1455,24 @@
       let ownershipChanged = false;
       this._bumpDebugCounter("syncCitationTagsRuns");
       try {
-        const activeCitedIDSet = /* @__PURE__ */ new Set();
-        if (Zotero.Prefs.get("extensions.zotero.zoterocitation.citationTags.enable", true) !== false) {
-          for (const sid in this._sessionCitedIDs) {
-            const ids = this._sessionCitedIDs[sid] || [];
-            ids.forEach((id) => activeCitedIDSet.add(Number(id)));
-          }
-        }
+        const activeCitedIDSet = this._collectActiveCitedIDSet();
         for (const itemID of activeCitedIDSet) {
           if (!Number.isInteger(itemID) || itemID <= 0) continue;
           try {
-            let item = Zotero.Items.get(itemID);
-            if (!item && typeof Zotero.Items.getAsync === "function") item = await Zotero.Items.getAsync(itemID);
+            const item = await this._resolveItemByID(itemID);
             if (!item) continue;
             if (!this._isWritableCitationItem(item)) {
               if (item.libraryID === Zotero.Libraries?.userLibraryID || this._managedCitationTagIDs[itemID]) skipped = true;
               continue;
             }
             if (Zotero.Prefs.get("extensions.zotero.zoterocitation.citationTags.enable", true) === false || this._citationTagName !== tagName) break;
-            const oldName = this._managedCitationTagIDs[itemID] && (this._managedCitationTagNames[itemID] || "/Citations");
-            const hasTag = (name) => typeof item.hasTag === "function" ? item.hasTag(name) : (item.getTags?.() || []).some((tag) => (typeof tag === "string" ? tag : tag?.tag) === name);
-            const removeOld = oldName && oldName !== tagName && hasTag(oldName);
-            const addNew = !hasTag(tagName);
-            if (removeOld && typeof item.removeTag !== "function" || addNew && typeof item.addTag !== "function") {
+            const res = await this._syncActiveItemCitationTag(item, itemID, tagName);
+            if (res.skipped) {
               skipped = true;
               continue;
             }
-            if (removeOld || addNew) {
-              if (removeOld) item.removeTag(oldName);
-              if (addNew) item.addTag(tagName);
-              try {
-                await item.saveTx();
-                touchedCount += 1;
-                ownershipChanged = true;
-              } catch (saveError) {
-                try {
-                  if (addNew) item.removeTag(tagName);
-                  if (removeOld) item.addTag(oldName);
-                } catch (rollbackError) {
-                  this.logError(`Failed to roll back citation tag change for item ${itemID}`, rollbackError);
-                }
-                throw saveError;
-              }
-            }
-            if (oldName && oldName !== tagName) {
-              delete this._managedCitationTagIDs[itemID];
-              delete this._managedCitationTagNames[itemID];
-              ownershipChanged = true;
-            }
-            if (addNew || oldName === tagName && this._managedCitationTagIDs[itemID]) {
-              this._managedCitationTagIDs[itemID] = true;
-              this._managedCitationTagNames[itemID] = tagName;
-            }
+            if (res.touched) touchedCount += 1;
+            if (res.ownershipChanged) ownershipChanged = true;
             if (touchedCount > 0 && touchedCount % 30 === 0 && touchedCount !== lastYieldedTouchCount) {
               lastYieldedTouchCount = touchedCount;
               await Zotero.Promise.delay(0);
@@ -1342,8 +1487,7 @@
         for (const itemID of managedIDs) {
           if (activeCitedIDSet.has(itemID)) continue;
           try {
-            let item = Zotero.Items.get(itemID);
-            if (!item && typeof Zotero.Items.getAsync === "function") item = await Zotero.Items.getAsync(itemID);
+            const item = await this._resolveItemByID(itemID);
             if (!item) {
               delete this._managedCitationTagIDs[itemID];
               delete this._managedCitationTagNames[itemID];
@@ -1354,25 +1498,9 @@
               skipped = true;
               continue;
             }
-            const managedName = this._managedCitationTagNames[itemID] || "/Citations";
-            const hasCitationTag = typeof item.hasTag === "function" ? item.hasTag(managedName) : (item.getTags?.() || []).some((tag) => (typeof tag === "string" ? tag : tag?.tag) === managedName);
-            if (hasCitationTag && typeof item.removeTag === "function") {
-              item.removeTag(managedName);
-              try {
-                await item.saveTx();
-                touchedCount += 1;
-              } catch (saveError) {
-                try {
-                  if (typeof item.addTag === "function") item.addTag(managedName);
-                } catch (rollbackError) {
-                  runtime?.log?.("[Citation syncCitationTags] Failed to roll back tag removal", itemID, rollbackError);
-                }
-                throw saveError;
-              }
-            }
-            delete this._managedCitationTagIDs[itemID];
-            delete this._managedCitationTagNames[itemID];
-            ownershipChanged = true;
+            const res = await this._removeUncitedManagedItemTag(item, itemID);
+            if (res.touched) touchedCount += 1;
+            if (res.ownershipChanged) ownershipChanged = true;
             if (touchedCount > 0 && touchedCount % 30 === 0 && touchedCount !== lastYieldedTouchCount) {
               lastYieldedTouchCount = touchedCount;
               await Zotero.Promise.delay(0);
@@ -1394,9 +1522,6 @@
       }
       return { complete: !hadFailures && !skipped, touchedCount };
     }
-    // ============================================================================
-    // Section 10: Citation Formatting & Tree View Refresh
-    // ============================================================================
     /**
      * Schedules a debounced session refresh after retry delay.
      * @param {string} sessionID - Session identifier
@@ -1467,6 +1592,58 @@
       }
     }
     /**
+     * Reads citationsByItemID and citationsByIndex from the native Word session, retrying once on transient index mismatch.
+     * @param {object} targetSession - Native Word session
+     * @returns {Promise<{ citationsByItemID: object, citationsByIndex: object, transientMismatch: boolean }>}
+     * @private
+     */
+    async _readSessionCitationSnapshots(targetSession) {
+      let citationsByItemID = targetSession.citationsByItemID;
+      let citationsByIndex = targetSession.citationsByIndex;
+      if (!citationsByItemID || typeof citationsByItemID !== "object") {
+        await targetSession.updateFromDocument(0);
+        citationsByItemID = targetSession.citationsByItemID || {};
+      }
+      if (!citationsByIndex || typeof citationsByIndex !== "object") {
+        await targetSession.updateFromDocument(0);
+        citationsByIndex = targetSession.citationsByIndex || {};
+      }
+      if (Object.keys(citationsByIndex).length === 0 && Object.keys(citationsByItemID).length > 0) {
+        await Zotero.Promise.delay(50);
+        await targetSession.updateFromDocument(0);
+        citationsByIndex = targetSession.citationsByIndex || {};
+        citationsByItemID = targetSession.citationsByItemID || {};
+        if (Object.keys(citationsByIndex).length === 0) {
+          return { citationsByItemID, citationsByIndex, transientMismatch: true };
+        }
+      }
+      return { citationsByItemID, citationsByIndex, transientMismatch: false };
+    }
+    /**
+     * Handles empty citation index snapshots with two-read confirmation before clearing session state.
+     * @param {string} sessionID - Session identifier
+     * @param {object} targetSession - Native Word session
+     * @param {object} citationsByItemID - Current item citation map
+     * @returns {Promise<void>}
+     * @private
+     */
+    async _handleEmptyCitationSnapshot(sessionID, targetSession, citationsByItemID) {
+      const emptyItemMap = Object.keys(citationsByItemID).length === 0;
+      if (!emptyItemMap) {
+        this._emptyReadCountBySession[sessionID] = 0;
+        this._scheduleSessionRefresh(sessionID, targetSession, 250);
+        return;
+      }
+      const emptyReadCount = (this._emptyReadCountBySession[sessionID] || 0) + 1;
+      this._emptyReadCountBySession[sessionID] = emptyReadCount;
+      if (emptyReadCount < 2) {
+        this._scheduleSessionRefresh(sessionID, targetSession, 250);
+        return;
+      }
+      this.scheduleCitationTagSync(sessionID, [], true);
+      await this.updateCitations(sessionID, {}, [], targetSession.styleClass);
+    }
+    /**
      * Refreshes citation data from the Word document and dispatches tag/view updates.
      * @param {string} sessionID - Session identifier
      * @param {object} session - Native Word session object
@@ -1500,42 +1677,14 @@
       }
       refreshState.syncing = true;
       try {
-        let citationsByItemID = targetSession.citationsByItemID;
-        let citationsByIndex = targetSession.citationsByIndex;
-        if (!citationsByItemID || typeof citationsByItemID !== "object") {
-          await targetSession.updateFromDocument(0);
-          citationsByItemID = targetSession.citationsByItemID || {};
-        }
-        if (!citationsByIndex || typeof citationsByIndex !== "object") {
-          await targetSession.updateFromDocument(0);
-          citationsByIndex = targetSession.citationsByIndex || {};
-        }
-        if (Object.keys(citationsByIndex).length === 0 && Object.keys(citationsByItemID).length > 0) {
-          await Zotero.Promise.delay(50);
-          await targetSession.updateFromDocument(0);
-          citationsByIndex = targetSession.citationsByIndex || {};
-          citationsByItemID = targetSession.citationsByItemID || {};
-          if (Object.keys(citationsByIndex).length === 0) {
-            this._emptyReadCountBySession[sessionID] = 0;
-            this._scheduleSessionRefresh(sessionID, targetSession, 250);
-            return;
-          }
+        const { citationsByItemID, citationsByIndex, transientMismatch } = await this._readSessionCitationSnapshots(targetSession);
+        if (transientMismatch) {
+          this._emptyReadCountBySession[sessionID] = 0;
+          this._scheduleSessionRefresh(sessionID, targetSession, 250);
+          return;
         }
         if (Object.keys(citationsByIndex).length === 0) {
-          const emptyItemMap = Object.keys(citationsByItemID).length === 0;
-          if (!emptyItemMap) {
-            this._emptyReadCountBySession[sessionID] = 0;
-            this._scheduleSessionRefresh(sessionID, targetSession, 250);
-            return;
-          }
-          const emptyReadCount = (this._emptyReadCountBySession[sessionID] || 0) + 1;
-          this._emptyReadCountBySession[sessionID] = emptyReadCount;
-          if (emptyReadCount < 2) {
-            this._scheduleSessionRefresh(sessionID, targetSession, 250);
-            return;
-          }
-          this.scheduleCitationTagSync(sessionID, [], true);
-          await this.updateCitations(sessionID, {}, [], targetSession.styleClass);
+          await this._handleEmptyCitationSnapshot(sessionID, targetSession, citationsByItemID);
           return;
         }
         this._emptyReadCountBySession[sessionID] = 0;
@@ -1607,6 +1756,29 @@
       }
     }
     /**
+     * Formats the plain citation label for a single item ID based on document ordinal and style class.
+     * @param {string|number} id - Item ID
+     * @param {Map<number, number>} idIndexMap - Map from item ID to 0-based appearance index
+     * @param {object} citationsByItemID - Citations indexed by item ID
+     * @param {object} oldIdData - Previous session idData map
+     * @param {boolean} isNoteStyle - True when styleClass === "note"
+     * @returns {string} Formatted plain citation label
+     * @private
+     */
+    _formatItemPlainCitation(id, idIndexMap, citationsByItemID, oldIdData, isNoteStyle) {
+      const index = idIndexMap.get(Number(id));
+      if (index === void 0) {
+        const previousValue = oldIdData[id]?.plainCitation;
+        if (previousValue) return previousValue;
+        return isNoteStyle ? "—" : "—: (pending)";
+      }
+      const order = index + 1;
+      if (isNoteStyle) return String(order);
+      const citations = citationsByItemID[id];
+      if (!Array.isArray(citations) || citations.length === 0) return `${order}: (error)`;
+      return `${order}: ` + citations.map((i) => i?.properties?.plainCitation || "(no text)").join(", ");
+    }
+    /**
      * Formats item plain citations and synchronizes session collection items.
      * @param {string} sessionID - Session identifier
      * @param {object} citationsByItemID - Citations indexed by item ID
@@ -1622,24 +1794,13 @@
       const isNoteStyle = styleClass === "note";
       const idIndexMap = new Map(sortedItemIDs.map((id, idx) => [Number(id), idx]));
       const oldIdData = this.sessions[sessionID]?.idData || {};
-      const formatItemPlainCitation = (id) => {
-        const index = idIndexMap.get(Number(id));
-        if (index === void 0) {
-          const previousValue = oldIdData[id]?.plainCitation;
-          if (previousValue) return previousValue;
-          return isNoteStyle ? "—" : "—: (pending)";
-        }
-        const order = index + 1;
-        if (isNoteStyle) return String(order);
-        const citations = citationsByItemID[id];
-        if (!Array.isArray(citations) || citations.length === 0) return `${order}: (error)`;
-        return `${order}: ` + citations.map((i) => i?.properties?.plainCitation || "(no text)").join(", ");
-      };
       const targetData = {};
       for (const id of citationIDKeys) {
         try {
-          targetData[id] = { plainCitation: formatItemPlainCitation(id) };
-        } catch (e) {
+          targetData[id] = {
+            plainCitation: this._formatItemPlainCitation(id, idIndexMap, citationsByItemID, oldIdData, isNoteStyle)
+          };
+        } catch {
           targetData[id] = { plainCitation: "(error)" };
         }
       }
@@ -1670,9 +1831,6 @@
         this.scheduleItemsViewRefresh();
       }
     }
-    // ============================================================================
-    // Section 11: Lifecycle Teardown & Resource Disposal
-    // ============================================================================
     /**
      * Idempotently initiates citation coordinator teardown.
      * @returns {Promise<void>}
@@ -1682,27 +1840,15 @@
       return this._clearPromise;
     }
     /**
-     * Performs full teardown: restores wrappers, stops timers, clears tags and collections.
-     * @returns {Promise<void>}
+     * Restores Zotero.Integration.getSession and execCommand wrappers during shutdown.
      * @private
      */
-    async _performClear() {
-      this._listenerStopped = true;
-      this._setActiveSessionID(null);
-      this._isExecCommandRunning = false;
-      this._execCommandDepth = 0;
+    _restoreWordIntegrationHooks() {
       if (this._getSessionWrapper && Zotero.Integration.getSession === this._getSessionWrapper) {
         Zotero.Integration.getSession = this._originalGetSession;
       }
       this._getSessionWrapper = null;
       this._originalGetSession = null;
-      for (const sessionID of Object.keys(this._collectionRenameRetryTimerBySession || {})) {
-        this._clearCollectionRenameRetry(sessionID);
-      }
-      if (this._listenerTimer) {
-        globalThis.clearTimeout(this._listenerTimer);
-        this._listenerTimer = null;
-      }
       if (this._isExecCommandHooked && this._originalExecCommand && Zotero.Integration.execCommand === this._execCommandWrapper) {
         Zotero.Integration.execCommand = this._originalExecCommand;
         this._isExecCommandHooked = false;
@@ -1714,31 +1860,12 @@
         this._originalExecCommand = null;
         this._execCommandWrapper = null;
       }
-      await Promise.allSettled([
-        this._listenerTickTask,
-        ...this._initializationTasks?.values() || [],
-        ...this._activeRefreshTasks || []
-      ].filter(Boolean));
-      for (const sessionID in this._tagSyncTimerBySession) {
-        globalThis.clearTimeout(this._tagSyncTimerBySession[sessionID]);
-      }
-      this._tagSyncTimerBySession = {};
-      this._pendingTagSyncIDsBySession = {};
-      const tagTasks = [...Object.values(this._tagSyncInFlightBySession), this._tagSyncQueue].filter((t) => t && typeof t.then === "function");
-      if (tagTasks.length) await Promise.allSettled(tagTasks);
-      this._sessionCitedIDs = {};
-      try {
-        await this.syncCitationTags("__shutdown__", []);
-      } catch (error) {
-        this.logError("Failed to remove managed citation tags during shutdown", error);
-      }
-      const sessionIDs = Object.keys(this.sessions || {});
-      const cleanupResults = await Promise.allSettled(sessionIDs.map((id) => this.clearSession(id, true)));
-      for (const result of cleanupResults) {
-        if (result.status === "rejected") {
-          this.logError("Failed to remove a Word citation collection during shutdown", result.reason);
-        }
-      }
+    }
+    /**
+     * Clears all internal tracking caches, timer maps, and session records after teardown.
+     * @private
+     */
+    _resetInternalTrackingMaps() {
       try {
         if (this._itemsViewRefreshTimer) {
           globalThis.clearTimeout(this._itemsViewRefreshTimer);
@@ -1766,6 +1893,51 @@
         this._refreshRetryTimerBySession = {};
       } catch {
       }
+    }
+    /**
+     * Performs full teardown: restores wrappers, stops timers, clears tags and collections.
+     * @returns {Promise<void>}
+     * @private
+     */
+    async _performClear() {
+      this._listenerStopped = true;
+      this._setActiveSessionID(null);
+      this._isExecCommandRunning = false;
+      this._execCommandDepth = 0;
+      this._restoreWordIntegrationHooks();
+      for (const sessionID of Object.keys(this._collectionRenameRetryTimerBySession || {})) {
+        this._clearCollectionRenameRetry(sessionID);
+      }
+      if (this._listenerTimer) {
+        globalThis.clearTimeout(this._listenerTimer);
+        this._listenerTimer = null;
+      }
+      await Promise.allSettled([
+        this._listenerTickTask,
+        ...this._initializationTasks?.values() || [],
+        ...this._activeRefreshTasks || []
+      ].filter(Boolean));
+      for (const sessionID in this._tagSyncTimerBySession) {
+        globalThis.clearTimeout(this._tagSyncTimerBySession[sessionID]);
+      }
+      this._tagSyncTimerBySession = {};
+      this._pendingTagSyncIDsBySession = {};
+      const tagTasks = [...Object.values(this._tagSyncInFlightBySession), this._tagSyncQueue].filter((t) => t && typeof t.then === "function");
+      if (tagTasks.length) await Promise.allSettled(tagTasks);
+      this._sessionCitedIDs = {};
+      try {
+        await this.syncCitationTags("__shutdown__", []);
+      } catch (error) {
+        this.logError("Failed to remove managed citation tags during shutdown", error);
+      }
+      const sessionIDs = Object.keys(this.sessions || {});
+      const cleanupResults = await Promise.allSettled(sessionIDs.map((id) => this.clearSession(id, true)));
+      for (const result of cleanupResults) {
+        if (result.status === "rejected") {
+          this.logError("Failed to remove a Word citation collection during shutdown", result.reason);
+        }
+      }
+      this._resetInternalTrackingMaps();
     }
   };
 
@@ -1895,79 +2067,6 @@
       return this._window ?? Zotero.getMainWindow?.() ?? globalThis.window;
     }
     /**
-     * Computes an indexed lookup cache from collection keys and item IDs to active sessions.
-     * Invalidation is governed by api.sessionRevision.
-     * @param {object} api - Coordinator API object
-     * @returns {object} Indexed session cache
-     * @private
-     */
-    _getSessionIndex(api) {
-      const sessions = api.sessions || {};
-      const revision = api.sessionRevision;
-      if (Number.isSafeInteger(revision) && this._index?.sessions === sessions && this._index.revision === revision) {
-        return this._index;
-      }
-      const index = { sessions, revision, byKey: /* @__PURE__ */ new Map(), byItem: /* @__PURE__ */ new Map() };
-      for (const session of Object.values(sessions)) {
-        const key = session?.collection?.key;
-        if (key) {
-          const matches = index.byKey.get(key) || [];
-          matches.push(session);
-          index.byKey.set(key, matches);
-        }
-        for (const id of Object.keys(session?.idData || {})) {
-          const matches = index.byItem.get(Number(id)) || [];
-          matches.push(session);
-          index.byItem.set(Number(id), matches);
-        }
-      }
-      this._index = index;
-      return index;
-    }
-    /**
-     * Resolves the formatted plain citation text for a library item.
-     * Prioritizes selected collections, then active Word session, then unique item match.
-     * @param {number|string} itemID - Zotero item ID
-     * @returns {string} Formatted citation string or empty string
-     */
-    getCitationText(itemID) {
-      try {
-        const api = Zotero.ZoteroCitation?.api || {};
-        const index = this._getSessionIndex(api);
-        const pane = this.pane;
-        const getSelected = pane?.getSelectedCollections || pane?.collectionsView?.getSelectedCollections;
-        let selected = [];
-        try {
-          if (getSelected) selected = getSelected.call(pane.getSelectedCollections ? pane : pane.collectionsView) || [];
-        } catch (error) {
-          runtime.log("Cannot resolve citation collection selection", error);
-        }
-        const wordSessions = /* @__PURE__ */ new Set();
-        for (const collection of selected) {
-          let candidates = index.byKey.get(collection?.key) || [];
-          if (collection.libraryID == null && candidates.length !== 1) continue;
-          if (collection.libraryID != null) {
-            candidates = candidates.filter((session) => session.collection.libraryID == null || session.collection.libraryID === collection.libraryID);
-          }
-          for (const session of candidates) wordSessions.add(session);
-        }
-        if (wordSessions.size) {
-          const matches2 = [...wordSessions].filter((session) => session.idData?.[itemID]);
-          return matches2.length === 1 ? matches2[0].idData[itemID].plainCitation || "" : "";
-        }
-        const active = api.activeSessionID && index.sessions[api.activeSessionID] ? api.activeSessionID : Zotero.Integration.currentSession?.sessionID;
-        if (active) return index.sessions[active]?.idData?.[itemID]?.plainCitation || "";
-        const matches = index.byItem.get(Number(itemID)) || [];
-        return matches.length === 1 ? matches[0].idData[itemID].plainCitation || "" : "";
-      } catch (error) {
-        runtime.log("Citation column lookup failed", error);
-        return "";
-      }
-    }
-    // ============================================================================
-    // Section 2: Tree Column Registration & Lifecycle
-    // ============================================================================
-    /**
      * Registers the "citation" column with Zotero.ItemTreeManager.
      * @returns {Promise<void>}
      */
@@ -2031,6 +2130,113 @@
       return this._columnCleanup;
     }
     /**
+     * Disposes the view coordinator, listeners, patched nodes, and registered columns.
+     * @returns {Promise<void>}
+     */
+    dispose() {
+      this._disposed = true;
+      this._dragItems = null;
+      const cleanup = (action) => {
+        try {
+          action();
+        } catch (error) {
+          Zotero.logError(error);
+        }
+      };
+      if (this._dragEndHandler) cleanup(() => this.document.removeEventListener("dragend", this._dragEndHandler, true));
+      this._dragEndHandler = null;
+      for (const [iconNode, state] of this._iconNodeStates || []) {
+        cleanup(() => this._restoreIconNode(iconNode, state));
+      }
+      this._iconNodeStates?.clear();
+      this._index = null;
+      for (const restore of this._patchDisposers || []) cleanup(restore);
+      this._patchDisposers = [];
+      const pending = this._unregisterCitationColumns();
+      this._window = null;
+      return pending;
+    }
+    /**
+     * Computes an indexed lookup cache from collection keys and item IDs to active sessions.
+     * Invalidation is governed by api.sessionRevision.
+     * @param {object} api - Coordinator API object
+     * @returns {object} Indexed session cache
+     * @private
+     */
+    _getSessionIndex(api) {
+      const sessions = api.sessions || {};
+      const revision = api.sessionRevision;
+      if (Number.isSafeInteger(revision) && this._index?.sessions === sessions && this._index.revision === revision) {
+        return this._index;
+      }
+      const index = { sessions, revision, byKey: /* @__PURE__ */ new Map(), byItem: /* @__PURE__ */ new Map() };
+      for (const session of Object.values(sessions)) {
+        const key = session?.collection?.key;
+        if (key) {
+          const matches = index.byKey.get(key) || [];
+          matches.push(session);
+          index.byKey.set(key, matches);
+        }
+        for (const id of Object.keys(session?.idData || {})) {
+          const matches = index.byItem.get(Number(id)) || [];
+          matches.push(session);
+          index.byItem.set(Number(id), matches);
+        }
+      }
+      this._index = index;
+      return index;
+    }
+    /**
+     * Resolves active Word sessions corresponding to currently selected Zotero collections.
+     * @param {object} index - Session lookup index
+     * @returns {Set<object>} Matching Word sessions
+     * @private
+     */
+    _resolveSelectedCollectionSessions(index) {
+      const pane = this.pane;
+      const getSelected = pane?.getSelectedCollections || pane?.collectionsView?.getSelectedCollections;
+      let selected = [];
+      try {
+        if (getSelected) selected = getSelected.call(pane.getSelectedCollections ? pane : pane.collectionsView) || [];
+      } catch (error) {
+        runtime.log("Cannot resolve citation collection selection", error);
+      }
+      const wordSessions = /* @__PURE__ */ new Set();
+      for (const collection of selected) {
+        let candidates = index.byKey.get(collection?.key) || [];
+        if (collection.libraryID == null && candidates.length !== 1) continue;
+        if (collection.libraryID != null) {
+          candidates = candidates.filter((session) => session.collection.libraryID == null || session.collection.libraryID === collection.libraryID);
+        }
+        for (const session of candidates) wordSessions.add(session);
+      }
+      return wordSessions;
+    }
+    /**
+     * Resolves the formatted plain citation text for a library item.
+     * Prioritizes selected collections, then active Word session, then unique item match.
+     * @param {number|string} itemID - Zotero item ID
+     * @returns {string} Formatted citation string or empty string
+     */
+    getCitationText(itemID) {
+      try {
+        const api = Zotero.ZoteroCitation?.api || {};
+        const index = this._getSessionIndex(api);
+        const wordSessions = this._resolveSelectedCollectionSessions(index);
+        if (wordSessions.size) {
+          const matches2 = [...wordSessions].filter((session) => session.idData?.[itemID]);
+          return matches2.length === 1 ? matches2[0].idData[itemID].plainCitation || "" : "";
+        }
+        const active = api.activeSessionID && index.sessions[api.activeSessionID] ? api.activeSessionID : Zotero.Integration.currentSession?.sessionID;
+        if (active) return index.sessions[active]?.idData?.[itemID]?.plainCitation || "";
+        const matches = index.byItem.get(Number(itemID)) || [];
+        return matches.length === 1 ? matches[0].idData[itemID].plainCitation || "" : "";
+      } catch (error) {
+        runtime.log("Citation column lookup failed", error);
+        return "";
+      }
+    }
+    /**
      * Retrieves column metadata from the active itemsView for CiteFlow keys.
      * @param {string} dataKey - Column data key
      * @returns {object|null} Column metadata or null
@@ -2051,9 +2257,6 @@
         return null;
       }
     }
-    // ============================================================================
-    // Section 3: Tree View Context Preparation & Empty-Library Guard
-    // ============================================================================
     /**
      * Prepares the window itemsView by awaiting load, sort context, and patching _resetColumns.
      * @returns {Promise<void>}
@@ -2095,9 +2298,6 @@
       this._columnResetGuard = true;
       this._patchDisposers.push(restore);
     }
-    // ============================================================================
-    // Section 4: Drag Citation & Word Target Interception
-    // ============================================================================
     /**
      * Checks whether drag-to-cite feature is enabled and active.
      * @returns {boolean}
@@ -2172,9 +2372,6 @@
         throw error;
       }
     }
-    // ============================================================================
-    // Section 5: Collection Icon Patching & Visual State Management
-    // ============================================================================
     /**
      * Patches collectionsView.renderItem to display the Word icon for CiteFlow temporary collections.
      * @returns {Promise<void>}
@@ -2257,36 +2454,6 @@
         if (state.hadPublications) iconNode.classList.add("icon-publications");
         else iconNode.classList.remove("icon-publications");
       }
-    }
-    // ============================================================================
-    // Section 6: Cleanup & Teardown
-    // ============================================================================
-    /**
-     * Disposes the view coordinator, listeners, patched nodes, and registered columns.
-     * @returns {Promise<void>}
-     */
-    dispose() {
-      this._disposed = true;
-      this._dragItems = null;
-      const cleanup = (action) => {
-        try {
-          action();
-        } catch (error) {
-          Zotero.logError(error);
-        }
-      };
-      if (this._dragEndHandler) cleanup(() => this.document.removeEventListener("dragend", this._dragEndHandler, true));
-      this._dragEndHandler = null;
-      for (const [iconNode, state] of this._iconNodeStates || []) {
-        cleanup(() => this._restoreIconNode(iconNode, state));
-      }
-      this._iconNodeStates?.clear();
-      this._index = null;
-      for (const restore of this._patchDisposers || []) cleanup(restore);
-      this._patchDisposers = [];
-      const pending = this._unregisterCitationColumns();
-      this._window = null;
-      return pending;
     }
   };
   var views_default = Views;

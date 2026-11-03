@@ -1,5 +1,11 @@
 # Zotero CiteFlow Release Notes
 
+## 13.0.2 (2026-11-03)
+
+- **27 模块多文件物理领域解耦**：彻底告别单文件 1,913 行代码堆砌，将 `src/modules/citation.mjs` 与 `src/modules/views.mjs` 按职责拆分为 `src/modules/citation/` 下的 11 个独立领域模块与 `src/modules/views/` 下的 5 个独立视图模块，所有源码文件行数严格控制在 350 行以内；
+- **超长复杂函数细粒度拆分**：深度审计并拆解 `_syncCitationTags`、`_installWordIntegrationHooks`、`_refreshSessionCitations`、`_performClear`、`listener`、`clearStaleArtifacts`、`getCitationText` 等核心长函数，提炼 20 个单一职责辅助方法；
+- **新增模块化架构专项自动化测试（`tests/modular-architecture.test.mjs`）**：全量 40 项顶层测试套件 100% 通过。
+
 ## 13.0.1 (2026-11-02)
 
 - **函数级深度治理与 11 大领域分层**：彻底清理历史无序堆砌代码，对全量函数进行分门别类的体系化重构，明确划分 11 大职责领域；
