@@ -30,10 +30,17 @@ export class CitationCollections {
   async _clearStaleTemporaryCollections(libraryID) {
     const collections = Zotero.Collections.getByLibrary(libraryID, true, true);
     const collectionsByKey = new Map(collections.map(c => [c.key, c]));
+    const activeKeys = new Set(
+      Object.values(this.sessions || {}).filter(s => s && !s.closing && s.collection?.key).map(s => s.collection.key)
+    );
     const removedKeys = new Set();
     const remainingKeys = new Set();
 
     for (const key of this._temporaryCollectionKeys || []) {
+      if (activeKeys.has(key)) {
+        remainingKeys.add(key);
+        continue;
+      }
       const collection = collectionsByKey.get(key);
       if (!collection) continue;
       try {
@@ -46,7 +53,7 @@ export class CitationCollections {
     }
 
     for (const collection of collections) {
-      if (removedKeys.has(collection.key)) continue;
+      if (removedKeys.has(collection.key) || activeKeys.has(collection.key)) continue;
       try {
         await collection.loadDataType("relations");
         const relations = collection.getRelationsByPredicate(TEMP_COLLECTION_RELATION) || [];

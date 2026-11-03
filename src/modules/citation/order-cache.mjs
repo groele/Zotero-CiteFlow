@@ -148,27 +148,30 @@ export class CitationOrderCache {
       delete this.sessions[sessionID];
       this._invalidateSessionIndex();
     }
-    delete this._docIdBySession[sessionID];
+    if (this._docIdBySession) delete this._docIdBySession[sessionID];
     if (this.activeSessionID === sessionID) this._setActiveSessionID(null);
-    delete this._lastRefreshAt[sessionID];
-    delete this._lastTagSyncSig[sessionID];
-    delete this._sessionCitedIDs[sessionID];
-    delete this._tagSyncInFlightBySession[sessionID];
-    delete this._pendingTagSyncIDsBySession[sessionID];
-    delete this._emptyReadCountBySession[sessionID];
-    delete this._missingSessionCountBySession[sessionID];
-    this._sessionUpdateRevision[sessionID] = (this._sessionUpdateRevision[sessionID] || 0) + 1;
-    delete this._sessionUpdateQueue[sessionID];
+    if (this._lastRefreshAt) delete this._lastRefreshAt[sessionID];
+    if (this._lastTagSyncSig) delete this._lastTagSyncSig[sessionID];
+    if (this._sessionCitedIDs) delete this._sessionCitedIDs[sessionID];
+    if (this._tagSyncInFlightBySession) delete this._tagSyncInFlightBySession[sessionID];
+    if (this._pendingTagSyncIDsBySession) delete this._pendingTagSyncIDsBySession[sessionID];
+    if (this._emptyReadCountBySession) delete this._emptyReadCountBySession[sessionID];
+    if (this._missingSessionCountBySession) delete this._missingSessionCountBySession[sessionID];
+    this._pendingCollectionNames?.delete(sessionID);
+    if (this._sessionUpdateRevision) {
+      this._sessionUpdateRevision[sessionID] = (this._sessionUpdateRevision[sessionID] || 0) + 1;
+    }
+    if (this._sessionUpdateQueue) delete this._sessionUpdateQueue[sessionID];
 
-    if (this._refreshRetryTimerBySession[sessionID]) {
+    if (this._refreshRetryTimerBySession?.[sessionID]) {
       globalThis.clearTimeout(this._refreshRetryTimerBySession[sessionID]);
       delete this._refreshRetryTimerBySession[sessionID];
     }
-    if (this._tagSyncTimerBySession[sessionID]) {
+    if (this._tagSyncTimerBySession?.[sessionID]) {
       globalThis.clearTimeout(this._tagSyncTimerBySession[sessionID]);
       delete this._tagSyncTimerBySession[sessionID];
     }
     const cacheKey = this._getSortedCacheKey(sessionID);
-    delete this._sortedCacheBySession[cacheKey];
+    if (this._sortedCacheBySession) delete this._sortedCacheBySession[cacheKey];
   }
 }

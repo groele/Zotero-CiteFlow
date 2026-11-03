@@ -91,6 +91,7 @@ export class CitationWordIntegration {
         this.logError("Cannot initialize a Word citation collection", error);
         continue;
       }
+      if (this._listenerStopped || this._isExecCommandRunning) break;
       await this.refreshSessionCitations(sessionID, session);
     }
   }

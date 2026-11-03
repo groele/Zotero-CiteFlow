@@ -51,7 +51,6 @@ export class CitationFormatting {
       }
     }
     this.cleanupSessionState(sessionID, true);
-    this._pendingCollectionNames?.delete(sessionID);
     const collection = session.collection;
     if (!collection?.id) return;
     try {
@@ -216,9 +215,13 @@ export class CitationFormatting {
       this._itemsViewRefreshTimer = null;
       if (this._listenerStopped) return;
       const panes = Zotero.getMainWindows?.().map(win => win.ZoteroPane) || [globalThis.ZoteroPane];
+      const seenViews = new Set();
       for (const pane of panes) {
+        const itemsView = pane?.itemsView;
+        if (!itemsView || seenViews.has(itemsView)) continue;
+        seenViews.add(itemsView);
         try {
-          await pane?.itemsView?.refreshAndMaintainSelection();
+          await itemsView.refreshAndMaintainSelection();
         } catch (error) {
           this.logError("Cannot refresh the citation column", error);
         }
@@ -264,20 +267,12 @@ export class CitationFormatting {
 
   /**
    * Formats the plain citation label for a single item ID based on document ordinal and style class.
-   * @param {string|number} id - Item ID
-   * @param {Map<number, number>} idIndexMap - Map from item ID to 0-based appearance index
-   * @param {object} citationsByItemID - Citations indexed by item ID
-   * @param {object} oldIdData - Previous session idData map
-   * @param {boolean} isNoteStyle - True when styleClass === "note"
-   * @returns {string} Formatted plain citation label
    * @private
    */
   _formatItemPlainCitation(id, idIndexMap, citationsByItemID, oldIdData, isNoteStyle) {
     const index = idIndexMap.get(Number(id));
     if (index === undefined) {
-      const previousValue = oldIdData[id]?.plainCitation;
-      if (previousValue) return previousValue;
-      return isNoteStyle ? "—" : "—: (pending)";
+      return oldIdData[id]?.plainCitation || (isNoteStyle ? "—" : "—: (pending)");
     }
     const order = index + 1;
     if (isNoteStyle) return String(order);

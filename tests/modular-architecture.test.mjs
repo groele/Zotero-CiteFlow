@@ -320,5 +320,58 @@ test("getSortedItemIDs and _applyCitations exclude trashed items from document o
   assert.deepEqual(sorted, [10, 20], "Trashed item 99 must not shift active document citation ordinals");
 });
 
+test("v13.0.6 hardening: cleanupSessionState clears pending collection names, polling yields on execCommand, and active collections are protected", async () => {
+  const c = Object.create(Citation.prototype);
+  c._resetInternalTrackingMaps();
+  c._pendingCollectionNames = new Map([["S1", "Word Citations 1"], ["S2", "Word Citations 2"]]);
+  c._invalidateSessionIndex = () => {};
+  c._clearCollectionRenameRetry = () => {};
+  c._evictSessionSortCache = () => {};
+
+  c.cleanupSessionState("S1", true);
+  assert.equal(c._pendingCollectionNames.has("S1"), false, "cleanupSessionState must clear session entry from _pendingCollectionNames");
+  assert.equal(c._pendingCollectionNames.has("S2"), true);
+
+  // Verify _syncActiveWordSessions yields mid-loop if _isExecCommandRunning flips true
+  const refreshed = [];
+  c._listenerStopped = false;
+  c._isExecCommandRunning = false;
+  c.sessions = { S1: {}, S2: {} };
+  c.ensureSession = async () => ({ collection: {} });
+  c.refreshSessionCitations = async id => {
+    refreshed.push(id);
+    c._isExecCommandRunning = true; // Simulate native Word execCommand starting during S1 refresh
+  };
+  await c._syncActiveWordSessions({ S1: { agent: "WinWord" }, S2: { agent: "WinWord" } });
+  assert.deepEqual(refreshed, ["S1"], "_syncActiveWordSessions must yield immediately when _isExecCommandRunning becomes true");
+
+  // Verify _clearStaleTemporaryCollections preserves active session collection keys
+  const erasedKeys = [];
+  globalThis.Zotero = {
+    Collections: {
+      getByLibrary: () => [
+        { key: "ACTIVE_KEY", loadDataType: async () => {}, getRelationsByPredicate: () => ["true"], eraseTx: async () => erasedKeys.push("ACTIVE_KEY") },
+        { key: "STALE_KEY", loadDataType: async () => {}, getRelationsByPredicate: () => ["true"], eraseTx: async () => erasedKeys.push("STALE_KEY") }
+      ]
+    }
+  };
+  c.sessions = { S1: { closing: false, collection: { key: "ACTIVE_KEY" } } };
+  c._temporaryCollectionKeys = new Set(["ACTIVE_KEY", "STALE_KEY"]);
+  c._saveKeySet = () => {};
+  await c._clearStaleTemporaryCollections(1);
+  assert.deepEqual(erasedKeys, ["STALE_KEY"], "Active session collection must never be erased during stale collection cleanup");
+  assert.equal(c._temporaryCollectionKeys.has("ACTIVE_KEY"), true);
+});
+
+test("preferences.css enforces 14px control typography per AGENTS.md 4.1", () => {
+  const css = fs.readFileSync(path.join(root, "chrome", "content", "preferences.css"), "utf8");
+  assert.match(css, /\.zoterocitation-number-row\s+label[\s\S]*?font-size:\s*14px/);
+  assert.match(css, /button\s*\{[\s\S]*?font-size:\s*14px/);
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+  const xhtml = fs.readFileSync(path.join(root, "chrome", "content", "preferences.xhtml"), "utf8");
+  assert.match(xhtml, new RegExp(`class="zoterocitation-version-badge">v${pkg.version.replace(/\./g, "\\.")}<`));
+});
+
+
 
 

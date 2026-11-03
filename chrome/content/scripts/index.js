@@ -661,9 +661,16 @@
     async _clearStaleTemporaryCollections(libraryID) {
       const collections = Zotero.Collections.getByLibrary(libraryID, true, true);
       const collectionsByKey = new Map(collections.map((c) => [c.key, c]));
+      const activeKeys = new Set(
+        Object.values(this.sessions || {}).filter((s) => s && !s.closing && s.collection?.key).map((s) => s.collection.key)
+      );
       const removedKeys = /* @__PURE__ */ new Set();
       const remainingKeys = /* @__PURE__ */ new Set();
       for (const key of this._temporaryCollectionKeys || []) {
+        if (activeKeys.has(key)) {
+          remainingKeys.add(key);
+          continue;
+        }
         const collection = collectionsByKey.get(key);
         if (!collection) continue;
         try {
@@ -675,7 +682,7 @@
         }
       }
       for (const collection of collections) {
-        if (removedKeys.has(collection.key)) continue;
+        if (removedKeys.has(collection.key) || activeKeys.has(collection.key)) continue;
         try {
           await collection.loadDataType("relations");
           const relations = collection.getRelationsByPredicate(TEMP_COLLECTION_RELATION) || [];
@@ -936,6 +943,7 @@
           this.logError("Cannot initialize a Word citation collection", error);
           continue;
         }
+        if (this._listenerStopped || this._isExecCommandRunning) break;
         await this.refreshSessionCitations(sessionID, session);
       }
     }
@@ -1249,27 +1257,30 @@
         delete this.sessions[sessionID];
         this._invalidateSessionIndex();
       }
-      delete this._docIdBySession[sessionID];
+      if (this._docIdBySession) delete this._docIdBySession[sessionID];
       if (this.activeSessionID === sessionID) this._setActiveSessionID(null);
-      delete this._lastRefreshAt[sessionID];
-      delete this._lastTagSyncSig[sessionID];
-      delete this._sessionCitedIDs[sessionID];
-      delete this._tagSyncInFlightBySession[sessionID];
-      delete this._pendingTagSyncIDsBySession[sessionID];
-      delete this._emptyReadCountBySession[sessionID];
-      delete this._missingSessionCountBySession[sessionID];
-      this._sessionUpdateRevision[sessionID] = (this._sessionUpdateRevision[sessionID] || 0) + 1;
-      delete this._sessionUpdateQueue[sessionID];
-      if (this._refreshRetryTimerBySession[sessionID]) {
+      if (this._lastRefreshAt) delete this._lastRefreshAt[sessionID];
+      if (this._lastTagSyncSig) delete this._lastTagSyncSig[sessionID];
+      if (this._sessionCitedIDs) delete this._sessionCitedIDs[sessionID];
+      if (this._tagSyncInFlightBySession) delete this._tagSyncInFlightBySession[sessionID];
+      if (this._pendingTagSyncIDsBySession) delete this._pendingTagSyncIDsBySession[sessionID];
+      if (this._emptyReadCountBySession) delete this._emptyReadCountBySession[sessionID];
+      if (this._missingSessionCountBySession) delete this._missingSessionCountBySession[sessionID];
+      this._pendingCollectionNames?.delete(sessionID);
+      if (this._sessionUpdateRevision) {
+        this._sessionUpdateRevision[sessionID] = (this._sessionUpdateRevision[sessionID] || 0) + 1;
+      }
+      if (this._sessionUpdateQueue) delete this._sessionUpdateQueue[sessionID];
+      if (this._refreshRetryTimerBySession?.[sessionID]) {
         globalThis.clearTimeout(this._refreshRetryTimerBySession[sessionID]);
         delete this._refreshRetryTimerBySession[sessionID];
       }
-      if (this._tagSyncTimerBySession[sessionID]) {
+      if (this._tagSyncTimerBySession?.[sessionID]) {
         globalThis.clearTimeout(this._tagSyncTimerBySession[sessionID]);
         delete this._tagSyncTimerBySession[sessionID];
       }
       const cacheKey = this._getSortedCacheKey(sessionID);
-      delete this._sortedCacheBySession[cacheKey];
+      if (this._sortedCacheBySession) delete this._sortedCacheBySession[cacheKey];
     }
     /**
      * Constructs a deterministic signature from an array of item IDs.
@@ -1609,7 +1620,6 @@
         }
       }
       this.cleanupSessionState(sessionID, true);
-      this._pendingCollectionNames?.delete(sessionID);
       const collection = session.collection;
       if (!collection?.id) return;
       try {
@@ -1762,9 +1772,13 @@
         this._itemsViewRefreshTimer = null;
         if (this._listenerStopped) return;
         const panes = Zotero.getMainWindows?.().map((win) => win.ZoteroPane) || [globalThis.ZoteroPane];
+        const seenViews = /* @__PURE__ */ new Set();
         for (const pane of panes) {
+          const itemsView = pane?.itemsView;
+          if (!itemsView || seenViews.has(itemsView)) continue;
+          seenViews.add(itemsView);
           try {
-            await pane?.itemsView?.refreshAndMaintainSelection();
+            await itemsView.refreshAndMaintainSelection();
           } catch (error) {
             this.logError("Cannot refresh the citation column", error);
           }
@@ -1806,20 +1820,12 @@
     }
     /**
      * Formats the plain citation label for a single item ID based on document ordinal and style class.
-     * @param {string|number} id - Item ID
-     * @param {Map<number, number>} idIndexMap - Map from item ID to 0-based appearance index
-     * @param {object} citationsByItemID - Citations indexed by item ID
-     * @param {object} oldIdData - Previous session idData map
-     * @param {boolean} isNoteStyle - True when styleClass === "note"
-     * @returns {string} Formatted plain citation label
      * @private
      */
     _formatItemPlainCitation(id, idIndexMap, citationsByItemID, oldIdData, isNoteStyle) {
       const index = idIndexMap.get(Number(id));
       if (index === void 0) {
-        const previousValue = oldIdData[id]?.plainCitation;
-        if (previousValue) return previousValue;
-        return isNoteStyle ? "—" : "—: (pending)";
+        return oldIdData[id]?.plainCitation || (isNoteStyle ? "—" : "—: (pending)");
       }
       const order = index + 1;
       if (isNoteStyle) return String(order);
@@ -1940,6 +1946,8 @@
         this._emptyReadCountBySession = {};
         this._missingSessionCountBySession = {};
         this._docIdBySession = {};
+        this._pendingCollectionNames?.clear?.();
+        this._pendingCollectionNumber = 0;
         this._execCommandBindings.clear();
         this._collectionRenameRetryTimerBySession = {};
         this._collectionRenameRetryCountBySession = {};

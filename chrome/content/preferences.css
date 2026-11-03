@@ -185,7 +185,7 @@
 #zoterocitation-settings .zoterocitation-number-row label {
   min-width: 0;
   color: var(--flow-pref-text);
-  font-size: 13px;
+  font-size: 14px;
   overflow-wrap: anywhere;
 }
 
@@ -202,7 +202,7 @@
   color: var(--flow-pref-text);
   background: Field;
   font: inherit;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.4;
 }
 
@@ -220,7 +220,7 @@
   color: var(--flow-pref-text);
   background: Field;
   font: inherit;
-  font-size: 13px;
+  font-size: 14px;
   cursor: pointer;
 }
 

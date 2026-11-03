@@ -1,5 +1,18 @@
 # Zotero CiteFlow Release Notes
 
+## 13.0.6 (2026-11-03) — Active Collection Guard, Polling Command Yield, Multi-Window Refresh Deduplication & 14px Typography Alignment
+
+- **活跃会话临时集合防误删保护（`src/modules/citation/collections.mjs`）**：
+  - 在 `_clearStaleTemporaryCollections` 中提取当前所有未关闭活跃会话（`!session.closing && session.collection?.key`）的 `activeKeys` 白名单集合；即便在会话运行期间触发孤儿资产清理（`clearStaleArtifacts`），也绝不误删当前正在编辑的 Word 文档临时集合。
+- **Word 原生指令期间后台轮询瞬时让出（`src/modules/citation/word-integration.mjs`）**：
+  - 在 `_syncActiveWordSessions` 遍历刷新多会话引文快照的循环体内新增 `if (this._listenerStopped || this._isExecCommandRunning) break;` 抢占式检查，一旦用户在轮询中途发起 Word 原生 `execCommand` 引文插入/编辑指令，后台轮询立即中断让出，杜绝与 Word COM/Integration 事务争用。
+- **会话待命名映射完整回收与多窗口视图刷新去重（`order-cache.mjs` / `lifecycle.mjs` / `formatting.mjs`）**：
+  - 在 `cleanupSessionState` 中同步清理 `this._pendingCollectionNames?.delete(sessionID)`，并在 `_resetInternalTrackingMaps` 中重置 `_pendingCollectionNames` 与 `_pendingCollectionNumber`，消除长周期多文档会话的映射残留；
+  - 在 `scheduleItemsViewRefresh` 中引入 `seenViews = new Set()` 对 `itemsView` 实例去重，避免多窗口枚举时对同一视图重复调用 `refreshAndMaintainSelection()`。
+- **设置面板控件字号与版本徽标严格对齐（`preferences.css` / `preferences.xhtml`）**：
+  - 严格对齐 `AGENTS.md` 4.1 字号基准，将 `.zoterocitation-number-row label`、`input[type="number"]`、`input[type="text"]` 与 `button` 的字号从 `13px` 统一提升至标准 **`14px`**，并同步更新设置页顶部版本徽标至 `v13.0.6`。
+- **全量自动化测试验证**：50 项顶层测试套件 100% 通过。
+
 ## 13.0.5 (2026-11-03) — Drag-End Item Re-Verification, Trashed-Item Ordinal Isolation & Native Win32 Handle Caching
 
 - **文内引文序数计算与回显的回收站文献隔离（`order-cache.mjs` / `formatting.mjs`）**：

@@ -60,6 +60,8 @@ export class CitationLifecycle {
       this._emptyReadCountBySession = {};
       this._missingSessionCountBySession = {};
       this._docIdBySession = {};
+      this._pendingCollectionNames?.clear?.();
+      this._pendingCollectionNumber = 0;
       this._execCommandBindings.clear();
       this._collectionRenameRetryTimerBySession = {};
       this._collectionRenameRetryCountBySession = {};
