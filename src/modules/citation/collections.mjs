@@ -155,11 +155,15 @@ export class CitationCollections {
 
     if (!remove.length && !add.length) return;
 
-    await Zotero.DB.executeTransaction(async () => {
-      if (this._listenerStopped || session.closing) return;
-      if (remove.length) await collection.removeItems(remove);
-      if (add.length) await collection.addItems(add);
-    });
+    try {
+      await Zotero.DB.executeTransaction(async () => {
+        if (this._listenerStopped || session.closing) return;
+        if (remove.length) await collection.removeItems(remove);
+        if (add.length) await collection.addItems(add);
+      });
+    } catch (error) {
+      this.logError("Failed to synchronize Word citation collection items", error);
+    }
   }
 
   /**

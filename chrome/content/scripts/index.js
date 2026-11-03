@@ -571,7 +571,7 @@
     _sanitizeFolderName(rawName) {
       const fallback = "Untitled Document";
       const raw = typeof rawName === "string" ? rawName : String(rawName || "");
-      const noControlChars = raw.replace(/[\u0000-\u001F\u007F]/g, " ");
+      const noControlChars = raw.replace(/[\u0000-\u001F\u007F\u200B-\u200F\u202A-\u202E\uFEFF]/g, " ");
       const normalized = noControlChars.replace(/\s+/g, " ").trim();
       const maxLength = 200;
       return (normalized || fallback).slice(0, maxLength);
@@ -942,11 +942,15 @@
       const remove = currentIDs.filter((id) => !targetSet.has(id));
       const add = normalizedTargetIDs.filter((id) => !currentSet.has(id));
       if (!remove.length && !add.length) return;
-      await Zotero.DB.executeTransaction(async () => {
-        if (this._listenerStopped || session.closing) return;
-        if (remove.length) await collection.removeItems(remove);
-        if (add.length) await collection.addItems(add);
-      });
+      try {
+        await Zotero.DB.executeTransaction(async () => {
+          if (this._listenerStopped || session.closing) return;
+          if (remove.length) await collection.removeItems(remove);
+          if (add.length) await collection.addItems(add);
+        });
+      } catch (error) {
+        this.logError("Failed to synchronize Word citation collection items", error);
+      }
     }
     /**
      * Associates a session with a document ID and clears obsolete rename timers.
@@ -2055,11 +2059,17 @@
         const prev = oldIdData[id]?.plainCitation || oldIdData[String(id)]?.plainCitation;
         return prev && prev.startsWith(`${order}: `) && !prev.endsWith("(error)") ? prev : `${order}: (error)`;
       }
-      const labels = citations.map((entry) => {
-        const rawText = typeof entry?.properties?.plainCitation === "string" ? entry.properties.plainCitation.replace(/[\u0000-\u001F\u007F]/g, " ").replace(/\s+/g, " ").trim() : "";
-        return rawText || "(no text)";
-      });
-      return `${order}: ` + labels.join(", ");
+      const labels = [];
+      const seen = /* @__PURE__ */ new Set();
+      for (const entry of citations) {
+        const rawText = typeof entry?.properties?.plainCitation === "string" ? entry.properties.plainCitation.replace(/[\u0000-\u001F\u007F\u200B-\u200F\u202A-\u202E\uFEFF]/g, " ").replace(/\s+/g, " ").trim() : "";
+        const cleaned = rawText || "(no text)";
+        if (!seen.has(cleaned)) {
+          seen.add(cleaned);
+          labels.push(cleaned);
+        }
+      }
+      return `${order}: ` + (labels.length ? labels.join(", ") : "(no text)");
     }
     /**
      * Formats item plain citations and synchronizes session collection items.
@@ -2096,11 +2106,11 @@
         }
       }
       const citationSession = this.sessions[sessionID];
-      const userLibraryID = Zotero.Libraries.userLibraryID;
+      const collectionLibraryID = citationSession.collection?.libraryID ?? Zotero.Libraries.userLibraryID;
       const targetIDs = citationIDKeys.map(Number).filter((id) => {
         if (!Number.isSafeInteger(id) || id <= 0) return false;
         const item = Zotero.Items.get(id);
-        if (!item || item.libraryID !== userLibraryID || item.deleted === true || item.inTrash === true) return false;
+        if (!item || item.libraryID !== collectionLibraryID || item.deleted === true || item.inTrash === true) return false;
         return typeof item.isTopLevelItem !== "function" || item.isTopLevelItem();
       });
       if (this._sessionUpdateRevision[sessionID] !== revision) return;
@@ -2547,7 +2557,7 @@
         try {
           action();
         } catch (error) {
-          Zotero.logError(error);
+          (Zotero?.logError || runtime?.log || console.error)(error);
         }
       };
       if (this._dragEndHandler) cleanup(() => this.document.removeEventListener("dragend", this._dragEndHandler, true));
@@ -2808,8 +2818,6 @@
     }
     /**
      * Determines whether a Zotero collection reference is a CiteFlow temporary Word collection.
-     * @param {object} rowRef - Collection reference from CollectionTreeRow
-     * @returns {boolean} True if managed by CiteFlow
      * @private
      */
     _isCitationCollection(rowRef) {
@@ -2832,25 +2840,19 @@
     }
     /**
      * Checks whether a CollectionTreeRow is a bottom virtual library row (starting at My Publications).
-     * @param {object} treeRow - Zotero CollectionTreeRow instance
-     * @returns {boolean} True if row is publications, duplicates, unfiled, retracted, or trash
      * @private
      */
     _isBottomVirtualRow(treeRow) {
       if (!treeRow || typeof treeRow !== "object") return false;
       const t = treeRow.type;
-      if (t === "publications" || t === "duplicates" || t === "unfiled" || t === "retracted" || t === "trash") return true;
-      return Boolean(
-        treeRow.isPublications?.() || treeRow.isDuplicates?.() || treeRow.isUnfiled?.() || treeRow.isRetracted?.() || treeRow.isTrash?.()
-      );
+      return t === "publications" || t === "duplicates" || t === "unfiled" || t === "retracted" || t === "trash" || Boolean(treeRow.isPublications?.() || treeRow.isDuplicates?.() || treeRow.isUnfiled?.() || treeRow.isRetracted?.() || treeRow.isTrash?.());
     }
     /**
      * Compares two collection names using Zotero's locale collator.
      * @private
      */
     _compareCollectionNames(nameA, nameB) {
-      const a = String(nameA ?? "");
-      const b = String(nameB ?? "");
+      const a = String(nameA ?? ""), b = String(nameB ?? "");
       return typeof Zotero?.localeCompare === "function" ? Zotero.localeCompare(a, b) : a.localeCompare(b);
     }
     /**
@@ -2860,28 +2862,21 @@
      */
     _reorderCitationRowsInSlice(rows, startIndex, endIndex, targetLevel) {
       if (!Array.isArray(rows) || startIndex < 0 || endIndex <= startIndex || endIndex > rows.length) return false;
-      const beforeBlocks = [];
-      const citationBlocks = [];
-      const afterBlocks = [];
-      let i = startIndex;
-      let reachedBottomVirtual = false;
+      const beforeBlocks = [], citationBlocks = [], afterBlocks = [];
+      let i = startIndex, reachedBottomVirtual = false;
       while (i < endIndex) {
-        const head = rows[i];
-        const block = [head];
+        const head = rows[i], block = [head];
         i += 1;
         while (i < endIndex && (rows[i]?.level ?? targetLevel) > targetLevel) {
           block.push(rows[i]);
           i += 1;
         }
         const isCitation = Boolean((head?.isCollection?.() || head?.type === "collection") && this._isCitationCollection(head?.ref));
-        if (isCitation) {
-          citationBlocks.push(block);
-        } else if (reachedBottomVirtual || this._isBottomVirtualRow(head)) {
+        if (isCitation) citationBlocks.push(block);
+        else if (reachedBottomVirtual || this._isBottomVirtualRow(head)) {
           reachedBottomVirtual = true;
           afterBlocks.push(block);
-        } else {
-          beforeBlocks.push(block);
-        }
+        } else beforeBlocks.push(block);
       }
       if (!citationBlocks.length) return false;
       citationBlocks.sort((a, b) => this._compareCollectionNames(a[0]?.ref?.name, b[0]?.ref?.name));
@@ -2899,19 +2894,30 @@
       return true;
     }
     /**
-     * Repositions any active CiteFlow Word collection rows in collectionsView to sit right above My Publications,
-     * preserving row map integrity and active selection.
+     * Enumerates all unique active collectionsView instances across main and detached windows.
+     * @private
      */
-    repositionCitationCollections() {
-      if (this._disposed || addon?.data?.alive === false) return false;
-      const cv = this.pane?.collectionsView;
+    _getAllCollectionsViews() {
+      const views = new Set([this.pane?.collectionsView].filter(Boolean));
+      if (typeof Zotero?.getMainWindows === "function") {
+        for (const win of Zotero.getMainWindows()) {
+          const cv = win?.ZoteroPane?.collectionsView;
+          if (cv) views.add(cv);
+        }
+      }
+      return views;
+    }
+    /**
+     * Reorders Word collections in a single collectionsView instance.
+     * @private
+     */
+    _reorderViewCollections(cv) {
       const rows = cv?._rows;
       if (!cv || !Array.isArray(rows) || !rows.length) return false;
       const focusedID = cv.getRow?.(cv.selection?.focused)?.id;
       const pivotID = cv.getRow?.(cv.selection?.pivot)?.id;
       const selectedIDs = cv.selection?.selected instanceof Set ? [...cv.selection.selected].map((idx) => cv.getRow?.(idx)?.id).filter(Boolean) : [];
-      let anyChanged = false;
-      let i = 0;
+      let anyChanged = false, i = 0;
       while (i < rows.length) {
         const row = rows[i];
         const isLib = Boolean(row?.isLibrary?.(true) || row?.type === "library" || row?.type === "group");
@@ -2942,14 +2948,23 @@
       return true;
     }
     /**
+     * Repositions active CiteFlow Word collection rows across all open views to sit right above My Publications.
+     */
+    repositionCitationCollections() {
+      if (this._disposed || addon?.data?.alive === false) return false;
+      let anyChanged = false;
+      for (const cv of this._getAllCollectionsViews()) {
+        if (this._reorderViewCollections(cv)) anyChanged = true;
+      }
+      return anyChanged;
+    }
+    /**
      * Inserts a CiteFlow temporary Word collection row immediately above My Publications in collectionsView.
      * @private
      */
     _insertCitationRowAbovePublications(cv, col) {
       const startRow = cv._rowMap?.["L" + col.libraryID];
-      if (startRow === void 0 || typeof cv.isContainerOpen === "function" && !cv.isContainerOpen(startRow)) {
-        return false;
-      }
+      if (startRow === void 0 || typeof cv.isContainerOpen === "function" && !cv.isContainerOpen(startRow)) return false;
       const libLevel = typeof cv.getLevel === "function" ? cv.getLevel(startRow) : cv._rows?.[startRow]?.level ?? 0;
       const level = libLevel + 1;
       let beforeRow = startRow + 1;
@@ -2975,92 +2990,78 @@
         }
       }
       if (typeof cv._includedInTree !== "function" || cv._includedInTree(col)) {
-        const RowClass = Zotero.CollectionTreeRow;
-        cv._addRow(new RowClass(cv, "collection", col, level), beforeRow);
+        cv._addRow(new Zotero.CollectionTreeRow(cv, "collection", col, level), beforeRow);
       }
       return beforeRow;
     }
     /**
      * Patches collectionsView.renderItem, _expandRow, and _addSortedRow to display the Word icon
      * and position CiteFlow temporary collections immediately above My Publications.
-     * @returns {Promise<void>}
      */
     async patchIcon() {
       try {
         const view = this;
         const cv = this.pane?.collectionsView;
         if (!cv) return;
-        const restoreRender = runtime.patch(
-          cv,
-          "renderItem",
-          config.addonRef,
-          (original) => (index, selection, oldDiv, columns) => {
-            const previousIcon = oldDiv?.querySelector?.(".cell-icon");
-            if (previousIcon) {
-              view._restoreIconNode(previousIcon);
-              view._iconNodeStates?.delete(previousIcon);
-            }
-            const div = original.call(cv, index, selection, oldDiv, columns);
-            if (view._disposed || addon.data.alive === false) return div;
-            const row = cv.getRow(index);
-            const isCitationCollection = view._isCitationCollection(row?.ref);
-            const iconNode = div?.querySelector?.(".cell-icon");
-            if (iconNode && isCitationCollection) {
-              view._rememberIconNode(iconNode);
-              iconNode.style.backgroundImage = `url(chrome://${config.addonRef}/content/icons/word.png)`;
-              iconNode.classList.remove("icon-search", "icon-collection");
-              iconNode.classList.add("icon-publications");
-            } else if (iconNode) {
-              view._restoreIconNode(iconNode);
-              view._iconNodeStates?.delete(iconNode);
-            }
-            return div;
+        const restoreRender = runtime.patch(cv, "renderItem", config.addonRef, (original) => (index, selection, oldDiv, columns) => {
+          const previousIcon = oldDiv?.querySelector?.(".cell-icon");
+          if (previousIcon) {
+            view._restoreIconNode(previousIcon);
+            view._iconNodeStates?.delete(previousIcon);
           }
-        );
+          const div = original.call(cv, index, selection, oldDiv, columns);
+          if (view._disposed || addon.data.alive === false) return div;
+          const row = cv.getRow(index);
+          const isCitationCollection = view._isCitationCollection(row?.ref);
+          const iconNode = div?.querySelector?.(".cell-icon");
+          if (iconNode && isCitationCollection) {
+            view._rememberIconNode(iconNode);
+            iconNode.style.backgroundImage = `url(chrome://${config.addonRef}/content/icons/word.png)`;
+            iconNode.classList.remove("icon-search", "icon-collection");
+            iconNode.classList.add("icon-publications");
+          } else if (iconNode) {
+            view._restoreIconNode(iconNode);
+            view._iconNodeStates?.delete(iconNode);
+          }
+          return div;
+        });
         if (typeof restoreRender === "function") (this._patchDisposers ??= []).push(restoreRender);
         if (typeof cv._expandRow === "function") {
-          const restoreExpand = runtime.patch(
-            cv,
-            "_expandRow",
-            config.addonRef,
-            (original) => async function(rows, row, forceOpen) {
-              const added = await original.call(this, rows, row, forceOpen);
-              if (!view._disposed && addon.data.alive !== false && added > 0 && rows?.[row]?.isLibrary?.(true)) {
-                const libLevel = typeof this.getLevel === "function" && rows === this._rows ? this.getLevel(row) : rows[row]?.level ?? 0;
-                view._reorderCitationRowsInSlice(rows, row + 1, row + 1 + added, libLevel + 1);
+          const restoreExpand = runtime.patch(cv, "_expandRow", config.addonRef, (original) => async function(rows, row, forceOpen) {
+            const added = await original.call(this, rows, row, forceOpen);
+            if (!view._disposed && addon.data.alive !== false && added > 0 && rows?.[row]?.isLibrary?.(true)) {
+              const libLevel = typeof this.getLevel === "function" && rows === this._rows ? this.getLevel(row) : rows[row]?.level ?? 0;
+              if (view._reorderCitationRowsInSlice(rows, row + 1, row + 1 + added, libLevel + 1)) {
+                this._refreshRowMap?.();
+                this.tree?.invalidate?.();
               }
-              return added;
             }
-          );
+            return added;
+          });
           if (typeof restoreExpand === "function") (this._patchDisposers ??= []).push(restoreExpand);
         }
         if (typeof cv._addSortedRow === "function") {
-          const restoreAddSorted = runtime.patch(
-            cv,
-            "_addSortedRow",
-            config.addonRef,
-            (original) => async function(objectType, id) {
-              if (view._disposed || addon.data.alive === false) return original.call(this, objectType, id);
-              if (objectType === "collection") {
-                const col = Zotero.Collections?.get?.(id) || await Zotero.Collections?.getAsync?.(id);
-                if (col && !col.parentID && view._isCitationCollection(col)) {
-                  return view._insertCitationRowAbovePublications(this, col);
-                }
-              }
-              const maskedRows = [];
-              for (const row of this._rows || []) {
-                if ((row?.isCollection?.() || row?.type === "collection") && view._isCitationCollection(row?.ref)) {
-                  row.isCollection = () => false;
-                  maskedRows.push(row);
-                }
-              }
-              try {
-                return await original.call(this, objectType, id);
-              } finally {
-                for (const row of maskedRows) delete row.isCollection;
+          const restoreAddSorted = runtime.patch(cv, "_addSortedRow", config.addonRef, (original) => async function(objectType, id) {
+            if (view._disposed || addon.data.alive === false) return original.call(this, objectType, id);
+            if (objectType === "collection") {
+              const col = Zotero.Collections?.get?.(id) || await Zotero.Collections?.getAsync?.(id);
+              if (col && !col.parentID && view._isCitationCollection(col)) {
+                return view._insertCitationRowAbovePublications(this, col);
               }
             }
-          );
+            const maskedRows = [];
+            for (const row of this._rows || []) {
+              if ((row?.isCollection?.() || row?.type === "collection") && view._isCitationCollection(row?.ref)) {
+                row.isCollection = () => false;
+                maskedRows.push(row);
+              }
+            }
+            try {
+              return await original.call(this, objectType, id);
+            } finally {
+              for (const row of maskedRows) delete row.isCollection;
+            }
+          });
           if (typeof restoreAddSorted === "function") (this._patchDisposers ??= []).push(restoreAddSorted);
         }
         this.repositionCitationCollections();
@@ -3070,7 +3071,6 @@
     }
     /**
      * Caches original visual properties of an icon DOM node before patching.
-     * @param {Element} iconNode - Cell icon element
      * @private
      */
     _rememberIconNode(iconNode) {
@@ -3080,9 +3080,7 @@
           if (node.isConnected === false) this._iconNodeStates.delete(node);
         }
       }
-      if (this._iconNodeStates.has(iconNode)) {
-        return;
-      }
+      if (this._iconNodeStates.has(iconNode)) return;
       this._iconNodeStates.set(iconNode, {
         backgroundImage: iconNode.style?.backgroundImage || "",
         hadSearch: iconNode.classList?.contains("icon-search") === true,
@@ -3092,14 +3090,10 @@
     }
     /**
      * Restores an icon node to its pre-patch visual state.
-     * @param {Element} iconNode - Cell icon element
-     * @param {object} [state] - Cached visual state
      * @private
      */
     _restoreIconNode(iconNode, state = this._iconNodeStates?.get(iconNode)) {
-      if (!iconNode || !state) {
-        return;
-      }
+      if (!iconNode || !state) return;
       if (String(iconNode.style?.backgroundImage || "").includes(`/content/icons/word.png`)) {
         iconNode.style.backgroundImage = state.backgroundImage;
       }

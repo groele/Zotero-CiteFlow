@@ -14,7 +14,7 @@ export class CitationDocumentNaming {
   _sanitizeFolderName(rawName) {
     const fallback = "Untitled Document";
     const raw = typeof rawName === "string" ? rawName : String(rawName || "");
-    const noControlChars = raw.replace(/[\u0000-\u001F\u007F]/g, " ");
+    const noControlChars = raw.replace(/[\u0000-\u001F\u007F\u200B-\u200F\u202A-\u202E\uFEFF]/g, " ");
     const normalized = noControlChars.replace(/\s+/g, " ").trim();
     const maxLength = 200;
     return (normalized || fallback).slice(0, maxLength);

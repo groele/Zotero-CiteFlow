@@ -585,6 +585,26 @@ test("ViewsIconPatch positions CiteFlow Word collections immediately above My Pu
   for (const dispose of view._patchDisposers) dispose();
 });
 
+test("CitationFormatting._formatItemPlainCitation purges zero-width controls and deduplicates repeated identical citations", async () => {
+  const { CitationFormatting } = await import("../src/modules/citation/formatting.mjs");
+  const instance = Object.create(CitationFormatting.prototype);
+
+  const idIndexMap = new Map([[101, 0]]);
+  const citationsByItemID = {
+    101: [
+      { properties: { plainCitation: "\u200B(Smith et al., 2020)\uFEFF" } },
+      { properties: { plainCitation: "(Smith et al., 2020)" } },
+      { properties: { plainCitation: "  (Smith et al., 2020)  " } },
+      { properties: { plainCitation: "(Smith et al., 2020, p. 45)" } }
+    ]
+  };
+
+  const formatted = instance._formatItemPlainCitation(101, idIndexMap, citationsByItemID, {}, false);
+  assert.equal(formatted, "1: (Smith et al., 2020), (Smith et al., 2020, p. 45)",
+    "Identical repeated citations within the same item must be cleanly deduplicated and zero-width characters stripped");
+});
+
+
 
 
 

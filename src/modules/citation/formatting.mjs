@@ -281,13 +281,19 @@ export class CitationFormatting {
       const prev = oldIdData[id]?.plainCitation || oldIdData[String(id)]?.plainCitation;
       return prev && prev.startsWith(`${order}: `) && !prev.endsWith("(error)") ? prev : `${order}: (error)`;
     }
-    const labels = citations.map(entry => {
+    const labels = [];
+    const seen = new Set();
+    for (const entry of citations) {
       const rawText = typeof entry?.properties?.plainCitation === "string"
-        ? entry.properties.plainCitation.replace(/[\u0000-\u001F\u007F]/g, " ").replace(/\s+/g, " ").trim()
+        ? entry.properties.plainCitation.replace(/[\u0000-\u001F\u007F\u200B-\u200F\u202A-\u202E\uFEFF]/g, " ").replace(/\s+/g, " ").trim()
         : "";
-      return rawText || "(no text)";
-    });
-    return `${order}: ` + labels.join(", ");
+      const cleaned = rawText || "(no text)";
+      if (!seen.has(cleaned)) {
+        seen.add(cleaned);
+        labels.push(cleaned);
+      }
+    }
+    return `${order}: ` + (labels.length ? labels.join(", ") : "(no text)");
   }
 
   /**
@@ -304,7 +310,6 @@ export class CitationFormatting {
     const isNoteStyle = styleClass === "note";
     const idIndexMap = new Map(sortedItemIDs.map((id, idx) => [Number(id), idx]));
     const oldIdData = this.sessions[sessionID]?.idData || {};
-
     const targetData = {};
     for (const id of citationIDKeys) {
       const zotItem = typeof Zotero !== "undefined" && typeof Zotero.Items?.get === "function" ? Zotero.Items.get(Number(id)) : null;
@@ -315,9 +320,7 @@ export class CitationFormatting {
         targetData[id] = { plainCitation: "(error)" };
       }
     }
-
     if (!this.sessions[sessionID]) return;
-
     let hasChanges = Object.keys(targetData).length !== Object.keys(oldIdData).length;
     if (!hasChanges) {
       for (const id in targetData) {
@@ -327,13 +330,12 @@ export class CitationFormatting {
         }
       }
     }
-
     const citationSession = this.sessions[sessionID];
-    const userLibraryID = Zotero.Libraries.userLibraryID;
+    const collectionLibraryID = citationSession.collection?.libraryID ?? Zotero.Libraries.userLibraryID;
     const targetIDs = citationIDKeys.map(Number).filter(id => {
       if (!Number.isSafeInteger(id) || id <= 0) return false;
       const item = Zotero.Items.get(id);
-      if (!item || item.libraryID !== userLibraryID || item.deleted === true || item.inTrash === true) return false;
+      if (!item || item.libraryID !== collectionLibraryID || item.deleted === true || item.inTrash === true) return false;
       return typeof item.isTopLevelItem !== "function" || item.isTopLevelItem();
     });
 

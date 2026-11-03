@@ -1,5 +1,18 @@
 # Zotero CiteFlow Release Notes
 
+## 13.0.9 (2026-11-03) — Multi-Window Tree Self-Healing, Zero-Width Citation Sanitization & Transactional Membership Guard
+
+- **文集树多窗口与展开自愈重排（`src/modules/views/icon-patch.mjs`）**：
+  - **全局多窗口文集树枚举（`_getAllCollectionsViews`）**：支持遍历覆盖主窗口及拆分标签页/外置阅读器窗口中的全部 `collectionsView` 实例，确保多窗口工作流下 Word 文档文集在每个活动窗口中均统一保持在「我的出版物」正上方；
+  - **展开/折叠动态自愈刷新（`_expandRow` / `_refreshRowMap`）**：在用户展开「我的文库」或上级文集后，重排 Word 临时文集的同时自动调用 `cv._refreshRowMap()` 与 `cv.tree?.invalidate()`，杜绝文集折叠再展开时的行映射偏移动作；
+- **引文纯文本标签空白净化与去重折叠（`src/modules/citation/formatting.mjs`）**：
+  - 在 `_formatItemPlainCitation` 中深度剔除 Unicode 零宽字符（`\u200B-\u200F`、`\uFEFF`）及控制字符，净化学术引文标签回显；
+  - 对同一条目在 Word 复合引文域中出现的重复标签进行自动折叠去重，避免同一标签过度堆叠显示；
+- **文集条目同步事务异常隔离与跨库防护（`collections.mjs` / `formatting.mjs`）**：
+  - 在 `syncCollectionItems` 中为 `Zotero.DB.executeTransaction` 增加专属异常捕获与诊断日志，杜绝底层数据库瞬时锁或并发事务中断全局会话刷新；
+  - 在 `_applyCitations` 中采用 `citationSession.collection?.libraryID ?? Zotero.Libraries.userLibraryID`，确保条目文库归属与临时集合严格匹配；
+- **全量自动化测试验证**：53 项顶层测试套件 100% 通过（新增引文标签空白净化与去重折叠测试用例）。
+
 ## 13.0.8 (2026-11-03) — Word Collection Tree Positioning Above My Publications & Legacy v40 Renaming Cleanup
 
 - **Word 文档文集树位置精准重排（`src/modules/views/icon-patch.mjs` / `src/modules/citation/collections.mjs`）**：

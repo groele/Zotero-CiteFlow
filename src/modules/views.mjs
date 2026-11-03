@@ -127,7 +127,7 @@ var Views = class {
     this._disposed = true;
     this._dragItems = null;
     const cleanup = action => {
-      try { action(); } catch (error) { Zotero.logError(error); }
+      try { action(); } catch (error) { (Zotero?.logError || runtime?.log || console.error)(error); }
     };
     if (this._dragEndHandler) cleanup(() => this.document.removeEventListener("dragend", this._dragEndHandler, true));
     this._dragEndHandler = null;
