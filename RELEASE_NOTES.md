@@ -1,5 +1,22 @@
 # Zotero CiteFlow Release Notes
 
+## 13.0.3 (2026-11-03) — Academic Citation Determinism, Stability & Performance Hardening
+
+- **参考文献引文序数绝对决定性（Zero-Error Academic Citation Ordinal Determinism）**：
+  - 在 `src/modules/citation/order-cache.mjs` 中新增 `_isValidCitationIndexKey(key)` 与 `_parseValidItemID(rawId)` 双重严格整数校验；彻底拦截 `citationsByIndex` 上的非数值键（防止 `Number(a) - Number(b)` 产生 `NaN` 导致 `Array.prototype.sort` 排序乱序错位），杜绝因引文序号错乱引发的学术引文失准风险；
+  - 对引文字符串显示实施控制字符与多空白规范化清洗（`_formatItemPlainCitation`），保障列表回显与引文预览一致性。
+- **Word 会话双向撕裂快照防呆保护（Bidirectional Torn-Snapshot Guard）**：
+  - 在 `src/modules/citation/formatting.mjs` 的 `_readSessionCitationSnapshots` 中将撕裂快照检测升级为双向防呆：不仅在 `citationsByIndex` 为空而 `citationsByItemID` 非空时触发，且在 `citationsByIndex` 非空而 `citationsByItemID` 处于瞬态更新为空时同样触发 `50ms` 延迟重读并标记 `transientMismatch: true`，严禁半成品快照清空已有引文状态。
+- **回收站与已删除文献全链路防护（Trash & Deleted Item Hard Guard）**：
+  - 在 `tag-governance.mjs`（`_isWritableCitationItem`）、`formatting.mjs`（`_applyCitations`）与 `drag-cite.mjs`（`_onDragStart`）全链路拦截 `item.deleted === true || item.inTrash === true` 的条目：禁止将回收站/已删除文献拖入 Word 插入引文、禁止混入文档引文集合、禁止对其写入自动标签。
+- **拖拽引文去重与超时防悬空**：
+  - 拖拽多选条目时按 `item.id` 严格去重，防止单次拖放重复插入同一篇文献；新增 60 秒拖拽会话过期保护（`_dragStartedAt`），防止异常中断的拖拽状态残留。
+- **高频轮询重入锁与虚拟列表 $O(1)$ 性能优化**：
+  - 在 `word-integration.mjs` 的 `listener` 定时轮询中新增 `_isTickRunning` 重入互斥锁，防止慢速 I/O 时轮询任务重叠并发；
+  - 在 `icon-patch.mjs` 中将 DOM 节点断开清理优化为仅在容量达到阈值（64 节点）时按需触发，消除虚拟树高频滚动时的每行 $O(N)$ 遍历开销；
+  - 在 `order-cache.mjs` 中为 `_sortedCacheBySession` 增加有界容量淘汰（上限 64 会话），防止长期开启多篇文档导致内存增长。
+- **全量自动化测试验证**：43 项顶层测试套件（含新增学术引文决定性、双向撕裂快照与回收站拦截专项测试）100% 通过。
+
 ## 13.0.2 (2026-11-03)
 
 - **27 模块多文件物理领域解耦**：彻底告别单文件 1,913 行代码堆砌，将 `src/modules/citation.mjs` 与 `src/modules/views.mjs` 按职责拆分为 `src/modules/citation/` 下的 11 个独立领域模块与 `src/modules/views/` 下的 5 个独立视图模块，所有源码文件行数严格控制在 350 行以内；

@@ -24,7 +24,8 @@ export class CitationWordIntegration {
     }
 
     const tick = async () => {
-      if (this._listenerStopped) return;
+      if (this._listenerStopped || this._isTickRunning) return;
+      this._isTickRunning = true;
       try {
         if (!Zotero.ZoteroCitation) {
           void this.clear().catch(error => this.logError("Failed to clear after plugin instance removal", error));
@@ -38,6 +39,7 @@ export class CitationWordIntegration {
       } catch (e) {
         this.logError("Background citation synchronization failed", e);
       } finally {
+        this._isTickRunning = false;
         if (!this._listenerStopped) {
           this._listenerTimer = globalThis.setTimeout(
             () => { this._listenerTickTask = tick(); },

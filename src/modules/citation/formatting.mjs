@@ -80,7 +80,8 @@ export class CitationFormatting {
   }
 
   /**
-   * Reads citationsByItemID and citationsByIndex from the native Word session, retrying once on transient index mismatch.
+   * Reads citationsByItemID and citationsByIndex from the native Word session,
+   * retrying once on bidirectional torn-snapshot mismatch (index empty while itemMap non-empty, or vice versa).
    * @param {object} targetSession - Native Word session
    * @returns {Promise<{ citationsByItemID: object, citationsByIndex: object, transientMismatch: boolean }>}
    * @private
@@ -98,12 +99,16 @@ export class CitationFormatting {
       citationsByIndex = targetSession.citationsByIndex || {};
     }
 
-    if (Object.keys(citationsByIndex).length === 0 && Object.keys(citationsByItemID).length > 0) {
+    const indexEmpty = Object.keys(citationsByIndex).length === 0;
+    const itemMapEmpty = Object.keys(citationsByItemID).length === 0;
+    if (indexEmpty !== itemMapEmpty) {
       await Zotero.Promise.delay(50);
-      await targetSession.updateFromDocument(0);
+      await targetSession.updateFromDocument?.(0);
       citationsByIndex = targetSession.citationsByIndex || {};
       citationsByItemID = targetSession.citationsByItemID || {};
-      if (Object.keys(citationsByIndex).length === 0) {
+      const retryIndexEmpty = Object.keys(citationsByIndex).length === 0;
+      const retryItemMapEmpty = Object.keys(citationsByItemID).length === 0;
+      if (retryIndexEmpty !== retryItemMapEmpty) {
         return { citationsByItemID, citationsByIndex, transientMismatch: true };
       }
     }
@@ -278,7 +283,13 @@ export class CitationFormatting {
     if (isNoteStyle) return String(order);
     const citations = citationsByItemID[id];
     if (!Array.isArray(citations) || citations.length === 0) return `${order}: (error)`;
-    return `${order}: ` + citations.map(i => i?.properties?.plainCitation || "(no text)").join(", ");
+    const labels = citations.map(entry => {
+      const rawText = typeof entry?.properties?.plainCitation === "string"
+        ? entry.properties.plainCitation.replace(/[\u0000-\u001F\u007F]/g, " ").replace(/\s+/g, " ").trim()
+        : "";
+      return rawText || "(no text)";
+    });
+    return `${order}: ` + labels.join(", ");
   }
 
   /**
@@ -325,8 +336,10 @@ export class CitationFormatting {
     const citationSession = this.sessions[sessionID];
     const userLibraryID = Zotero.Libraries.userLibraryID;
     const targetIDs = citationIDKeys.map(Number).filter(id => {
+      if (!Number.isSafeInteger(id) || id <= 0) return false;
       const item = Zotero.Items.get(id);
-      return item && item.libraryID === userLibraryID && (typeof item.isTopLevelItem !== "function" || item.isTopLevelItem());
+      if (!item || item.libraryID !== userLibraryID || item.deleted === true || item.inTrash === true) return false;
+      return typeof item.isTopLevelItem !== "function" || item.isTopLevelItem();
     });
 
     if (this._sessionUpdateRevision[sessionID] !== revision) return;

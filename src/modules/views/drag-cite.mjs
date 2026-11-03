@@ -53,9 +53,12 @@ export class ViewsDragCite {
       || Zotero.Prefs.get("extensions.zotero.zoterocitation.dragCite.enable", true) === false) return;
     this._dragEndHandler = (event) => {
       const items = this._dragItems;
+      const startedAt = this._dragStartedAt || 0;
       this._dragItems = null;
+      this._dragStartedAt = 0;
       if (!items?.length || !this._dragEnabled() || !event.dataTransfer
         || event.dataTransfer.mozUserCancelled) return;
+      if (startedAt > 0 && Date.now() - startedAt > 60000) return;
       const target = this._resolveDropTarget();
       if (target === "unknown") this._notifyUnknownDropTarget();
       if (target !== "word-confirmed") return;
@@ -66,13 +69,23 @@ export class ViewsDragCite {
       const restore = runtime.patch(this.pane.itemsView, "onDragStart", config.addonRef,
         (original) => (event, row) => {
           this._dragItems = null;
+          this._dragStartedAt = 0;
           const selection = this.pane.itemsView.selection;
           if (this._dragEnabled() && Number.isInteger(row) && selection
             && !selection.isSelected(row)) selection.select(row);
           const items = this.pane.getSelectedItems();
           if (this._dragEnabled() && event.dataTransfer && items?.length
-            && items.every((item) => item?.isRegularItem?.() && item.isTopLevelItem())) {
-            this._dragItems = [...items];
+            && items.every((item) => item && item.deleted !== true && item.inTrash !== true
+              && item.isRegularItem?.() && item.isTopLevelItem())) {
+            const seenIDs = new Set();
+            this._dragItems = items.filter((item) => {
+              if (item.id != null) {
+                if (seenIDs.has(item.id)) return false;
+                seenIDs.add(item.id);
+              }
+              return true;
+            });
+            this._dragStartedAt = Date.now();
             event.dataTransfer.setData("text/plain", "");
             return;
           }

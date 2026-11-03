@@ -871,7 +871,8 @@
         this._listenerTimer = null;
       }
       const tick = async () => {
-        if (this._listenerStopped) return;
+        if (this._listenerStopped || this._isTickRunning) return;
+        this._isTickRunning = true;
         try {
           if (!Zotero.ZoteroCitation) {
             void this.clear().catch((error) => this.logError("Failed to clear after plugin instance removal", error));
@@ -884,6 +885,7 @@
         } catch (e) {
           this.logError("Background citation synchronization failed", e);
         } finally {
+          this._isTickRunning = false;
           if (!this._listenerStopped) {
             this._listenerTimer = globalThis.setTimeout(
               () => {
@@ -1128,6 +1130,36 @@
       return `cache_${sessionID}`;
     }
     /**
+     * Validates whether a citation index key represents a non-negative safe integer.
+     * Prevents NaN comparator corruption in Array.prototype.sort.
+     * @param {string} key - Object key from citationsByIndex
+     * @returns {boolean}
+     * @private
+     */
+    _isValidCitationIndexKey(key) {
+      if (typeof key !== "string" || !/^\d+$/.test(key)) return false;
+      const num = Number(key);
+      return Number.isSafeInteger(num) && num >= 0;
+    }
+    /**
+     * Parses and validates a positive safe integer item ID from a citation item entry.
+     * @param {unknown} rawId - Raw item ID
+     * @returns {number|null} Positive integer ID or null
+     * @private
+     */
+    _parseValidItemID(rawId) {
+      if (typeof rawId === "number") {
+        return Number.isSafeInteger(rawId) && rawId > 0 ? rawId : null;
+      }
+      if (typeof rawId === "string") {
+        const trimmed = rawId.trim();
+        if (!/^\d+$/.test(trimmed)) return null;
+        const num = Number(trimmed);
+        return Number.isSafeInteger(num) && num > 0 ? num : null;
+      }
+      return null;
+    }
+    /**
      * Retrieves and validates cached sort signature and item IDs for a session.
      * @param {string} sessionID - Session identifier
      * @returns {object|undefined}
@@ -1143,7 +1175,7 @@
       return cache;
     }
     /**
-     * Caches sort signature and cloned result array for a session.
+     * Caches sort signature and cloned result array for a session with bounded eviction.
      * @param {string} sessionID - Session identifier
      * @param {string} sig - Signature hash string
      * @param {number[]} result - Sorted item IDs
@@ -1154,10 +1186,15 @@
         this._sortedCacheBySession = {};
       }
       const key = this._getSortedCacheKey(sessionID);
+      const maxSessions = this._maxSortedCacheSessions || 64;
+      const existingKeys = Object.keys(this._sortedCacheBySession);
+      if (!(key in this._sortedCacheBySession) && existingKeys.length >= maxSessions) {
+        delete this._sortedCacheBySession[existingKeys[0]];
+      }
       this._sortedCacheBySession[key] = { sig, result: [...result] };
     }
     /**
-     * Extracts and sorts item IDs according to their order of appearance in the Word document.
+     * Extracts and sorts item IDs according to their exact order of appearance in the Word document.
      * @param {object} citationsByIndex - Native citation index dictionary
      * @param {string} sessionID - Session identifier
      * @returns {number[]} Sorted unique item IDs
@@ -1166,7 +1203,7 @@
       const perfStart = Date.now();
       citationsByIndex ??= {};
       try {
-        const indexKeys = Object.keys(citationsByIndex).sort((a, b) => Number(a) - Number(b));
+        const indexKeys = Object.keys(citationsByIndex).filter((key) => this._isValidCitationIndexKey(key)).sort((a, b) => Number(a) - Number(b));
         const parts = [];
         const seenIDs = /* @__PURE__ */ new Set();
         const sortedItemIDs = [];
@@ -1174,9 +1211,9 @@
           const values = [];
           const items = Array.isArray(citationsByIndex[key]?.citationItems) ? citationsByIndex[key].citationItems : [];
           for (const item of items) {
-            if (!item || typeof item.id !== "number" && typeof item.id !== "string") continue;
-            const id = Number(item.id);
-            if (!Number.isSafeInteger(id) || id <= 0) continue;
+            if (!item) continue;
+            const id = this._parseValidItemID(item.id);
+            if (id === null) continue;
             values.push(id);
             if (!seenIDs.has(id)) {
               seenIDs.add(id);
@@ -1291,7 +1328,7 @@
      */
     _isWritableCitationItem(item) {
       const userLibraryID = Zotero.Libraries?.userLibraryID;
-      if (!item || item.libraryID !== userLibraryID || item.editable === false) {
+      if (!item || item.libraryID !== userLibraryID || item.editable === false || item.deleted === true || item.inTrash === true) {
         return false;
       }
       try {
@@ -1592,7 +1629,8 @@
       }
     }
     /**
-     * Reads citationsByItemID and citationsByIndex from the native Word session, retrying once on transient index mismatch.
+     * Reads citationsByItemID and citationsByIndex from the native Word session,
+     * retrying once on bidirectional torn-snapshot mismatch (index empty while itemMap non-empty, or vice versa).
      * @param {object} targetSession - Native Word session
      * @returns {Promise<{ citationsByItemID: object, citationsByIndex: object, transientMismatch: boolean }>}
      * @private
@@ -1608,12 +1646,16 @@
         await targetSession.updateFromDocument(0);
         citationsByIndex = targetSession.citationsByIndex || {};
       }
-      if (Object.keys(citationsByIndex).length === 0 && Object.keys(citationsByItemID).length > 0) {
+      const indexEmpty = Object.keys(citationsByIndex).length === 0;
+      const itemMapEmpty = Object.keys(citationsByItemID).length === 0;
+      if (indexEmpty !== itemMapEmpty) {
         await Zotero.Promise.delay(50);
-        await targetSession.updateFromDocument(0);
+        await targetSession.updateFromDocument?.(0);
         citationsByIndex = targetSession.citationsByIndex || {};
         citationsByItemID = targetSession.citationsByItemID || {};
-        if (Object.keys(citationsByIndex).length === 0) {
+        const retryIndexEmpty = Object.keys(citationsByIndex).length === 0;
+        const retryItemMapEmpty = Object.keys(citationsByItemID).length === 0;
+        if (retryIndexEmpty !== retryItemMapEmpty) {
           return { citationsByItemID, citationsByIndex, transientMismatch: true };
         }
       }
@@ -1776,7 +1818,11 @@
       if (isNoteStyle) return String(order);
       const citations = citationsByItemID[id];
       if (!Array.isArray(citations) || citations.length === 0) return `${order}: (error)`;
-      return `${order}: ` + citations.map((i) => i?.properties?.plainCitation || "(no text)").join(", ");
+      const labels = citations.map((entry) => {
+        const rawText = typeof entry?.properties?.plainCitation === "string" ? entry.properties.plainCitation.replace(/[\u0000-\u001F\u007F]/g, " ").replace(/\s+/g, " ").trim() : "";
+        return rawText || "(no text)";
+      });
+      return `${order}: ` + labels.join(", ");
     }
     /**
      * Formats item plain citations and synchronizes session collection items.
@@ -1817,8 +1863,10 @@
       const citationSession = this.sessions[sessionID];
       const userLibraryID = Zotero.Libraries.userLibraryID;
       const targetIDs = citationIDKeys.map(Number).filter((id) => {
+        if (!Number.isSafeInteger(id) || id <= 0) return false;
         const item = Zotero.Items.get(id);
-        return item && item.libraryID === userLibraryID && (typeof item.isTopLevelItem !== "function" || item.isTopLevelItem());
+        if (!item || item.libraryID !== userLibraryID || item.deleted === true || item.inTrash === true) return false;
+        return typeof item.isTopLevelItem !== "function" || item.isTopLevelItem();
       });
       if (this._sessionUpdateRevision[sessionID] !== revision) return;
       await this.syncCollectionItems(citationSession, targetIDs);
@@ -2339,8 +2387,11 @@
       if (this._dragEndHandler || this._disposed || addon.data.alive === false || Zotero.Prefs.get("extensions.zotero.zoterocitation.dragCite.enable", true) === false) return;
       this._dragEndHandler = (event) => {
         const items = this._dragItems;
+        const startedAt = this._dragStartedAt || 0;
         this._dragItems = null;
+        this._dragStartedAt = 0;
         if (!items?.length || !this._dragEnabled() || !event.dataTransfer || event.dataTransfer.mozUserCancelled) return;
+        if (startedAt > 0 && Date.now() - startedAt > 6e4) return;
         const target = this._resolveDropTarget();
         if (target === "unknown") this._notifyUnknownDropTarget();
         if (target !== "word-confirmed") return;
@@ -2354,11 +2405,20 @@
           config.addonRef,
           (original) => (event, row) => {
             this._dragItems = null;
+            this._dragStartedAt = 0;
             const selection = this.pane.itemsView.selection;
             if (this._dragEnabled() && Number.isInteger(row) && selection && !selection.isSelected(row)) selection.select(row);
             const items = this.pane.getSelectedItems();
-            if (this._dragEnabled() && event.dataTransfer && items?.length && items.every((item) => item?.isRegularItem?.() && item.isTopLevelItem())) {
-              this._dragItems = [...items];
+            if (this._dragEnabled() && event.dataTransfer && items?.length && items.every((item) => item && item.deleted !== true && item.inTrash !== true && item.isRegularItem?.() && item.isTopLevelItem())) {
+              const seenIDs = /* @__PURE__ */ new Set();
+              this._dragItems = items.filter((item) => {
+                if (item.id != null) {
+                  if (seenIDs.has(item.id)) return false;
+                  seenIDs.add(item.id);
+                }
+                return true;
+              });
+              this._dragStartedAt = Date.now();
               event.dataTransfer.setData("text/plain", "");
               return;
             }
@@ -2420,8 +2480,10 @@
      */
     _rememberIconNode(iconNode) {
       this._iconNodeStates ??= /* @__PURE__ */ new Map();
-      for (const node of this._iconNodeStates.keys()) {
-        if (node.isConnected === false) this._iconNodeStates.delete(node);
+      if (this._iconNodeStates.size >= 64) {
+        for (const node of this._iconNodeStates.keys()) {
+          if (node.isConnected === false) this._iconNodeStates.delete(node);
+        }
       }
       if (this._iconNodeStates.has(iconNode)) {
         return;

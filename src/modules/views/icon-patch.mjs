@@ -54,8 +54,10 @@ export class ViewsIconPatch {
    */
   _rememberIconNode(iconNode) {
     this._iconNodeStates ??= new Map();
-    for (const node of this._iconNodeStates.keys()) {
-      if (node.isConnected === false) this._iconNodeStates.delete(node);
+    if (this._iconNodeStates.size >= 64) {
+      for (const node of this._iconNodeStates.keys()) {
+        if (node.isConnected === false) this._iconNodeStates.delete(node);
+      }
     }
     if (this._iconNodeStates.has(iconNode)) {
       return;

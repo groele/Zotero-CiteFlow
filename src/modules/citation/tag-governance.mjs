@@ -70,7 +70,8 @@ export class CitationTagGovernance {
    */
   _isWritableCitationItem(item) {
     const userLibraryID = Zotero.Libraries?.userLibraryID;
-    if (!item || item.libraryID !== userLibraryID || item.editable === false) {
+    if (!item || item.libraryID !== userLibraryID || item.editable === false
+      || item.deleted === true || item.inTrash === true) {
       return false;
     }
     try {
