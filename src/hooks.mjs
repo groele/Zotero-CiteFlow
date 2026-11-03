@@ -3,7 +3,7 @@ import { initLocale } from "./modules/locale.mjs";
 import { Citation } from "./modules/citation.mjs";
 import Views from "./modules/views.mjs";
 import { Preferences } from "./modules/preferences.mjs";
-import { closeDropTargetCtypes } from "./modules/drop-target.mjs";
+import { closeDropTargetCtypes, probeWordWindowTitles } from "./modules/drop-target.mjs";
 const windowBindings = new Map();
 let startupPromise;
 let shutdownPromise;
@@ -29,6 +29,7 @@ async function onStartup() {
     if (Zotero.Prefs.get("extensions.zotero.zoterocitation.enable", true) === false) {
       return;
     }
+    addon.data.probeWordWindowTitles = probeWordWindowTitles;
     const citation = new Citation();
     addon.data.citation = citation;
     await citation.listener(1e3);
@@ -114,6 +115,8 @@ async function onShutdown() {
   for (const win of [...windowBindings.keys()]) await detachWindow(win);
   await runShutdownStep("clear citation state", () => addon.data.citation?.clear?.());
   await runShutdownStep("close drop-target native libraries", () => {
+    delete addon.data.probeWordWindowTitles;
+    delete addon.data.lastDroppedWordWindow;
     if (typeof closeDropTargetCtypes === "function") closeDropTargetCtypes();
   });
   await runShutdownStep("restore host methods", () => runtime.unregisterAll());

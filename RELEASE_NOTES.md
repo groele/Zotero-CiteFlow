@@ -1,5 +1,14 @@
 # Zotero CiteFlow Release Notes
 
+## 13.0.7 (2026-11-03) — Multi-Source Word Document Identification, Drag-Target Window Title Extraction & Pending Collection Self-Healing
+
+- **消除「Word 文档（待识别） 1」的多源文档智能识别引擎（`drop-target.mjs` / `document-naming.mjs` / `word-integration.mjs` / `collections.mjs`）**：
+  - **拖拽释放瞬间精准捕获目标 Word 窗口标题（`resolveWordDropTarget`）**：在用户将文献拖入 Word 窗口时，虽然底层 `cite.mjs` 以 `docId = null` 调用原生 `execCommand`，`drop-target.mjs` 现通过 `GetAncestor(targetWindow, GA_ROOT)` + `GetWindowTextW` 直接从鼠标落点所在的精确 `WINWORD.EXE` 顶层窗口提取文档标题（自动剥离 `- Word`、`[兼容模式]`、`- 已保存到此电脑`、`- 只读` 等状态后缀），使拖拽引文创建的集合直接以真实文档名命名，彻底告别 `Word 文档（待识别） 1`；
+  - **后台轮询无歧义 `OpusApp` 窗口自愈重命名（`_syncSessionDocumentName` / `probeWordWindowTitles`）**：当会话在启动或后台扫描时处于 `Word 文档（待识别） N` 状态，或用户将未保存的 `文档1` 在 Word 中按下 `Ctrl+S` 另存为正式文件名（如 `毕业论文.docx`）时，后台轮询通过枚举可见 `OpusApp` 窗口（在单文档或排除已识别文档后唯一无歧义时）自动将临时集合原地重命名为最新文档名，同时在多未识别文档并存时严格拒绝盲猜；
+  - **集合初始化直通命名（`initCollection` / `ensureSession`）**：创建临时集合时若已知悉文档标识，直接赋予真实文档名称，不再先以 `Word 文档（待识别） 1` 落盘后再二次改名；
+  - **SharePoint / OneDrive URL 与特殊字符容错解析（`_getDocumentDisplayName`）**：支持提取 SharePoint `Doc.aspx?file=xxx.docx` 查询参数中的文档名，并对含字面量 `%`（如 `进度50%论文.docx`）的云端 URL 实施分段容错解码（避免 `decodeURIComponent` 抛出 `URIError` 导致回退为待识别状态），同时保持对 `%2F`/`%5C` 路径分隔符注入的严格拦截。
+- **全量自动化测试验证**：51 项顶层测试套件 100% 通过。
+
 ## 13.0.6 (2026-11-03) — Active Collection Guard, Polling Command Yield, Multi-Window Refresh Deduplication & 14px Typography Alignment
 
 - **活跃会话临时集合防误删保护（`src/modules/citation/collections.mjs`）**：

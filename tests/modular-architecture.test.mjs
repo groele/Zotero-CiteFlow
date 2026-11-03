@@ -372,6 +372,86 @@ test("preferences.css enforces 14px control typography per AGENTS.md 4.1", () =>
   assert.match(xhtml, new RegExp(`class="zoterocitation-version-badge">v${pkg.version.replace(/\./g, "\\.")}<`));
 });
 
+test("Word document identification: parses Word window titles, SharePoint/OneDrive URLs, drag-cite null docId, and self-heals pending collection names", async () => {
+  const c = Object.create(Citation.prototype);
+  c._resetInternalTrackingMaps();
+  c._invalidateSessionIndex = () => {};
+  c._clearCollectionRenameRetry = () => {};
+  c._scheduleCollectionRenameRetry = () => {};
+  c.logError = () => {};
+  c.debugLog = () => {};
+
+  // 1. Word window title parsing & URL extraction
+  assert.equal(c._getDocumentDisplayName("深度学习综述.docx - Word"), "深度学习综述.docx");
+  assert.equal(c._getDocumentDisplayName("My-Paper - Part 1.docx - Saved to OneDrive - Word"), "My-Paper - Part 1.docx");
+  assert.equal(c._getDocumentDisplayName("毕业论文.docx [兼容模式] - Word"), "毕业论文.docx");
+  assert.equal(c._getDocumentDisplayName("毕业论文.docx - 只读 - Word (未授权产品)"), "毕业论文.docx");
+  assert.equal(c._getDocumentDisplayName("毕业论文 - 已保存到此电脑 - Word"), "毕业论文");
+  assert.equal(c._getDocumentDisplayName("文档1 - Word"), "文档1");
+  assert.equal(c._getDocumentDisplayName("Word"), "Word");
+  assert.equal(c._parseWordWindowTitle("Word"), "");
+  assert.equal(c._parseWordWindowTitle("Microsoft Word"), "");
+  assert.equal(
+    c._getDocumentDisplayName("https://tenant.sharepoint.com/:w:/r/sites/lab/_layouts/15/Doc.aspx?sourcedoc=%7B123%7D&file=%E8%AE%BA%E6%96%87.docx&action=default"),
+    "论文.docx"
+  );
+  assert.equal(
+    c._getDocumentDisplayName("https://d.docs.live.net/123/%E8%AE%BA%E6%96%87_50%完成.docx"),
+    "论文_50%完成.docx"
+  );
+  assert.equal(
+    c._getDocumentDisplayName("https://example.test/a/part%2Fother.docx"),
+    ""
+  );
+
+  // 2. Drag-cite (docId = null) resolves dropped Word window title and creates collection with real document name
+  globalThis.addon = {
+    data: {
+      alive: true,
+      lastDroppedWordWindow: { title: "综述初稿.docx - 已保存 - Word", at: Date.now() },
+      probeWordWindowTitles: () => ({ foregroundTitle: "", visibleTitles: [] })
+    }
+  };
+  const resolvedFromDrop = c._resolveFallbackDocumentId("S1", {}, null, true);
+  assert.equal(c._getDocumentDisplayName(resolvedFromDrop), "综述初稿.docx");
+  assert.equal(globalThis.addon.data.lastDroppedWordWindow, undefined, "lastDroppedWordWindow must be consumed once");
+
+  // 3. Background self-healing of "Word 文档（待识别） 1" -> "文档1" -> "正式定稿.docx"
+  const pendingName = c._getPendingCollectionName("S1");
+  const mockCollection = { id: 1, key: "K1", name: pendingName, saveTx: async () => {} };
+  c.sessions = { S1: { collection: mockCollection, idData: {} } };
+  globalThis.addon.data.probeWordWindowTitles = () => ({
+    foregroundTitle: "",
+    visibleTitles: ["文档1 - Word"]
+  });
+
+  await c._syncSessionDocumentName("S1", { agent: "WinWord" }, c.sessions.S1);
+  assert.equal(mockCollection.name, "文档1", "Pending collection must self-heal from unambiguous Word window title");
+
+  // Simulate user pressing Ctrl+S in Word to save "文档1" as "正式定稿.docx"
+  globalThis.addon.data.probeWordWindowTitles = () => ({
+    foregroundTitle: "",
+    visibleTitles: ["正式定稿.docx - 已保存到此电脑 - Word"]
+  });
+  await c._syncSessionDocumentName("S1", { agent: "WinWord" }, c.sessions.S1);
+  assert.equal(mockCollection.name, "正式定稿.docx", "Collection must automatically update when unsaved Word document is saved");
+
+  // 4. Ambiguous multiple unidentified Word windows must not guess in background polling
+  const pendingName2 = c._getPendingCollectionName("S2");
+  const mockCollection2 = { id: 2, key: "K2", name: pendingName2, saveTx: async () => {} };
+  c.sessions = {
+    S2: { collection: mockCollection2, idData: {} },
+    S3: { collection: { id: 3, key: "K3", name: c._getPendingCollectionName("S3"), saveTx: async () => {} }, idData: {} }
+  };
+  globalThis.addon.data.probeWordWindowTitles = () => ({
+    foregroundTitle: "",
+    visibleTitles: ["A.docx - Word", "B.docx - Word"]
+  });
+  await c._syncSessionDocumentName("S2", { agent: "WinWord" }, c.sessions.S2);
+  assert.equal(mockCollection2.name, pendingName2, "Must not guess when multiple unidentified sessions and multiple Word windows exist");
+});
+
+
 
 
 

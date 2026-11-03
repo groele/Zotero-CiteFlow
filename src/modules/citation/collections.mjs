@@ -104,7 +104,10 @@ export class CitationCollections {
     if (!session || this._listenerStopped) return;
     const collection = new Zotero.Collection();
     collection.libraryID = Zotero.Libraries.userLibraryID;
-    collection.name = this._getPendingCollectionName(sessionID);
+    const knownDocId = session.docId || this._docIdBySession?.[sessionID];
+    const knownName = knownDocId ? this._getDocumentDisplayName(knownDocId) : "";
+    collection.name = knownName || this._getPendingCollectionName(sessionID);
+    session.lastName = collection.name;
     try {
       if (typeof collection.addRelation === "function") {
         collection.addRelation(TEMP_COLLECTION_RELATION, TEMP_COLLECTION_MARKER);
@@ -196,7 +199,7 @@ export class CitationCollections {
   _scheduleCollectionRenameRetry(sessionID, targetName, docId = this._docIdBySession?.[sessionID]) {
     if (this._listenerStopped || !sessionID || !targetName || this._collectionRenameRetryTimerBySession?.[sessionID]) return;
     const attempt = (this._collectionRenameRetryCountBySession[sessionID] || 0) + 1;
-    if (attempt > 2) {
+    if (attempt > 4) {
       this.debugLog("[Citation execCommand] collection rename retries exhausted", sessionID);
       return;
     }

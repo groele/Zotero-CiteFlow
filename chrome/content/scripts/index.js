@@ -577,8 +577,51 @@
       return (normalized || fallback).slice(0, maxLength);
     }
     /**
-     * Resolves a sanitized display name for a Word document from its file path or URI.
-     * @param {string} docId - Raw document URI or path identifier
+     * Extracts a clean document display name from a Microsoft Word window title.
+     * @param {string} rawTitle - Raw Win32 Word window title or prefixed marker
+     * @returns {string} Extracted document name or empty string
+     * @private
+     */
+    _parseWordWindowTitle(rawTitle) {
+      if (typeof rawTitle !== "string") return "";
+      let cleaned = rawTitle.replace(/[\u0000-\u001F\u007F\u200B-\u200F\u202A-\u202E\uFEFF]/g, " ").replace(/\s+/g, " ").trim();
+      if (!cleaned) return "";
+      if (cleaned.startsWith("window-title:")) {
+        cleaned = cleaned.slice("window-title:".length).trim();
+        if (!cleaned) return "";
+        if (!/\s+[-–—]\s+(?:Microsoft\s+)?Word(?:\s*\([^)]*\))?$/i.test(cleaned)) {
+          try {
+            return this._sanitizeFolderName(cleaned.normalize("NFC"));
+          } catch {
+            return this._sanitizeFolderName(cleaned);
+          }
+        }
+      }
+      const wordSuffixRe = /\s+[-–—]\s+(?:Microsoft\s+)?Word(?:\s*\([^)]*\))?$/i;
+      if (!wordSuffixRe.test(cleaned)) return "";
+      let body = cleaned.replace(wordSuffixRe, "").trim();
+      if (!body) return "";
+      const extMatch = body.match(/^(.+?\.(?:docx|docm|doc|dotx|dotm|rtf|odt))(?:\s*\[[^\]]*\]|\s+[-–—]\s+.*)*$/i);
+      if (extMatch) {
+        body = extMatch[1].trim();
+      } else {
+        const statusRe = /(?:\s*\[(?:兼容模式|Compatibility Mode|只读|Read-Only|受保护的视图|Protected View|自动保存|AutoSave)[^\]]*\]|\s+[-–—]\s+(?:已保存.*|正在保存.*|上次保存.*|只读|兼容模式|受保护的视图|未保存|Saved.*|Saving.*|Last saved.*|Read-Only|Compatibility Mode|Protected View|Unsaved))\s*$/i;
+        let prev;
+        do {
+          prev = body;
+          body = body.replace(statusRe, "").trim();
+        } while (body && body !== prev);
+      }
+      if (!body || /^(?:Microsoft\s+)?Word$/i.test(body)) return "";
+      try {
+        return this._sanitizeFolderName(body.normalize("NFC"));
+      } catch {
+        return this._sanitizeFolderName(body);
+      }
+    }
+    /**
+     * Resolves a sanitized display name for a Word document from its file path, URI, or window title.
+     * @param {string} docId - Raw document URI, path, or window-title identifier
      * @returns {string} Normalized document display name or empty string
      * @private
      */
@@ -586,16 +629,38 @@
       let raw = typeof docId === "string" ? docId.trim() : String(docId || "").trim();
       if (!raw || raw === "__doc__") return "";
       raw = raw.replace(/^(["'])(.*)\1$/, "$2").trim();
+      if (raw.startsWith("window-title:") || /\s+[-–—]\s+(?:Microsoft\s+)?Word(?:\s*\([^)]*\))?$/i.test(raw)) {
+        return this._parseWordWindowTitle(raw);
+      }
       const isURL = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw);
       const withoutQuery = isURL ? raw.replace(/[?#].*$/, "") : raw;
+      if (isURL && /(?:\/|^)(?:Doc|WopiFrame2?|redir)\.aspx$/i.test(withoutQuery)) {
+        const fileParam = raw.match(/[?&](?:file|filename|name)=([^&#]+)/i);
+        if (fileParam?.[1]) {
+          try {
+            const decodedParam = decodeURIComponent(fileParam[1].replace(/\+/g, "%20")).trim();
+            if (decodedParam && !/[\\/]/.test(decodedParam)) {
+              return this._sanitizeFolderName(decodedParam.normalize("NFC"));
+            }
+          } catch {
+          }
+        }
+      }
       if (!withoutQuery || /[\\\/]$/.test(withoutQuery)) return "";
       const normalizedPath = withoutQuery.replace(/\\/g, "/");
       let candidate = normalizedPath.slice(normalizedPath.lastIndexOf("/") + 1);
       if (isURL) {
+        if (/%(?:2f|5c)/i.test(candidate)) return "";
         try {
           candidate = decodeURIComponent(candidate);
         } catch {
-          return "";
+          candidate = candidate.replace(/(?:%[0-9A-Fa-f]{2})+/g, (match) => {
+            try {
+              return decodeURIComponent(match);
+            } catch {
+              return match;
+            }
+          });
         }
         if (/[\\/]/.test(candidate)) return "";
       }
@@ -607,6 +672,109 @@
       } catch {
         return this._sanitizeFolderName(candidate);
       }
+    }
+    /**
+     * Extracts a document identifier from a native session or document object if available.
+     * @param {object} [nativeSession] - Native Zotero Integration session
+     * @param {object|string} [docObj] - Document reference passed to getSession
+     * @returns {string} Validated document identifier or empty string
+     * @private
+     */
+    _extractSessionDocumentId(nativeSession, docObj) {
+      const doc = docObj ?? nativeSession?._doc ?? nativeSession?.doc;
+      const candidates = [
+        typeof doc === "string" ? doc : null,
+        doc?.docId,
+        doc?.documentPath,
+        doc?.documentName,
+        doc?.fullName,
+        doc?.filePath,
+        doc?.path,
+        doc?.url,
+        doc?.uri,
+        doc?.filename,
+        doc?.title,
+        doc?.name,
+        nativeSession?.docId,
+        nativeSession?.documentPath,
+        nativeSession?.documentName,
+        nativeSession?.filePath,
+        nativeSession?.path,
+        nativeSession?.title,
+        nativeSession?.name
+      ];
+      for (const candidate of candidates) {
+        if (typeof candidate === "string" && candidate.trim() && this._getDocumentDisplayName(candidate)) {
+          return candidate.trim();
+        }
+      }
+      return "";
+    }
+    /**
+     * Resolves a fallback document identifier from session metadata or unambiguous Win32 Word window titles.
+     * @param {string} sessionID - Session identifier
+     * @param {object} [nativeSession] - Native Word session
+     * @param {object} [docObj] - Document object
+     * @param {boolean} [allowForeground=false] - Whether to inspect dropped/foreground Word windows
+     * @returns {string} Resolved document identifier or empty string
+     * @private
+     */
+    _resolveFallbackDocumentId(sessionID, nativeSession, docObj, allowForeground = false) {
+      const fromSession = this._extractSessionDocumentId(nativeSession, docObj);
+      if (fromSession) return fromSession;
+      const addonData = typeof addon !== "undefined" ? addon?.data : null;
+      if (allowForeground && addonData?.lastDroppedWordWindow) {
+        const { title, at } = addonData.lastDroppedWordWindow;
+        delete addonData.lastDroppedWordWindow;
+        if (typeof at === "number" && Date.now() - at <= 15e3) {
+          const droppedName = this._parseWordWindowTitle(title);
+          if (droppedName) return `window-title:${droppedName}`;
+        }
+      }
+      if (typeof addonData?.probeWordWindowTitles === "function") {
+        const probed = addonData.probeWordWindowTitles();
+        if (allowForeground && probed?.foregroundTitle) {
+          const fgName = this._parseWordWindowTitle(probed.foregroundTitle);
+          if (fgName) return `window-title:${fgName}`;
+        }
+        const visibleNames = [...new Set(
+          (probed?.visibleTitles || []).map((t) => this._parseWordWindowTitle(t)).filter(Boolean)
+        )];
+        if (visibleNames.length > 0) {
+          const claimedByOthers = /* @__PURE__ */ new Set();
+          let otherUnidentifiedCount = 0;
+          for (const otherID of Object.keys(this.sessions || {})) {
+            if (otherID === sessionID || this.sessions[otherID]?.closing) continue;
+            const otherDocId = this._docIdBySession?.[otherID] || this.sessions[otherID]?.docId;
+            const otherName = otherDocId ? this._getDocumentDisplayName(otherDocId) : "";
+            if (otherName) claimedByOthers.add(otherName);
+            else otherUnidentifiedCount++;
+          }
+          const unclaimed = visibleNames.filter((name) => !claimedByOthers.has(name));
+          if (visibleNames.length === 1 && otherUnidentifiedCount === 0 && !claimedByOthers.has(visibleNames[0])) {
+            return `window-title:${visibleNames[0]}`;
+          }
+          if (unclaimed.length === 1 && otherUnidentifiedCount === 0) {
+            return `window-title:${unclaimed[0]}`;
+          }
+        }
+      }
+      return this._docIdBySession?.[sessionID] || this.sessions?.[sessionID]?.docId || "";
+    }
+    /**
+     * Checks whether a collection name is still an unidentified pending placeholder.
+     * @param {string} name - Collection name
+     * @param {string} [sessionID] - Optional session identifier
+     * @returns {boolean}
+     * @private
+     */
+    _isPendingCollectionName(name, sessionID) {
+      if (!name || typeof name !== "string") return true;
+      const prefix2 = getString("collection-pending");
+      if (sessionID && this._pendingCollectionNames?.has(sessionID)) {
+        if (name === `${prefix2} ${this._pendingCollectionNames.get(sessionID)}`) return true;
+      }
+      return Boolean(prefix2 && name.startsWith(`${prefix2} `));
     }
     /**
      * Generates a sequenced pending collection name for an unidentified Word session.
@@ -730,7 +898,10 @@
       if (!session || this._listenerStopped) return;
       const collection = new Zotero.Collection();
       collection.libraryID = Zotero.Libraries.userLibraryID;
-      collection.name = this._getPendingCollectionName(sessionID);
+      const knownDocId = session.docId || this._docIdBySession?.[sessionID];
+      const knownName = knownDocId ? this._getDocumentDisplayName(knownDocId) : "";
+      collection.name = knownName || this._getPendingCollectionName(sessionID);
+      session.lastName = collection.name;
       try {
         if (typeof collection.addRelation === "function") {
           collection.addRelation(TEMP_COLLECTION_RELATION, TEMP_COLLECTION_MARKER);
@@ -812,7 +983,7 @@
     _scheduleCollectionRenameRetry(sessionID, targetName, docId = this._docIdBySession?.[sessionID]) {
       if (this._listenerStopped || !sessionID || !targetName || this._collectionRenameRetryTimerBySession?.[sessionID]) return;
       const attempt = (this._collectionRenameRetryCountBySession[sessionID] || 0) + 1;
-      if (attempt > 2) {
+      if (attempt > 4) {
         this.debugLog("[Citation execCommand] collection rename retries exhausted", sessionID);
         return;
       }
@@ -936,15 +1107,43 @@
       for (const sessionID in sessions) {
         const session = sessions[sessionID];
         if (!/(WinWord|MacWord|Word)/i.test(String(session?.agent || ""))) continue;
+        let tracked;
         try {
-          const tracked = await this.ensureSession(sessionID, session);
+          tracked = await this.ensureSession(sessionID, session);
           if (!tracked || tracked.pending || !tracked.collection || this._listenerStopped) continue;
+          await this._syncSessionDocumentName(sessionID, session, tracked);
         } catch (error) {
           this.logError("Cannot initialize a Word citation collection", error);
           continue;
         }
         if (this._listenerStopped || this._isExecCommandRunning) break;
         await this.refreshSessionCitations(sessionID, session);
+      }
+    }
+    /**
+     * Self-heals pending or window-title-derived collection names during background session sync.
+     * @private
+     */
+    async _syncSessionDocumentName(sessionID, nativeSession, trackedSession) {
+      if (this._listenerStopped || !trackedSession?.collection || trackedSession.closing) return;
+      const currentDocId = this._docIdBySession?.[sessionID] || trackedSession.docId || "";
+      const isWindowTitleDerived = typeof currentDocId === "string" && currentDocId.startsWith("window-title:");
+      const isPending = this._isPendingCollectionName?.(trackedSession.collection.name, sessionID);
+      if (!currentDocId || isPending || isWindowTitleDerived) {
+        const resolvedDocId = this._resolveFallbackDocumentId?.(sessionID, nativeSession, null, false);
+        if (resolvedDocId && this._getDocumentDisplayName(resolvedDocId)) {
+          this._rememberSessionDocument(sessionID, resolvedDocId);
+        }
+      }
+      const effectiveDocId = this._docIdBySession?.[sessionID] || trackedSession.docId;
+      const targetName = effectiveDocId ? this._getDocumentDisplayName(effectiveDocId) : "";
+      if (targetName && trackedSession.collection.name !== targetName) {
+        try {
+          await this._renameCollection(sessionID, targetName, effectiveDocId);
+        } catch (error) {
+          this.logError(`Failed to rename Word citation collection for ${sessionID}`, error);
+          this._scheduleCollectionRenameRetry(sessionID, targetName, effectiveDocId);
+        }
       }
     }
     /**
@@ -972,6 +1171,11 @@
       this._execCommandWrapper = execCommandWrapper;
       Zotero.Integration.execCommand = execCommandWrapper;
     }
+    _isMatchingWordBinding(binding, agent, command) {
+      if (!binding || binding.command !== command) return false;
+      if (binding.agent === agent) return true;
+      return /^MacWord/i.test(String(binding.agent || "")) && /^MacWord/i.test(String(agent || ""));
+    }
     /**
      * Creates an interception wrapper for Zotero.Integration.getSession to bind command sessions.
      * @param {Function} originalGetSession - Host getSession function
@@ -981,12 +1185,16 @@
     _createGetSessionWrapper(originalGetSession) {
       const citationModule = this;
       return async function(app, doc, agent, command) {
-        const candidates = [...citationModule._execCommandBindings.values()].filter((binding2) => binding2.agent === agent && binding2.command === command);
+        const candidates = [...citationModule._execCommandBindings.values()].filter((binding2) => citationModule._isMatchingWordBinding(binding2, agent, command));
         const binding = candidates.length === 1 ? candidates[0] : null;
         const result = await originalGetSession.apply(this, arguments);
         if (!citationModule._listenerStopped && binding && !binding.ambiguous && citationModule._execCommandBindings.get(binding.bindingID) === binding) {
-          const sessionID = result?.[0]?.sessionID;
-          if (typeof sessionID === "string" && sessionID) binding.sessionID = sessionID;
+          const sessionObj = Array.isArray(result) ? result[0] : result;
+          const sessionID = sessionObj?.sessionID;
+          if (typeof sessionID === "string" && sessionID) {
+            binding.sessionID = sessionID;
+            binding.doc = doc;
+          }
         }
         return result;
       };
@@ -1064,27 +1272,29 @@
         this.debugLog("[Citation execCommand] session binding unavailable; skipping collection rename");
         return;
       }
-      const targetName = this._getDocumentDisplayName(docId);
+      const nativeSession = integration.sessions?.[sessionID];
+      const hasExplicitDocId = typeof docId === "string" && docId.trim() !== "";
+      const effectiveDocId = hasExplicitDocId ? docId : this._resolveFallbackDocumentId?.(sessionID, nativeSession, binding.doc, true) || "";
+      const targetName = effectiveDocId ? this._getDocumentDisplayName(effectiveDocId) : "";
       if (targetName) {
-        this._rememberSessionDocument(sessionID, docId);
-      } else if (docId) {
+        this._rememberSessionDocument(sessionID, effectiveDocId);
+      } else if (hasExplicitDocId) {
         this._clearCollectionRenameRetry(sessionID);
         delete this._docIdBySession[sessionID];
         if (this.sessions?.[sessionID]) delete this.sessions[sessionID].docId;
         delete addon.data.docId;
       }
       this._setActiveSessionID(sessionID);
-      if (targetName) addon.data.docId = docId;
+      if (targetName) addon.data.docId = effectiveDocId;
       const trackedSession = await this.ensureSession(sessionID);
       if (!trackedSession?.collection || this._listenerStopped) return;
-      const nativeSession = integration.sessions?.[sessionID];
       if (nativeSession) await this.refreshSessionCitations(sessionID, nativeSession);
       if (targetName && trackedSession.collection.name !== targetName) {
         try {
-          await this._renameCollection(sessionID, targetName, docId);
+          await this._renameCollection(sessionID, targetName, effectiveDocId);
         } catch (error) {
           this.logError(`Failed to rename Word citation collection for ${sessionID}`, error);
-          this._scheduleCollectionRenameRetry(sessionID, targetName, docId);
+          this._scheduleCollectionRenameRetry(sessionID, targetName, effectiveDocId);
         }
       }
     }
@@ -1101,10 +1311,15 @@
       if (existing?.collection) return existing;
       this._initializationTasks ??= /* @__PURE__ */ new Map();
       if (this._initializationTasks.has(sessionID)) return this._initializationTasks.get(sessionID);
+      const initialDocId = this._docIdBySession[sessionID] || this._extractSessionDocumentId?.(nativeSession) || void 0;
+      if (initialDocId && !this._docIdBySession[sessionID]) {
+        this._rememberSessionDocument(sessionID, initialDocId);
+      }
+      const initialName = initialDocId ? this._getDocumentDisplayName(initialDocId) : "";
       const session = existing || {
         idData: {},
-        lastName: this._getPendingCollectionName(sessionID),
-        docId: this._docIdBySession[sessionID],
+        lastName: initialName || this._getPendingCollectionName(sessionID),
+        docId: initialDocId,
         pending: true
       };
       this.sessions[sessionID] = session;
@@ -2063,9 +2278,70 @@
         ctypes.int32_t,
         ctypes.voidptr_t
       ),
-      pathBuffer: ctypes.jschar.array(32768)()
+      getAncestor: user32.declare(
+        "GetAncestor",
+        ctypes.winapi_abi,
+        ctypes.voidptr_t,
+        ctypes.voidptr_t,
+        ctypes.uint32_t
+      ),
+      getForegroundWindow: user32.declare(
+        "GetForegroundWindow",
+        ctypes.winapi_abi,
+        ctypes.voidptr_t
+      ),
+      findWindowEx: user32.declare(
+        "FindWindowExW",
+        ctypes.winapi_abi,
+        ctypes.voidptr_t,
+        ctypes.voidptr_t,
+        ctypes.voidptr_t,
+        ctypes.jschar.ptr,
+        ctypes.voidptr_t
+      ),
+      isWindowVisible: user32.declare(
+        "IsWindowVisible",
+        ctypes.winapi_abi,
+        ctypes.int32_t,
+        ctypes.voidptr_t
+      ),
+      getWindowText: user32.declare(
+        "GetWindowTextW",
+        ctypes.winapi_abi,
+        ctypes.int32_t,
+        ctypes.voidptr_t,
+        ctypes.jschar.ptr,
+        ctypes.int32_t
+      ),
+      pathBuffer: ctypes.jschar.array(32768)(),
+      titleBuffer: ctypes.jschar.array(1024)()
     };
     return cachedCtypes;
+  }
+  function readWindowTitle(api, hwnd) {
+    if (!hwnd || hwnd.isNull()) return "";
+    const len = api.getWindowText(hwnd, api.titleBuffer, api.titleBuffer.length);
+    return len > 0 ? api.titleBuffer.readString() : "";
+  }
+  function isWinWordWindow(api, hwnd) {
+    if (!hwnd || hwnd.isNull()) return false;
+    let processHandle;
+    try {
+      const processID = api.ctypes.uint32_t();
+      if (!api.getWindowThreadProcessId(hwnd, processID.address()) || !processID.value) return false;
+      processHandle = api.openProcess(4096, false, processID.value);
+      if (processHandle.isNull()) return false;
+      const pathLength = api.ctypes.uint32_t(api.pathBuffer.length);
+      if (!api.queryFullProcessImageName(processHandle, 0, api.pathBuffer, pathLength.address())) return false;
+      return api.pathBuffer.readString().split(/[\\/]/).pop().toLowerCase() === "winword.exe";
+    } catch {
+      return false;
+    } finally {
+      if (processHandle && !processHandle.isNull()) try {
+        api.closeHandle(processHandle);
+      } catch {
+      }
+    }
   }
   function closeDropTargetCtypes() {
     if (!cachedCtypes) return;
@@ -2078,6 +2354,33 @@
     try {
       user32?.close();
     } catch {
+    }
+  }
+  function probeWordWindowTitles() {
+    if (typeof Zotero === "undefined" || !Zotero.isWin) return { foregroundTitle: "", visibleTitles: [] };
+    try {
+      const api = getDropTargetCtypes();
+      let foregroundTitle = "";
+      const fg = api.getForegroundWindow();
+      if (fg && !fg.isNull()) {
+        const rootFg = api.getAncestor(fg, 2);
+        const targetFg = rootFg && !rootFg.isNull() ? rootFg : fg;
+        if (isWinWordWindow(api, targetFg)) {
+          foregroundTitle = readWindowTitle(api, targetFg);
+        }
+      }
+      const visibleTitles = [];
+      let current = null;
+      for (let i = 0; i < 32; i++) {
+        current = api.findWindowEx(null, current, "OpusApp", null);
+        if (!current || current.isNull()) break;
+        if (!api.isWindowVisible(current)) continue;
+        const title = readWindowTitle(api, current);
+        if (title) visibleTitles.push(title);
+      }
+      return { foregroundTitle, visibleTitles };
+    } catch {
+      return { foregroundTitle: "", visibleTitles: [] };
     }
   }
   function resolveWordDropTarget() {
@@ -2098,7 +2401,18 @@
       const pathLength = api.ctypes.uint32_t(api.pathBuffer.length);
       if (!api.queryFullProcessImageName(processHandle, 0, api.pathBuffer, pathLength.address())) return "unknown";
       const executable = api.pathBuffer.readString().split(/[\\/]/).pop().toLowerCase();
-      return executable === "winword.exe" ? "word-confirmed" : "non-word";
+      const isWord = executable === "winword.exe";
+      if (isWord) {
+        try {
+          const rootWindow = api.getAncestor(targetWindow, 2);
+          const title = readWindowTitle(api, rootWindow) || readWindowTitle(api, targetWindow);
+          if (title && typeof addon !== "undefined" && addon?.data) {
+            addon.data.lastDroppedWordWindow = { title, at: Date.now() };
+          }
+        } catch {
+        }
+      }
+      return isWord ? "word-confirmed" : "non-word";
     } catch (error) {
       return "unknown";
     } finally {
@@ -2769,6 +3083,7 @@
       if (Zotero.Prefs.get("extensions.zotero.zoterocitation.enable", true) === false) {
         return;
       }
+      addon.data.probeWordWindowTitles = probeWordWindowTitles;
       const citation = new Citation();
       addon.data.citation = citation;
       await citation.listener(1e3);
@@ -2854,6 +3169,8 @@
       for (const win of [...windowBindings.keys()]) await detachWindow(win);
       await runShutdownStep("clear citation state", () => addon.data.citation?.clear?.());
       await runShutdownStep("close drop-target native libraries", () => {
+        delete addon.data.probeWordWindowTitles;
+        delete addon.data.lastDroppedWordWindow;
         if (typeof closeDropTargetCtypes === "function") closeDropTargetCtypes();
       });
       await runShutdownStep("restore host methods", () => runtime.unregisterAll());

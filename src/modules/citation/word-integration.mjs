@@ -84,15 +84,46 @@ export class CitationWordIntegration {
     for (const sessionID in sessions) {
       const session = sessions[sessionID];
       if (!/(WinWord|MacWord|Word)/i.test(String(session?.agent || ""))) continue;
+      let tracked;
       try {
-        const tracked = await this.ensureSession(sessionID, session);
+        tracked = await this.ensureSession(sessionID, session);
         if (!tracked || tracked.pending || !tracked.collection || this._listenerStopped) continue;
+        await this._syncSessionDocumentName(sessionID, session, tracked);
       } catch (error) {
         this.logError("Cannot initialize a Word citation collection", error);
         continue;
       }
       if (this._listenerStopped || this._isExecCommandRunning) break;
       await this.refreshSessionCitations(sessionID, session);
+    }
+  }
+
+  /**
+   * Self-heals pending or window-title-derived collection names during background session sync.
+   * @private
+   */
+  async _syncSessionDocumentName(sessionID, nativeSession, trackedSession) {
+    if (this._listenerStopped || !trackedSession?.collection || trackedSession.closing) return;
+    const currentDocId = this._docIdBySession?.[sessionID] || trackedSession.docId || "";
+    const isWindowTitleDerived = typeof currentDocId === "string" && currentDocId.startsWith("window-title:");
+    const isPending = this._isPendingCollectionName?.(trackedSession.collection.name, sessionID);
+
+    if (!currentDocId || isPending || isWindowTitleDerived) {
+      const resolvedDocId = this._resolveFallbackDocumentId?.(sessionID, nativeSession, null, false);
+      if (resolvedDocId && this._getDocumentDisplayName(resolvedDocId)) {
+        this._rememberSessionDocument(sessionID, resolvedDocId);
+      }
+    }
+
+    const effectiveDocId = this._docIdBySession?.[sessionID] || trackedSession.docId;
+    const targetName = effectiveDocId ? this._getDocumentDisplayName(effectiveDocId) : "";
+    if (targetName && trackedSession.collection.name !== targetName) {
+      try {
+        await this._renameCollection(sessionID, targetName, effectiveDocId);
+      } catch (error) {
+        this.logError(`Failed to rename Word citation collection for ${sessionID}`, error);
+        this._scheduleCollectionRenameRetry(sessionID, targetName, effectiveDocId);
+      }
     }
   }
 
@@ -125,6 +156,12 @@ export class CitationWordIntegration {
     Zotero.Integration.execCommand = execCommandWrapper;
   }
 
+  _isMatchingWordBinding(binding, agent, command) {
+    if (!binding || binding.command !== command) return false;
+    if (binding.agent === agent) return true;
+    return /^MacWord/i.test(String(binding.agent || "")) && /^MacWord/i.test(String(agent || ""));
+  }
+
   /**
    * Creates an interception wrapper for Zotero.Integration.getSession to bind command sessions.
    * @param {Function} originalGetSession - Host getSession function
@@ -135,13 +172,17 @@ export class CitationWordIntegration {
     const citationModule = this;
     return async function(app, doc, agent, command) {
       const candidates = [...citationModule._execCommandBindings.values()]
-        .filter(binding => binding.agent === agent && binding.command === command);
+        .filter(binding => citationModule._isMatchingWordBinding(binding, agent, command));
       const binding = candidates.length === 1 ? candidates[0] : null;
       const result = await originalGetSession.apply(this, arguments);
       if (!citationModule._listenerStopped && binding && !binding.ambiguous
         && citationModule._execCommandBindings.get(binding.bindingID) === binding) {
-        const sessionID = result?.[0]?.sessionID;
-        if (typeof sessionID === "string" && sessionID) binding.sessionID = sessionID;
+        const sessionObj = Array.isArray(result) ? result[0] : result;
+        const sessionID = sessionObj?.sessionID;
+        if (typeof sessionID === "string" && sessionID) {
+          binding.sessionID = sessionID;
+          binding.doc = doc;
+        }
       }
       return result;
     };
@@ -229,29 +270,33 @@ export class CitationWordIntegration {
       return;
     }
 
-    const targetName = this._getDocumentDisplayName(docId);
+    const nativeSession = integration.sessions?.[sessionID];
+    const hasExplicitDocId = typeof docId === "string" && docId.trim() !== "";
+    const effectiveDocId = hasExplicitDocId
+      ? docId
+      : (this._resolveFallbackDocumentId?.(sessionID, nativeSession, binding.doc, true) || "");
+    const targetName = effectiveDocId ? this._getDocumentDisplayName(effectiveDocId) : "";
     if (targetName) {
-      this._rememberSessionDocument(sessionID, docId);
-    } else if (docId) {
+      this._rememberSessionDocument(sessionID, effectiveDocId);
+    } else if (hasExplicitDocId) {
       this._clearCollectionRenameRetry(sessionID);
       delete this._docIdBySession[sessionID];
       if (this.sessions?.[sessionID]) delete this.sessions[sessionID].docId;
       delete addon.data.docId;
     }
     this._setActiveSessionID(sessionID);
-    if (targetName) addon.data.docId = docId;
+    if (targetName) addon.data.docId = effectiveDocId;
 
     const trackedSession = await this.ensureSession(sessionID);
     if (!trackedSession?.collection || this._listenerStopped) return;
-    const nativeSession = integration.sessions?.[sessionID];
     if (nativeSession) await this.refreshSessionCitations(sessionID, nativeSession);
 
     if (targetName && trackedSession.collection.name !== targetName) {
       try {
-        await this._renameCollection(sessionID, targetName, docId);
+        await this._renameCollection(sessionID, targetName, effectiveDocId);
       } catch (error) {
         this.logError(`Failed to rename Word citation collection for ${sessionID}`, error);
-        this._scheduleCollectionRenameRetry(sessionID, targetName, docId);
+        this._scheduleCollectionRenameRetry(sessionID, targetName, effectiveDocId);
       }
     }
   }
@@ -270,10 +315,15 @@ export class CitationWordIntegration {
     this._initializationTasks ??= new Map();
     if (this._initializationTasks.has(sessionID)) return this._initializationTasks.get(sessionID);
 
+    const initialDocId = this._docIdBySession[sessionID] || this._extractSessionDocumentId?.(nativeSession) || undefined;
+    if (initialDocId && !this._docIdBySession[sessionID]) {
+      this._rememberSessionDocument(sessionID, initialDocId);
+    }
+    const initialName = initialDocId ? this._getDocumentDisplayName(initialDocId) : "";
     const session = existing || {
       idData: {},
-      lastName: this._getPendingCollectionName(sessionID),
-      docId: this._docIdBySession[sessionID],
+      lastName: initialName || this._getPendingCollectionName(sessionID),
+      docId: initialDocId,
       pending: true
     };
     this.sessions[sessionID] = session;
