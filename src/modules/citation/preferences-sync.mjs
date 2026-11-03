@@ -58,6 +58,10 @@ export class CitationPreferences {
    * @returns {Promise<object>|undefined}
    */
   applyPreferences() {
+    const collectionsEnabled = Zotero.Prefs.get("extensions.zotero.zoterocitation.collections.enable", true) !== false;
+    const collectionsChanged = this._collectionsEnabled !== undefined && this._collectionsEnabled !== collectionsEnabled;
+    this._collectionsEnabled = collectionsEnabled;
+
     const tagsEnabled = Zotero.Prefs.get("extensions.zotero.zoterocitation.citationTags.enable", true) !== false;
     const tagsChanged = this._citationTagsEnabled !== undefined && this._citationTagsEnabled !== tagsEnabled;
     const tagName = this._getCitationTagName();
@@ -72,6 +76,24 @@ export class CitationPreferences {
     this._itemsViewRefreshDebounceMs = this._getClampedIntPref("extensions.zotero.zoterocitation.itemsViewRefreshDebounceMs", 120, 0, 2000);
     this._healthWindowMs = this._getClampedIntPref("extensions.zotero.zoterocitation.healthWindowMs", 300000, 10000, 3600000);
     this._perfSlowThresholdMs = this._getClampedIntPref("extensions.zotero.zoterocitation.perfSlowThresholdMs", 50, 5, 5000);
+
+    if (collectionsChanged && !collectionsEnabled) {
+      this.clearStaleArtifacts().catch(e => this.logError("Failed to clear collections on disable", e));
+      for (const session of Object.values(this.sessions || {})) {
+        if (session.collection) {
+          try {
+            session.collection.eraseTx().catch(() => {});
+          } catch {}
+          delete session.collection;
+        }
+      }
+    } else if (collectionsChanged && collectionsEnabled) {
+      for (const [id, session] of Object.entries(this.sessions || {})) {
+        if (!session.collection && !session.closing) {
+          this.initCollection(id, session).catch(() => {});
+        }
+      }
+    }
 
     if (tagsChanged || tagRenamed || this._tagPreferencesNeedSync) {
       this._lastTagSyncSig = {};

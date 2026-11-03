@@ -130,6 +130,7 @@
       }
       this._citationTagName = this._getCitationTagName();
       this._citationTagsEnabled = Zotero.Prefs.get("extensions.zotero.zoterocitation.citationTags.enable", true) !== false;
+      this._collectionsEnabled = Zotero.Prefs.get("extensions.zotero.zoterocitation.collections.enable", true) !== false;
       this._lastTagSyncSig = {};
       this._sessionCitedIDs = {};
       const managedTags = this._loadManagedTagState();
@@ -442,6 +443,9 @@
      * @returns {Promise<object>|undefined}
      */
     applyPreferences() {
+      const collectionsEnabled = Zotero.Prefs.get("extensions.zotero.zoterocitation.collections.enable", true) !== false;
+      const collectionsChanged = this._collectionsEnabled !== void 0 && this._collectionsEnabled !== collectionsEnabled;
+      this._collectionsEnabled = collectionsEnabled;
       const tagsEnabled = Zotero.Prefs.get("extensions.zotero.zoterocitation.citationTags.enable", true) !== false;
       const tagsChanged = this._citationTagsEnabled !== void 0 && this._citationTagsEnabled !== tagsEnabled;
       const tagName = this._getCitationTagName();
@@ -454,6 +458,26 @@
       this._itemsViewRefreshDebounceMs = this._getClampedIntPref("extensions.zotero.zoterocitation.itemsViewRefreshDebounceMs", 120, 0, 2e3);
       this._healthWindowMs = this._getClampedIntPref("extensions.zotero.zoterocitation.healthWindowMs", 3e5, 1e4, 36e5);
       this._perfSlowThresholdMs = this._getClampedIntPref("extensions.zotero.zoterocitation.perfSlowThresholdMs", 50, 5, 5e3);
+      if (collectionsChanged && !collectionsEnabled) {
+        this.clearStaleArtifacts().catch((e) => this.logError("Failed to clear collections on disable", e));
+        for (const session of Object.values(this.sessions || {})) {
+          if (session.collection) {
+            try {
+              session.collection.eraseTx().catch(() => {
+              });
+            } catch {
+            }
+            delete session.collection;
+          }
+        }
+      } else if (collectionsChanged && collectionsEnabled) {
+        for (const [id, session] of Object.entries(this.sessions || {})) {
+          if (!session.collection && !session.closing) {
+            this.initCollection(id, session).catch(() => {
+            });
+          }
+        }
+      }
       if (tagsChanged || tagRenamed || this._tagPreferencesNeedSync) {
         this._lastTagSyncSig = {};
         this._tagPreferencesNeedSync = true;
@@ -896,6 +920,7 @@
      */
     async initCollection(sessionID, session = this.sessions[sessionID]) {
       if (!session || this._listenerStopped) return;
+      if (Zotero.Prefs.get("extensions.zotero.zoterocitation.collections.enable", true) === false) return;
       const collection = new Zotero.Collection();
       collection._isCiteFlowCollection = true;
       collection.libraryID = Zotero.Libraries.userLibraryID;
@@ -935,6 +960,7 @@
     async syncCollectionItems(session, targetIDs) {
       const collection = session?.collection;
       if (this._listenerStopped || session?.closing || !collection?.id) return;
+      if (Zotero.Prefs.get("extensions.zotero.zoterocitation.collections.enable", true) === false) return;
       const normalizedTargetIDs = [...new Set(targetIDs.map(Number).filter((id) => Number.isSafeInteger(id) && id > 0))];
       const currentIDs = collection.getChildItems(true).map((itemOrID) => typeof itemOrID === "number" ? itemOrID : itemOrID?.id).filter((id) => Number.isSafeInteger(id) && id > 0);
       const targetSet = new Set(normalizedTargetIDs);
@@ -3114,6 +3140,7 @@
   var settings = [
     { id: "enable", key: "enable", defaultValue: true },
     { id: "dragCite", key: "dragCite.enable", defaultValue: true },
+    { id: "collections", key: "collections.enable", defaultValue: true },
     { id: "citationTags", key: "citationTags.enable", defaultValue: true },
     { id: "citationTagText", key: "citationTags.text", defaultValue: "/Citations", maxLength: 200 },
     { id: "debug", key: "debug", defaultValue: false },
@@ -3200,6 +3227,13 @@
         }
         win.document.l10n.setAttributes(status, this._applyFailed ? "zoterocitation-settings-apply-failed" : readSetting(settings[0]) !== this._startedEnabled ? "zoterocitation-settings-restart" : "zoterocitation-settings-saved");
       };
+      const updateDependencies = () => {
+        const tagsEnabled = root.querySelector("#zoterocitation-setting-citationTags")?.checked;
+        const tagTextInput = root.querySelector("#zoterocitation-setting-citationTagText");
+        if (tagTextInput) tagTextInput.disabled = !tagsEnabled;
+        const tagTextRow = typeof tagTextInput?.closest === "function" ? tagTextInput.closest(".zoterocitation-number-row") : null;
+        if (tagTextRow?.classList) tagTextRow.classList.toggle("is-disabled", !tagsEnabled);
+      };
       const on = (node, type, handler) => {
         node.addEventListener(type, handler);
         listeners.push(() => node.removeEventListener(type, handler));
@@ -3261,6 +3295,7 @@
             }
           }
           save([[setting, value]]);
+          updateDependencies();
         });
       }
       on(root.querySelector("#zoterocitation-settings-reset"), "click", () => {

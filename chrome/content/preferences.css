@@ -211,6 +211,23 @@
   border-color: #c43b3b;
 }
 
+
+#zoterocitation-settings .zoterocitation-number-row.is-disabled label {
+  color: var(--flow-pref-muted);
+  opacity: 0.65;
+}
+
+#zoterocitation-settings input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: var(--flow-pref-surface);
+  border-color: var(--flow-pref-divider);
+}
+
+#zoterocitation-settings .zoterocitation-number-row.is-disabled + .zoterocitation-description {
+  opacity: 0.65;
+}
+
 #zoterocitation-settings button {
   min-height: 32px;
   margin: 0;

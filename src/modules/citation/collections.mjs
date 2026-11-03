@@ -102,6 +102,7 @@ export class CitationCollections {
    */
   async initCollection(sessionID, session = this.sessions[sessionID]) {
     if (!session || this._listenerStopped) return;
+    if (Zotero.Prefs.get("extensions.zotero.zoterocitation.collections.enable", true) === false) return;
     const collection = new Zotero.Collection();
     collection._isCiteFlowCollection = true;
     collection.libraryID = Zotero.Libraries.userLibraryID;
@@ -142,6 +143,7 @@ export class CitationCollections {
   async syncCollectionItems(session, targetIDs) {
     const collection = session?.collection;
     if (this._listenerStopped || session?.closing || !collection?.id) return;
+    if (Zotero.Prefs.get("extensions.zotero.zoterocitation.collections.enable", true) === false) return;
 
     const normalizedTargetIDs = [...new Set(targetIDs.map(Number).filter(id => Number.isSafeInteger(id) && id > 0))];
     const currentIDs = collection.getChildItems(true)

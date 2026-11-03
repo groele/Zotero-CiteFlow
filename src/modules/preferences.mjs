@@ -4,6 +4,7 @@ const prefix = "extensions.zotero.zoterocitation.";
 export const settings = [
   { id: "enable", key: "enable", defaultValue: true },
   { id: "dragCite", key: "dragCite.enable", defaultValue: true },
+  { id: "collections", key: "collections.enable", defaultValue: true },
   { id: "citationTags", key: "citationTags.enable", defaultValue: true },
   { id: "citationTagText", key: "citationTags.text", defaultValue: "/Citations", maxLength: 200 },
   { id: "debug", key: "debug", defaultValue: false },
@@ -98,6 +99,13 @@ export class Preferences {
       win.document.l10n.setAttributes(status, this._applyFailed ? "zoterocitation-settings-apply-failed"
         : readSetting(settings[0]) !== this._startedEnabled ? "zoterocitation-settings-restart" : "zoterocitation-settings-saved");
     };
+    const updateDependencies = () => {
+      const tagsEnabled = root.querySelector("#zoterocitation-setting-citationTags")?.checked;
+      const tagTextInput = root.querySelector("#zoterocitation-setting-citationTagText");
+      if (tagTextInput) tagTextInput.disabled = !tagsEnabled;
+      const tagTextRow = typeof tagTextInput?.closest === "function" ? tagTextInput.closest(".zoterocitation-number-row") : null;
+      if (tagTextRow?.classList) tagTextRow.classList.toggle("is-disabled", !tagsEnabled);
+    };
     const on = (node, type, handler) => {
       node.addEventListener(type, handler);
       listeners.push(() => node.removeEventListener(type, handler));
@@ -157,6 +165,7 @@ export class Preferences {
           }
         }
         save([[setting, value]]);
+        updateDependencies();
       });
     }
     on(root.querySelector("#zoterocitation-settings-reset"), "click", () => {

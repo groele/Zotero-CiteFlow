@@ -5,35 +5,60 @@
   <html:header class="zoterocitation-settings-header">
     <html:div class="zoterocitation-brand">
       <html:h1>Zotero CiteFlow</html:h1>
-      <html:span class="zoterocitation-version-badge">v13.0.9</html:span>
+      <html:span class="zoterocitation-version-badge">v13.0.10</html:span>
     </html:div>
     <html:p class="zoterocitation-description" data-l10n-id="zoterocitation-settings-description"/>
   </html:header>
+
+  <!-- Module 1: Core Tracking Service -->
   <html:details class="zoterocitation-setting-card" open="open">
-    <html:summary class="zoterocitation-section-title" data-l10n-id="zoterocitation-settings-functions"/>
+    <html:summary class="zoterocitation-section-title" data-l10n-id="zoterocitation-settings-section-core"/>
     <html:div class="zoterocitation-setting-content">
       <html:label class="zoterocitation-option">
         <html:input id="zoterocitation-setting-enable" type="checkbox"/>
         <html:span data-l10n-id="zoterocitation-settings-enable"/>
       </html:label>
       <html:p class="zoterocitation-description" data-l10n-id="zoterocitation-settings-enable-help"/>
+    </html:div>
+  </html:details>
+
+  <!-- Module 2: Writing Interaction & Quick Cite -->
+  <html:details class="zoterocitation-setting-card" open="open">
+    <html:summary class="zoterocitation-section-title" data-l10n-id="zoterocitation-settings-section-writing"/>
+    <html:div class="zoterocitation-setting-content">
       <html:label class="zoterocitation-option">
         <html:input id="zoterocitation-setting-dragCite" type="checkbox"/>
         <html:span data-l10n-id="zoterocitation-settings-drag-cite"/>
       </html:label>
       <html:p class="zoterocitation-description" data-l10n-id="zoterocitation-settings-drag-help"/>
+    </html:div>
+  </html:details>
+
+  <!-- Module 3: Collections & Tag Governance -->
+  <html:details class="zoterocitation-setting-card" open="open">
+    <html:summary class="zoterocitation-section-title" data-l10n-id="zoterocitation-settings-section-governance"/>
+    <html:div class="zoterocitation-setting-content">
+      <html:label class="zoterocitation-option">
+        <html:input id="zoterocitation-setting-collections" type="checkbox"/>
+        <html:span data-l10n-id="zoterocitation-settings-collections"/>
+      </html:label>
+      <html:p class="zoterocitation-description" data-l10n-id="zoterocitation-settings-collections-help"/>
+
       <html:label class="zoterocitation-option">
         <html:input id="zoterocitation-setting-citationTags" type="checkbox"/>
         <html:span data-l10n-id="zoterocitation-settings-citation-tags"/>
       </html:label>
       <html:p class="zoterocitation-description" data-l10n-id="zoterocitation-settings-citation-tags-help"/>
-      <html:div class="zoterocitation-number-row">
+
+      <html:div class="zoterocitation-number-row zoterocitation-subordinate-row">
         <html:label for="zoterocitation-setting-citationTagText" data-l10n-id="zoterocitation-settings-tag-text"/>
         <html:input id="zoterocitation-setting-citationTagText" type="text" maxlength="200" required="required"/>
       </html:div>
-      <html:p class="zoterocitation-description" data-l10n-id="zoterocitation-settings-tag-text-help"/>
+      <html:p class="zoterocitation-description zoterocitation-subordinate-desc" data-l10n-id="zoterocitation-settings-tag-text-help"/>
     </html:div>
   </html:details>
+
+  <!-- Module 4: Refresh Scheduling & Performance -->
   <html:details class="zoterocitation-setting-card">
     <html:summary class="zoterocitation-section-title" data-l10n-id="zoterocitation-settings-performance"/>
     <html:div class="zoterocitation-setting-content">
@@ -56,6 +81,8 @@
       </html:div>
     </html:div>
   </html:details>
+
+  <!-- Module 5: Diagnostics & Maintenance -->
   <html:details class="zoterocitation-setting-card">
     <html:summary class="zoterocitation-section-title" data-l10n-id="zoterocitation-settings-diagnostics"/>
     <html:div class="zoterocitation-setting-content">
@@ -64,17 +91,20 @@
         <html:span data-l10n-id="zoterocitation-settings-debug"/>
       </html:label>
       <html:p class="zoterocitation-description" data-l10n-id="zoterocitation-settings-debug-help"/>
+
+      <html:div class="zoterocitation-settings-footer">
+        <html:button id="zoterocitation-settings-reset" type="button" data-l10n-id="zoterocitation-settings-reset"/>
+        <html:p id="zoterocitation-settings-status" role="status" aria-live="polite"/>
+      </html:div>
     </html:div>
   </html:details>
-  <html:div class="zoterocitation-settings-footer">
-    <html:button id="zoterocitation-settings-reset" type="button" data-l10n-id="zoterocitation-settings-reset"/>
-    <html:p id="zoterocitation-settings-status" role="status" aria-live="polite"/>
-  </html:div>
+
+  <!-- Version Information -->
   <html:section class="zoterocitation-version-info" aria-label="Version Information">
     <html:div class="zoterocitation-version-title" data-l10n-id="zoterocitation-settings-version-title">版本信息</html:div>
     <html:div class="zoterocitation-version-row">
       <html:span class="zoterocitation-version-label" data-l10n-id="zoterocitation-settings-version-desc-label">版本说明</html:span>
-      <html:span data-l10n-id="zoterocitation-settings-version-desc">深度架构解耦；设置面板三级 40px 黄金基准对齐；Zotero 10~12 前瞻兼容</html:span>
+      <html:span data-l10n-id="zoterocitation-settings-version-desc">深度架构解耦；五大业务流转模块与 40px 黄金基准对齐；Zotero 10~12 前瞻兼容</html:span>
     </html:div>
     <html:div class="zoterocitation-version-row">
       <html:span class="zoterocitation-version-label" data-l10n-id="zoterocitation-settings-build-date-label">构建日期</html:span>
@@ -82,7 +112,7 @@
     </html:div>
     <html:div class="zoterocitation-version-row">
       <html:span class="zoterocitation-version-label" data-l10n-id="zoterocitation-settings-package-label">安装包</html:span>
-      <html:a href="https://github.com/groele/Zotero-CiteFlow/releases/download/v13.0.9/zotero-citeflow-13.0.9.xpi" data-l10n-id="zoterocitation-settings-package-link">下载 CiteFlow 13.0.9</html:a>
+      <html:a href="https://github.com/groele/Zotero-CiteFlow/releases/download/v13.0.10/zotero-citeflow-13.0.10.xpi" data-l10n-id="zoterocitation-settings-package-link">下载 CiteFlow 13.0.10</html:a>
     </html:div>
     <html:div class="zoterocitation-version-row">
       <html:span class="zoterocitation-version-label" data-l10n-id="zoterocitation-settings-repo-label">代码仓库</html:span>

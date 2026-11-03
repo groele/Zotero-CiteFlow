@@ -89,6 +89,7 @@ export class CitationInitializers {
 
     this._citationTagName = this._getCitationTagName();
     this._citationTagsEnabled = Zotero.Prefs.get("extensions.zotero.zoterocitation.citationTags.enable", true) !== false;
+    this._collectionsEnabled = Zotero.Prefs.get("extensions.zotero.zoterocitation.collections.enable", true) !== false;
     this._lastTagSyncSig = {};
     this._sessionCitedIDs = {};
 

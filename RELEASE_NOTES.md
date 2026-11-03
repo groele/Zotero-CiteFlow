@@ -1,5 +1,18 @@
 # Zotero CiteFlow Release Notes
 
+## 13.0.10 (2026-11-03) — Modular Preferences Architecture, Dedicated Collections Toggle & Dependency Interlocking Guard
+
+- **设置面板五大业务流转模块化重构与 40px 黄金基准对齐（`chrome/content/preferences.xhtml` / `preferences.css`）**：
+  - **五大业务流转模块卡片**：自上而下分为「核心引用追踪（Core Tracking Service）」、「写作交互与快捷引文（Writing Interaction & Quick Cite）」、「临时文集与标签治理（Collections & Tag Governance）」、「刷新调度与性能控制（Scheduling & Performance）」、「诊断调试与系统维护（Diagnostics & Maintenance）」，以及独立版本信息卡片；
+  - **三级层级与 40px 黄金垂直对齐**：卡片内边距统一 `16px`、二级控件标签确立 `40px` 黄金基准线、三级从属说明与控件（如标签文本输入框）声明 `margin-inline-start: 24px`，确保文字与控件左侧在 `40px` 竖线上严格垂直对齐；
+- **临时文集独立开关与主从开关联动禁用防护（`prefs.js` / `preferences.mjs` / `collections.mjs` / `preferences-sync.mjs`）**：
+  - **独立文集生成开关（`collections.enable`）**：新增临时文集控制偏好，允许用户自主选择是否在文库中生成 Word 临时分类文集；
+  - **主从开关联动保护（`updateDependencies`）**：取消勾选「自动维护引用标签」时，子级「标签文本」输入框自动禁用（`disabled`）且行容器透明度淡化（`is-disabled`），杜绝无效交互与配置歧义；
+  - **偏好实时同步与无损增删**：开关变更时动态清除旧文集或自愈恢复活跃会话文集；
+- **国际化本地化同步完善（`locale/zh-CN` / `locale/en-US`）**：
+  - 补充五大模块分组标题与说明文案，术语保持统一规范；
+- **全量自动化测试验证**：53 项顶层测试套件 100% 通过。
+
 ## 13.0.9 (2026-11-03) — Multi-Window Tree Self-Healing, Zero-Width Citation Sanitization & Transactional Membership Guard
 
 - **文集树多窗口与展开自愈重排（`src/modules/views/icon-patch.mjs`）**：

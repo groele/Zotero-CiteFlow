@@ -8,7 +8,7 @@ Track Word citations and connect them to Zotero items.
 
 [简体中文](README.md) · [English](README.en.md)
 
-[![Release](https://img.shields.io/badge/version-13.0.9-245ac7?style=flat-square)](https://github.com/groele/Zotero-CiteFlow/releases/tag/v13.0.9) · [Download XPI](https://github.com/groele/Zotero-CiteFlow/releases/download/v13.0.9/zotero-citeflow-13.0.9.xpi) · [Report an issue](https://github.com/groele/Zotero-CiteFlow/issues)
+[![Release](https://img.shields.io/badge/version-13.0.10-245ac7?style=flat-square)](https://github.com/groele/Zotero-CiteFlow/releases/tag/v13.0.10) · [Download XPI](https://github.com/groele/Zotero-CiteFlow/releases/download/v13.0.10/zotero-citeflow-13.0.10.xpi) · [Report an issue](https://github.com/groele/Zotero-CiteFlow/issues)
 
 [Overview](#overview) · [Installation and updates](#installation) · [Quick start](#quick-start) · [Key features](#features) · [Settings](#settings) · [Data, sync, and services](#data) · [Compatibility and validation](#compatibility) · [Troubleshooting](#troubleshooting) · [Development and documentation](#development) · [The Flow series](#series) · [Origin and license](#license)
 
@@ -24,7 +24,7 @@ Install this add-on independently and combine it with other Flow products as nee
 
 ## Installation and updates
 
-1. Download [zotero-citeflow-13.0.9.xpi](https://github.com/groele/Zotero-CiteFlow/releases/download/v13.0.9/zotero-citeflow-13.0.9.xpi) (add-on version **13.0.9**), not the Source code ZIP.
+1. Download [zotero-citeflow-13.0.10.xpi](https://github.com/groele/Zotero-CiteFlow/releases/download/v13.0.10/zotero-citeflow-13.0.10.xpi) (add-on version **13.0.10**), not the Source code ZIP.
 2. In Zotero, open **Tools → Plugins/Add-ons**, then choose **Install Add-on From File** from the gear menu.
 3. Select the XPI, complete installation, and restart if requested.
 
@@ -74,9 +74,9 @@ Restart Zotero after changing citation tracking. Configure dragging, tag text, a
 
 | Item | Scope |
 |---|---|
-| Current add-on version | 13.0.9 |
+| Current add-on version | 13.0.10 |
 | Declared Zotero range | `10.0` through `12.*` |
-| Evidence boundary | 13.0.9 passed 53 top-level automated tests across 27 decoupled source modules, upgrading multi-window tree enumeration, expand self-healing, zero-width citation sanitization, and DB transaction guard. |
+| Evidence boundary | 13.0.10 passed 53 top-level automated tests across 27 decoupled source modules, refactoring modular preferences into 5 cards aligned with 14px / 40px standards and introducing collection toggle with interlocking guard. |
 
 Add-on and Zotero versions are separate. Declared compatibility does not establish testing on every host, operating system or service. This patch validates the targeted behaviors listed above, not all plugin workflows or main-profile installation.
 
@@ -103,6 +103,7 @@ npm run package
 - [技术与维护指南 / Technical guide](CORE-TECHNICAL-MAINTENANCE.md)
 - [第三方声明 / Third-party notices](THIRD_PARTY.md)
 - [版本说明 / Release notes](RELEASE_NOTES.md)
+- [v13.0.10 阶段说明 / Milestone notes](docs/releases/v13.0.10.md)
 - [v13.0.9 阶段说明 / Milestone notes](docs/releases/v13.0.9.md)
 - [v13.0.8 阶段说明 / Milestone notes](docs/releases/v13.0.8.md)
 - [v13.0.7 阶段说明 / Milestone notes](docs/releases/v13.0.7.md)
