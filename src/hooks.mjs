@@ -3,6 +3,7 @@ import { initLocale } from "./modules/locale.mjs";
 import { Citation } from "./modules/citation.mjs";
 import Views from "./modules/views.mjs";
 import { Preferences } from "./modules/preferences.mjs";
+import { closeDropTargetCtypes } from "./modules/drop-target.mjs";
 const windowBindings = new Map();
 let startupPromise;
 let shutdownPromise;
@@ -112,6 +113,9 @@ async function onShutdown() {
   await runShutdownStep("dispose UI", () => addon.data.views?.dispose?.());
   for (const win of [...windowBindings.keys()]) await detachWindow(win);
   await runShutdownStep("clear citation state", () => addon.data.citation?.clear?.());
+  await runShutdownStep("close drop-target native libraries", () => {
+    if (typeof closeDropTargetCtypes === "function") closeDropTargetCtypes();
+  });
   await runShutdownStep("restore host methods", () => runtime.unregisterAll());
   addon.data.locale = undefined;
   globalThis.window = globalThis.document = globalThis.ZoteroPane = globalThis.Zotero_Tabs = undefined;

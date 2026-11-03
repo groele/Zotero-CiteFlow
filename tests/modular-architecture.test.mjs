@@ -258,4 +258,67 @@ test("Views.getCitationText resolves numeric and string item IDs consistently an
   assert.equal(v.getCitationText("NaN"), "");
 });
 
+test("ViewsDragCite dragend strictly re-verifies that items were not trashed or invalidated during drag", async () => {
+  const citedBatches = [];
+  globalThis.addon = {
+    data: { alive: true },
+    api: { citeItems: async items => citedBatches.push(items.map(i => i.id)) }
+  };
+  globalThis.Zotero = {
+    Prefs: { get: () => true },
+    logError: () => {}
+  };
+  globalThis.runtime = {
+    patch: () => () => {}
+  };
+  const listeners = new Map();
+  const win = {
+    document: {
+      addEventListener: (t, fn) => listeners.set(t, fn),
+      removeEventListener: (t) => listeners.delete(t)
+    },
+    ZoteroPane: {
+      itemsView: { onDragStart() {} },
+      getSelectedItems: () => []
+    }
+  };
+  const v = new Views(win);
+  v._resolveDropTarget = () => "word-confirmed";
+  await v.dragCite();
+
+  const item1 = { id: 10, inTrash: false, isRegularItem: () => true, isTopLevelItem: () => true };
+  const item2 = { id: 20, inTrash: false, isRegularItem: () => true, isTopLevelItem: () => true };
+  v._dragItems = [item1, item2];
+  v._dragStartedAt = Date.now();
+
+  // Suppose item1 was moved to Trash right before dragend completed
+  item1.inTrash = true;
+  listeners.get("dragend")({ dataTransfer: { mozUserCancelled: false } });
+
+  assert.deepEqual(citedBatches, [[20]], "Item moved to trash before dragend must be excluded from citation insertion");
+});
+
+test("getSortedItemIDs and _applyCitations exclude trashed items from document ordinal calculation", async () => {
+  globalThis.Zotero = {
+    Libraries: { userLibraryID: 1 },
+    Items: {
+      get: id => id === 99
+        ? { id: 99, libraryID: 1, inTrash: true, isTopLevelItem: () => true }
+        : { id, libraryID: 1, inTrash: false, isTopLevelItem: () => true }
+    }
+  };
+  const c = Object.create(Citation.prototype);
+  c._sortedCacheBySession = {};
+  c.debugLog = () => {};
+  c._recordPerf = () => {};
+
+  const sorted = c.getSortedItemIDs({
+    "0": { citationItems: [{ id: 99 }, { id: 10 }] },
+    "1": { citationItems: [{ id: 20 }] }
+  }, "S1");
+
+  assert.deepEqual(sorted, [10, 20], "Trashed item 99 must not shift active document citation ordinals");
+});
+
+
 

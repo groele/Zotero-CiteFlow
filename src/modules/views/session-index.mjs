@@ -83,8 +83,10 @@ export class ViewsSessionIndex {
         const entry = matches[0].idData[numericID] ?? matches[0].idData[itemID];
         return entry?.plainCitation || "";
       }
+      const currentSessionID = Zotero.Integration.currentSession?.sessionID;
       const active = api.activeSessionID && index.sessions[api.activeSessionID]
-        ? api.activeSessionID : Zotero.Integration.currentSession?.sessionID;
+        ? api.activeSessionID
+        : (currentSessionID && index.sessions[currentSessionID] ? currentSessionID : null);
       if (active) {
         const activeSession = index.sessions[active];
         const entry = activeSession?.idData?.[numericID] ?? activeSession?.idData?.[itemID];

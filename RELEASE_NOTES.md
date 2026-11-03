@@ -1,5 +1,17 @@
 # Zotero CiteFlow Release Notes
 
+## 13.0.5 (2026-11-03) — Drag-End Item Re-Verification, Trashed-Item Ordinal Isolation & Native Win32 Handle Caching
+
+- **文内引文序数计算与回显的回收站文献隔离（`order-cache.mjs` / `formatting.mjs`）**：
+  - 在 `getSortedItemIDs` 与 `_applyCitations` 中增加 `Zotero.Items.get(id)` 状态核验，若 Word 历史引文域中仍指向已被用户移入回收站或删除的文献（`zotItem.deleted === true || zotItem.inTrash === true`），自动将其从有效引文序数序列与 `idData` 回显映射中剔除，绝不允许已废弃/撤回文献挤占正常文献的 `[1], [2], [3]` 序号。
+- **拖拽释放时刻（`dragend`）二次合法性防呆校验（`src/modules/views/drag-cite.mjs`）**：
+  - 在 `dragend` 触发 `addon.api.citeItems` 之前，对捕获的拖拽条目再次执行 `item.deleted !== true && item.inTrash !== true && item.isRegularItem?.() && item.isTopLevelItem() && Number.isSafeInteger(Number(item.id)) && Number(item.id) > 0` 二次校验，防止拖拽过程中条目状态变更导致非法插入。
+- **视图层 `currentSession` 存在性校验加固（`src/modules/views/session-index.mjs`）**：
+  - 在 `getCitationText` 中仅当 `Zotero.Integration.currentSession.sessionID` 确实存在于已跟踪的 `index.sessions` 中时才将其作为活跃会话，否则平滑回退至按条目唯一定位。
+- **Win32 原生 `ctypes` 库与路径缓冲区复用（`drop-target.mjs` / `hooks.mjs`）**：
+  - 在 `drop-target.mjs` 中缓存 `user32.dll`、`kernel32.dll` ABI 函数声明与 64KB `pathBuffer`，消除每次拖拽释放时重复 `ctypes.open` / `ctypes.close` 与大数组分配的开销，并在插件 `onShutdown` 时通过 `closeDropTargetCtypes()` 确定性释放原生句柄。
+- **全量自动化测试验证**：48 项顶层测试套件（含新增 2 项针对拖拽释放二次校验与回收站文献序号隔离的专项测试）100% 通过。
+
 ## 13.0.4 (2026-11-03) — Per-Item Transient Omission Recovery, Ghost-Session Isolation & Dual-Mode ID Hardening
 
 - **单条目瞬态缺失防丢与历史引文回退（`src/modules/citation/formatting.mjs`）**：

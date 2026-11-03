@@ -32,6 +32,6 @@ zoterocitation-settings-version-desc-label = 版本说明
 zoterocitation-settings-version-desc = 深度架构解耦；设置面板三级 40px 黄金基准对齐；Zotero 10~12 前瞻兼容
 zoterocitation-settings-build-date-label = 构建日期
 zoterocitation-settings-package-label = 安装包
-zoterocitation-settings-package-link = 下载 CiteFlow 13.0.4
+zoterocitation-settings-package-link = 下载 CiteFlow 13.0.5
 zoterocitation-settings-repo-label = 代码仓库
 zoterocitation-settings-repo-link = GitHub · Zotero-CiteFlow

@@ -62,7 +62,11 @@ export class ViewsDragCite {
       const target = this._resolveDropTarget();
       if (target === "unknown") this._notifyUnknownDropTarget();
       if (target !== "word-confirmed") return;
-      void addon.api.citeItems(items).catch((error) => Zotero.logError(error));
+      const validItems = items.filter((item) => item && item.deleted !== true && item.inTrash !== true
+        && item.isRegularItem?.() && item.isTopLevelItem()
+        && Number.isSafeInteger(Number(item.id)) && Number(item.id) > 0);
+      if (!validItems.length) return;
+      void addon.api.citeItems(validItems).catch((error) => Zotero.logError(error));
     };
     this.document.addEventListener("dragend", this._dragEndHandler, true);
     try {

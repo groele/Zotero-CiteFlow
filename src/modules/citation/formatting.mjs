@@ -312,10 +312,10 @@ export class CitationFormatting {
 
     const targetData = {};
     for (const id of citationIDKeys) {
+      const zotItem = typeof Zotero !== "undefined" && typeof Zotero.Items?.get === "function" ? Zotero.Items.get(Number(id)) : null;
+      if (zotItem && (zotItem.deleted === true || zotItem.inTrash === true)) continue;
       try {
-        targetData[id] = {
-          plainCitation: this._formatItemPlainCitation(id, idIndexMap, citationsByItemID, oldIdData, isNoteStyle)
-        };
+        targetData[id] = { plainCitation: this._formatItemPlainCitation(id, idIndexMap, citationsByItemID, oldIdData, isNoteStyle) };
       } catch {
         targetData[id] = { plainCitation: "(error)" };
       }

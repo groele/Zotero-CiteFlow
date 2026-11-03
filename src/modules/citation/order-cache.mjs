@@ -108,6 +108,10 @@ export class CitationOrderCache {
           if (!item) continue;
           const id = this._parseValidItemID(item.id);
           if (id === null) continue;
+          const zotItem = typeof Zotero !== "undefined" && typeof Zotero.Items?.get === "function"
+            ? Zotero.Items.get(id)
+            : null;
+          if (zotItem && (zotItem.deleted === true || zotItem.inTrash === true)) continue;
           values.push(id);
           if (!seenIDs.has(id)) {
             seenIDs.add(id);

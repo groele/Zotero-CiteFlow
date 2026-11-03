@@ -1214,6 +1214,8 @@
             if (!item) continue;
             const id = this._parseValidItemID(item.id);
             if (id === null) continue;
+            const zotItem = typeof Zotero !== "undefined" && typeof Zotero.Items?.get === "function" ? Zotero.Items.get(id) : null;
+            if (zotItem && (zotItem.deleted === true || zotItem.inTrash === true)) continue;
             values.push(id);
             if (!seenIDs.has(id)) {
               seenIDs.add(id);
@@ -1848,10 +1850,10 @@
       const oldIdData = this.sessions[sessionID]?.idData || {};
       const targetData = {};
       for (const id of citationIDKeys) {
+        const zotItem = typeof Zotero !== "undefined" && typeof Zotero.Items?.get === "function" ? Zotero.Items.get(Number(id)) : null;
+        if (zotItem && (zotItem.deleted === true || zotItem.inTrash === true)) continue;
         try {
-          targetData[id] = {
-            plainCitation: this._formatItemPlainCitation(id, idIndexMap, citationsByItemID, oldIdData, isNoteStyle)
-          };
+          targetData[id] = { plainCitation: this._formatItemPlainCitation(id, idIndexMap, citationsByItemID, oldIdData, isNoteStyle) };
         } catch {
           targetData[id] = { plainCitation: "(error)" };
         }
@@ -1996,48 +1998,49 @@
   };
 
   // src/modules/drop-target.mjs
-  function resolveWordDropTarget() {
-    if (!Zotero.isWin) return "unknown";
-    let user32;
-    let kernel32;
-    let processHandle;
-    let closeHandle;
-    try {
-      const { ctypes } = ChromeUtils.importESModule("resource://gre/modules/ctypes.sys.mjs");
-      const POINT = new ctypes.StructType("CiteFlowDropPoint", [
-        { x: ctypes.long },
-        { y: ctypes.long }
-      ]);
-      user32 = ctypes.open("user32.dll");
-      kernel32 = ctypes.open("kernel32.dll");
-      const getCursorPos = user32.declare(
+  var cachedCtypes = null;
+  function getDropTargetCtypes() {
+    if (cachedCtypes) return cachedCtypes;
+    const { ctypes } = ChromeUtils.importESModule("resource://gre/modules/ctypes.sys.mjs");
+    const POINT = new ctypes.StructType("CiteFlowDropPoint", [
+      { x: ctypes.long },
+      { y: ctypes.long }
+    ]);
+    const user32 = ctypes.open("user32.dll");
+    const kernel32 = ctypes.open("kernel32.dll");
+    cachedCtypes = {
+      ctypes,
+      POINT,
+      user32,
+      kernel32,
+      getCursorPos: user32.declare(
         "GetCursorPos",
         ctypes.winapi_abi,
         ctypes.int32_t,
         POINT.ptr
-      );
-      const windowFromPoint = user32.declare(
+      ),
+      windowFromPoint: user32.declare(
         "WindowFromPoint",
         ctypes.winapi_abi,
         ctypes.voidptr_t,
         POINT
-      );
-      const getWindowThreadProcessId = user32.declare(
+      ),
+      getWindowThreadProcessId: user32.declare(
         "GetWindowThreadProcessId",
         ctypes.winapi_abi,
         ctypes.uint32_t,
         ctypes.voidptr_t,
         ctypes.uint32_t.ptr
-      );
-      const openProcess = kernel32.declare(
+      ),
+      openProcess: kernel32.declare(
         "OpenProcess",
         ctypes.winapi_abi,
         ctypes.voidptr_t,
         ctypes.uint32_t,
         ctypes.int32_t,
         ctypes.uint32_t
-      );
-      const queryFullProcessImageName = kernel32.declare(
+      ),
+      queryFullProcessImageName: kernel32.declare(
         "QueryFullProcessImageNameW",
         ctypes.winapi_abi,
         ctypes.int32_t,
@@ -2045,39 +2048,54 @@
         ctypes.uint32_t,
         ctypes.jschar.ptr,
         ctypes.uint32_t.ptr
-      );
-      closeHandle = kernel32.declare(
+      ),
+      closeHandle: kernel32.declare(
         "CloseHandle",
         ctypes.winapi_abi,
         ctypes.int32_t,
         ctypes.voidptr_t
-      );
-      const point = POINT();
-      if (!getCursorPos(point.address())) return "unknown";
-      const targetWindow = windowFromPoint(point);
+      ),
+      pathBuffer: ctypes.jschar.array(32768)()
+    };
+    return cachedCtypes;
+  }
+  function closeDropTargetCtypes() {
+    if (!cachedCtypes) return;
+    const { user32, kernel32 } = cachedCtypes;
+    cachedCtypes = null;
+    try {
+      kernel32?.close();
+    } catch {
+    }
+    try {
+      user32?.close();
+    } catch {
+    }
+  }
+  function resolveWordDropTarget() {
+    if (!Zotero.isWin) return "unknown";
+    let processHandle;
+    let closeHandle;
+    try {
+      const api = getDropTargetCtypes();
+      closeHandle = api.closeHandle;
+      const point = api.POINT();
+      if (!api.getCursorPos(point.address())) return "unknown";
+      const targetWindow = api.windowFromPoint(point);
       if (targetWindow.isNull()) return "unknown";
-      const processID = ctypes.uint32_t();
-      if (!getWindowThreadProcessId(targetWindow, processID.address()) || !processID.value) return "unknown";
-      processHandle = openProcess(4096, false, processID.value);
+      const processID = api.ctypes.uint32_t();
+      if (!api.getWindowThreadProcessId(targetWindow, processID.address()) || !processID.value) return "unknown";
+      processHandle = api.openProcess(4096, false, processID.value);
       if (processHandle.isNull()) return "unknown";
-      const path = ctypes.jschar.array(32768)();
-      const pathLength = ctypes.uint32_t(path.length);
-      if (!queryFullProcessImageName(processHandle, 0, path, pathLength.address())) return "unknown";
-      const executable = path.readString().split(/[\\/]/).pop().toLowerCase();
+      const pathLength = api.ctypes.uint32_t(api.pathBuffer.length);
+      if (!api.queryFullProcessImageName(processHandle, 0, api.pathBuffer, pathLength.address())) return "unknown";
+      const executable = api.pathBuffer.readString().split(/[\\/]/).pop().toLowerCase();
       return executable === "winword.exe" ? "word-confirmed" : "non-word";
     } catch (error) {
       return "unknown";
     } finally {
       if (processHandle && closeHandle) try {
         closeHandle(processHandle);
-      } catch {
-      }
-      try {
-        kernel32?.close();
-      } catch {
-      }
-      try {
-        user32?.close();
       } catch {
       }
     }
@@ -2287,7 +2305,8 @@
           const entry2 = matches2[0].idData[numericID] ?? matches2[0].idData[itemID];
           return entry2?.plainCitation || "";
         }
-        const active = api.activeSessionID && index.sessions[api.activeSessionID] ? api.activeSessionID : Zotero.Integration.currentSession?.sessionID;
+        const currentSessionID = Zotero.Integration.currentSession?.sessionID;
+        const active = api.activeSessionID && index.sessions[api.activeSessionID] ? api.activeSessionID : currentSessionID && index.sessions[currentSessionID] ? currentSessionID : null;
         if (active) {
           const activeSession = index.sessions[active];
           const entry2 = activeSession?.idData?.[numericID] ?? activeSession?.idData?.[itemID];
@@ -2413,7 +2432,9 @@
         const target = this._resolveDropTarget();
         if (target === "unknown") this._notifyUnknownDropTarget();
         if (target !== "word-confirmed") return;
-        void addon.api.citeItems(items).catch((error) => Zotero.logError(error));
+        const validItems = items.filter((item) => item && item.deleted !== true && item.inTrash !== true && item.isRegularItem?.() && item.isTopLevelItem() && Number.isSafeInteger(Number(item.id)) && Number(item.id) > 0);
+        if (!validItems.length) return;
+        void addon.api.citeItems(validItems).catch((error) => Zotero.logError(error));
       };
       this.document.addEventListener("dragend", this._dragEndHandler, true);
       try {
@@ -2824,6 +2845,9 @@
       await runShutdownStep("dispose UI", () => addon.data.views?.dispose?.());
       for (const win of [...windowBindings.keys()]) await detachWindow(win);
       await runShutdownStep("clear citation state", () => addon.data.citation?.clear?.());
+      await runShutdownStep("close drop-target native libraries", () => {
+        if (typeof closeDropTargetCtypes === "function") closeDropTargetCtypes();
+      });
       await runShutdownStep("restore host methods", () => runtime.unregisterAll());
       addon.data.locale = void 0;
       globalThis.window = globalThis.document = globalThis.ZoteroPane = globalThis.Zotero_Tabs = void 0;
