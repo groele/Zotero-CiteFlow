@@ -25,7 +25,7 @@
 - 运行时拆分为启动/关闭生命周期、原生引用、引用命令、列表视图、钩子及运行时工具；保留 Zotero 原生 CSL 字段结构，不自行改写引用 payload。
 - 加强异常隔离、窗口与会话绑定、并发命令串行化、缓存回退、标签写入回滚、临时集合清理、关闭释放和启动取消。
 - 通过构建检查排除测试脚手架、调试桥接、内嵌事件处理器和未用 toolkit 代码；XPI 只包含 9 个运行时文件。
-- 新增/整理稳定性、数据、UI 生命周期、Word 集成、引导与打包检查。完整实机范围及未通过项见 [VALIDATION-40.1.0.md](VALIDATION-40.1.0.md)。
+- 新增/整理稳定性、数据、UI 生命周期、Word 集成、引导与打包检查。完整实机范围及未通过项见 [VALIDATION-early-candidate.md](VALIDATION-early-candidate.md)。
 
 ## 实机验收结果与限制
 
@@ -38,8 +38,8 @@
 ## 验证摘要
 
 - `npm test`：15 个 Node 测试目标全部通过，包含 40 余项稳定性、数据、Word 兼容及包检查。
-- `npm run package -- dist/native-candidate-40.1.0-citeflow-v3`：构建与归档完整性检查通过。
-- 最新候选 XPI：`dist/native-candidate-40.1.0-citeflow-v3/zotero-citeflow-40.1.0.xpi`。
+- `npm run package -- dist/native-candidate-early-candidate-citeflow-v3`：构建与归档完整性检查通过。
+- 最新候选 XPI：`dist/native-candidate-early-candidate-citeflow-v3/zotero-citeflow-early-candidate.xpi`。
 - 候选 SHA-256：`7D153CC6910D87C3F33BDF9F48DA6C4E54FB73C981AB56C7296AFE0E9A512249`。
 - 实机快捷引用完整流程：未通过，不可据此宣称发布就绪。
 - Zotero 8/9/11 / Firefox 153：未做实机验证；manifest 范围已按用户要求扩大，但不表示这些版本已完成验收。

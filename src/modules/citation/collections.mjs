@@ -103,6 +103,7 @@ export class CitationCollections {
   async initCollection(sessionID, session = this.sessions[sessionID]) {
     if (!session || this._listenerStopped) return;
     const collection = new Zotero.Collection();
+    collection._isCiteFlowCollection = true;
     collection.libraryID = Zotero.Libraries.userLibraryID;
     const knownDocId = session.docId || this._docIdBySession?.[sessionID];
     const knownName = knownDocId ? this._getDocumentDisplayName(knownDocId) : "";
@@ -115,6 +116,9 @@ export class CitationCollections {
     } catch (error) {
       this.logError("Failed to mark temporary Word citation collection", error);
     }
+    if (collection.key) {
+      this._temporaryCollectionKeys.add(collection.key);
+    }
     await collection.saveTx({ skipSelect: true });
     this._temporaryCollectionKeys.add(collection.key);
     this._saveKeySet(TEMP_COLLECTION_KEYS_PREF, this._temporaryCollectionKeys);
@@ -126,6 +130,7 @@ export class CitationCollections {
     }
     session.collection = collection;
     this._invalidateSessionIndex();
+    addon?.data?.views?.repositionCitationCollections?.();
   }
 
   /**
@@ -235,6 +240,7 @@ export class CitationCollections {
       try {
         await session.collection.saveTx({ skipSelect: true });
         session.lastName = targetName;
+        addon?.data?.views?.repositionCitationCollections?.();
       } catch (error) {
         session.collection.name = previousName;
         throw error;

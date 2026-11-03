@@ -308,7 +308,7 @@ const tests = [testNativeSignaturesAndTargetName, testMacWordPlaceholderNeverBec
     await test();
     console.log(`PASS ${test.name}`);
   }
-  console.log(`V40.0.2 Word behavior: ${tests.length} suites passed`);
+  console.log(`Citation Word behavior: ${tests.length} suites passed`);
 })().catch(error => {
   console.error(error);
   process.exitCode = 1;

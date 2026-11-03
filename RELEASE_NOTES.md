@@ -1,5 +1,17 @@
 # Zotero CiteFlow Release Notes
 
+## 13.0.8 (2026-11-03) — Word Collection Tree Positioning Above My Publications & Legacy v40 Renaming Cleanup
+
+- **Word 文档文集树位置精准重排（`src/modules/views/icon-patch.mjs` / `src/modules/citation/collections.mjs`）**：
+  - **精准固定在「我的出版物」正上方**：彻底解决 Zotero 10 中 ICU 本地化排序（`Zotero.localeCompare`）导致中文命名的 Word 文档（如 `新建 Microsoft Word 文档.docx`）在树视图中被排在数字文件夹（如 `06_Reference Shelf`）与字母文件夹（如 `Daily Folder`）之间的视觉跳跃问题；
+  - **文集树动态重排与切片重构（`_reorderCitationRowsInSlice` / `repositionCitationCollections`）**：通过对 `collectionsView._rows` 数据切片进行结构感知重排，将所有 CiteFlow 管理的 Word 临时文集统一置于所有常规文集/搜索文件夹之后、并在「我的出版物 (`publications`)」虚拟项的正上方排布；
+  - **层级折叠块完整性与选区精确同步**：严格保持用户带有子文集的普通文件夹节点块完整性；重排后动态同步刷新 `_rowMap` 并精确平移 `selection.focused`、`selection.pivot` 及 `selection.selected`，确保焦点与选区零偏移；
+  - **新增与重命名动态插入拦截（`_addSortedRow` / `_insertCitationRowAbovePublications`）**：在集合初始化 `initCollection`、重命名 `_renameCollection` 及 Zotero 原生 `_addSortedRow` 链路中提供无缝定位锚点，常规文集保存时自动停在 Word 文集上方，Word 文集保存时直接落在「我的出版物」上方。
+- **项目历史遗留 `v40` 实验代号与文件名彻底清理规范**：
+  - 将所有历史 `tests/v40*.test.js` 测试套件标准化重命名为语义清晰的 `tests/citation-stability.test.js`、`tests/citation-data.test.js`、`tests/citation-ui.test.js` 与 `tests/citation-word.test.js`；
+  - 将 `VALIDATION-40.1.0.md` 归档为 `VALIDATION-early-candidate.md`，清理遗留的 `build-legacy-nullfix-probe.py` 探测脚本，全面剔除所有核心维护文档中的旧代号残留。
+- **全量自动化测试验证**：52 项顶层测试套件 100% 通过（新增针对中文 Word 集合行位置重排与选区保持的端到端用例）。
+
 ## 13.0.7 (2026-11-03) — Multi-Source Word Document Identification, Drag-Target Window Title Extraction & Pending Collection Self-Healing
 
 - **消除「Word 文档（待识别） 1」的多源文档智能识别引擎（`drop-target.mjs` / `document-naming.mjs` / `word-integration.mjs` / `collections.mjs`）**：

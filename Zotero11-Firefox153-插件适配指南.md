@@ -307,7 +307,7 @@ rg -n 'Array\.prototype|JSON\.parse\s*=|Promise\s*=|freezeBuiltins|extra1|extra2
 
 ZoteroPreview 当前结果：10 项侧栏测试、4 项 Gecko 153 适配测试、2 项发布一致性检查，共 16 项通过；语法与 XPI 文件哈希校验通过。
 
-已下载的官方开发版元数据为 `11.0-dev.5+dac1ad489`，平台范围 `153.0–153.99.*`。启动独立开发版的操作被自动审批审查拒绝，工具仅返回 `blocked by policy`，没有更具体原因。因此本项目尚未完成 Zotero 11 的真实 UI、CSL、剪贴板和安装重启验收，不能据此宣称已经全面兼容。CiteFlow 的快捷插入路径另有 P0 实机问题，详见 `VALIDATION-40.1.0.md`。
+已下载的官方开发版元数据为 `11.0-dev.5+dac1ad489`，平台范围 `153.0–153.99.*`。启动独立开发版的操作被自动审批审查拒绝，工具仅返回 `blocked by policy`，没有更具体原因。因此本项目尚未完成 Zotero 11 的真实 UI、CSL、剪贴板和安装重启验收，不能据此宣称已经全面兼容。CiteFlow 的快捷插入路径另有 P0 实机问题，详见 `VALIDATION-early-candidate.md`。
 
 ## 7. 参考资料
 

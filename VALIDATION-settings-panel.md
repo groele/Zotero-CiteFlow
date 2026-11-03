@@ -53,7 +53,7 @@ pwsh -NoProfile -File scripts/test-settings-native.ps1 -XpiPath dist/settings-au
 
 ## 首次验收边界（后续结果见最新记录）
 
-原生快捷键/拖拽检查执行真实 Zotero 事件处理器，但将最终 Word 插入派发替换为计数器，以核对设置开关，不操作用户 Word 文档。因此它们证明开关与触发路径生效，**不证明 Word 引用字段已成功写入**。原有快速插入端到端缺口继续记录在 [VALIDATION-40.1.0.md](VALIDATION-40.1.0.md)，本次没有将其标记为已解决。
+原生快捷键/拖拽检查执行真实 Zotero 事件处理器，但将最终 Word 插入派发替换为计数器，以核对设置开关，不操作用户 Word 文档。因此它们证明开关与触发路径生效，**不证明 Word 引用字段已成功写入**。原有快速插入端到端缺口继续记录在 [VALIDATION-early-candidate.md](VALIDATION-early-candidate.md)，本次没有将其标记为已解决。
 
 首次启动日志仍出现 Zotero 宿主 item-tree 初始化错误（`this.tree is undefined` / `_resetColumns`）；多实例退出时还可能出现共享临时目录及宿主 I/O 关闭日志。这些日志未阻止本次设置检查，但没有据此宣称整个 Word 集成或所有 Zotero 版本已稳定。
 

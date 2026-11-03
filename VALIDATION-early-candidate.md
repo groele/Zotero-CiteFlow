@@ -1,4 +1,4 @@
-# Zotero CiteFlow 40.1.0 实机验证记录
+# Zotero CiteFlow 早期候选版实机验证记录
 
 此文件保留早期候选包验收结果。后续 10.0.0 构建已修复拖拽回归，并通过生产插入路径及真实 Word 字段验证，最新范围及证据见 [VALIDATION-drag-word.md](VALIDATION-drag-word.md)。
 
@@ -7,9 +7,9 @@
 ## 环境与产物
 
 - Zotero 10.0.6（Windows）；Microsoft Word 16.0，build 16.0.20430。
-- 插件以 `citeflow@groele` 加载，元数据名称为 `Zotero CiteFlow`，版本 `40.1.0`。
+- 插件以 `citeflow@groele` 加载，元数据名称为 `Zotero CiteFlow`，早期候选版。
 - 已重启隔离 Zotero profile，插件保持 active，三个合成测试条目及已有测试字段保留。
-- 最新候选包：`dist/native-candidate-40.1.0-citeflow-v3/zotero-citeflow-40.1.0.xpi`，SHA-256 `7D153CC6910D87C3F33BDF9F48DA6C4E54FB73C981AB56C7296AFE0E9A512249`。
+- 最新候选包：`dist/native-candidate-early-candidate-citeflow-v3/zotero-citeflow-early-candidate.xpi`，SHA-256 `7D153CC6910D87C3F33BDF9F48DA6C4E54FB73C981AB56C7296AFE0E9A512249`。
 
 ## 通过项
 

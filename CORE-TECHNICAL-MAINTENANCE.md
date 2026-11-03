@@ -65,7 +65,7 @@
 - 群组库、只读库或无写权限条目需要跳过写操作并保留可恢复状态；不可把失败写入误记为已提交。
 - 空快照、文档切换、无效缓存、迟到的旧 revision 均是高风险边界；采用确认/双读、revision 优先和缓存隔离，避免误清空。
 
-修改这部分时，必须在 `tests/v40-stability.test.js` 与 `tests/v4002-data.test.js` 中扩展针对所有权、回滚、并发、文档隔离、共享标签和失败恢复的测试。
+修改这部分时，必须在 `tests/citation-stability.test.js` 与 `tests/citation-data.test.js` 中扩展针对所有权、回滚、并发、文档隔离、共享标签和失败恢复的测试。
 
 ## 6. 设置项
 
@@ -142,7 +142,7 @@ manifest 声明 Zotero `8.0–11.0.*`，实机记录只覆盖 `10.0.6`。插件�
 
 ### P2 — 文档中仍有历史/过期结论
 
-`PROJECT_AUDIT.md`、`VALIDATION-40.1.0.md` 等旧文档保留了历史失败结论。当前实现以本文和本次工程验收记录为准；读取旧报告时需先核对日期、版本和测试范围。
+`PROJECT_AUDIT.md`、`VALIDATION-early-candidate.md` 等旧文档保留了历史失败结论。当前实现以本文和本次工程验收记录为准；读取旧报告时需先核对日期、版本和测试范围。
 
 ## 10. 后续开发准则
 
@@ -160,5 +160,5 @@ manifest 声明 Zotero `8.0–11.0.*`，实机记录只覆盖 `10.0.6`。插件�
 - 设置界面：`chrome/content/preferences.xhtml`、`chrome/content/preferences.js`、`chrome/content/preferences.css`
 - 发布元数据：`manifest.json`、`update.json`
 - 构建：`package.json`、`package-lock.json`、`scripts/build-source.mjs`、`scripts/build.ps1`
-- 主要回归：`tests/settings-behavior.test.cjs`、`tests/preferences.test.mjs`、`tests/reference-citation.test.cjs`、`tests/v40-stability.test.js`、`tests/v4002-data.test.js`、`tests/v4002-word.test.js`、`tests/bootstrap.test.cjs`
+- 主要回归：`tests/settings-behavior.test.cjs`、`tests/preferences.test.mjs`、`tests/reference-citation.test.cjs`、`tests/citation-stability.test.js`、`tests/citation-data.test.js`、`tests/citation-word.test.js`、`tests/bootstrap.test.cjs`
 

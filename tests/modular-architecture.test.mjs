@@ -451,6 +451,141 @@ test("Word document identification: parses Word window titles, SharePoint/OneDri
   assert.equal(mockCollection2.name, pendingName2, "Must not guess when multiple unidentified sessions and multiple Word windows exist");
 });
 
+test("ViewsIconPatch positions CiteFlow Word collections immediately above My Publications regardless of locale collation", async () => {
+  const { ViewsIconPatch } = await import("../src/modules/views/icon-patch.mjs");
+  const { ViewsSessionIndex } = await import("../src/modules/views/session-index.mjs");
+  const { NativeRuntime } = await import("../src/runtime.mjs");
+
+  const makeRow = (type, id, level, ref = null) => ({
+    type,
+    id,
+    level,
+    ref,
+    isLibrary: (includeGroups) => type === "library" || (includeGroups && type === "group"),
+    isCollection: () => type === "collection",
+    isSearch: () => type === "search",
+    isPublications: () => type === "publications",
+    isDuplicates: () => type === "duplicates",
+    isUnfiled: () => type === "unfiled",
+    isRetracted: () => type === "retracted",
+    isTrash: () => type === "trash"
+  });
+
+  const wordCol = {
+    id: 901,
+    key: "WORD_CN",
+    libraryID: 1,
+    name: "新建 Microsoft Word 文档.docx",
+    _isCiteFlowCollection: true
+  };
+
+  // Simulate zh-CN localeCompare ordering where "新建..." sorts between "06_Reference Shelf" and "Daily Folder"
+  const rows = [
+    makeRow("library", "L1", 0, { libraryID: 1 }),
+    makeRow("collection", "C1", 1, { id: 1, key: "K1", libraryID: 1, name: "05_Archive" }),
+    makeRow("collection", "C2", 1, { id: 2, key: "K2", libraryID: 1, name: "06_Reference Shelf" }),
+    makeRow("collection", "C901", 1, wordCol),
+    makeRow("collection", "C3", 1, { id: 3, key: "K3", libraryID: 1, name: "Daily Folder" }),
+    makeRow("collection", "C31", 2, { id: 31, key: "K31", libraryID: 1, name: "2026" }),
+    makeRow("collection", "C311", 3, { id: 311, key: "K311", libraryID: 1, name: "2026-10" }),
+    makeRow("collection", "C4", 1, { id: 4, key: "K4", libraryID: 1, name: "HNU" }),
+    makeRow("collection", "C5", 1, { id: 5, key: "K5", libraryID: 1, name: "Syllabus Tour" }),
+    makeRow("publications", "P1", 1),
+    makeRow("duplicates", "D1", 1),
+    makeRow("unfiled", "U1", 1),
+    makeRow("trash", "T1", 1)
+  ];
+
+  let invalidated = 0;
+  const cv = {
+    _rows: rows,
+    _rowMap: {},
+    selection: { focused: 3, pivot: 3, selected: new Set([3]) },
+    isContainerOpen: () => true,
+    isContainerEmpty: () => false,
+    getLevel: (idx) => cv._rows[idx]?.level ?? 0,
+    getRow: (idx) => cv._rows[idx],
+    _refreshRowMap() {
+      this._rowMap = {};
+      this._rows.forEach((r, idx) => { this._rowMap[r.id] = idx; });
+    },
+    _addRow(treeRow, beforeRow) {
+      this._rows.splice(beforeRow, 0, treeRow);
+      this._refreshRowMap();
+    },
+    renderItem: () => null,
+    _expandRow: async () => 0,
+    _addSortedRow: async function(objectType, id) {
+      const col = globalThis.Zotero.Collections.get(id);
+      const startRow = this._rowMap["L" + col.libraryID];
+      const level = this.getLevel(startRow) + 1;
+      let beforeRow = startRow + 1;
+      for (let i = startRow + 1; i < this._rows.length; i++) {
+        if (this.getLevel(i) === level) {
+          const r = this.getRow(i);
+          if (!r.isCollection()) {
+            beforeRow = i;
+            break;
+          }
+          if (String(r.ref.name).localeCompare(String(col.name)) > 0) {
+            beforeRow = i;
+            break;
+          }
+        }
+        beforeRow = i + 1;
+      }
+      this._addRow(makeRow("collection", `C${col.id}`, level, col), beforeRow);
+      return beforeRow;
+    },
+    tree: { invalidate: () => { invalidated += 1; } }
+  };
+  cv._refreshRowMap();
+
+  globalThis.runtime = new NativeRuntime();
+  globalThis.addon = { data: { alive: true, citation: { _temporaryCollectionKeys: new Set(["WORD_CN"]) } } };
+  globalThis.Zotero = {
+    localeCompare: (a, b) => String(a).localeCompare(String(b), "zh-CN"),
+    CollectionTreeRow: function(_view, type, ref, level) {
+      return makeRow(type, `C${ref.id}`, level, ref);
+    },
+    Collections: {
+      _map: new Map(),
+      get(id) { return this._map.get(id); }
+    },
+    ZoteroCitation: { api: { sessions: {}, sessionRevision: 1 } }
+  };
+
+  const view = Object.assign(Object.create(ViewsIconPatch.prototype), ViewsSessionIndex.prototype, {
+    pane: { collectionsView: cv },
+    _disposed: false,
+    _patchDisposers: []
+  });
+
+  await view.patchIcon();
+
+  const pubIdx = cv._rows.findIndex(r => r.type === "publications");
+  const wordIdx = cv._rows.findIndex(r => r.id === "C901");
+  assert.equal(wordIdx, pubIdx - 1, "Word collection must sit immediately above My Publications");
+  assert.equal(cv._rows[wordIdx - 1].ref?.name, "Syllabus Tour", "Syllabus Tour must precede Word collection");
+  assert.equal(cv.selection.focused, wordIdx, "Selection focus must follow the repositioned Word collection row");
+  assert.ok(cv.selection.selected.has(wordIdx), "Selected row index set must update to match new row position");
+  assert.ok(invalidated >= 1, "Tree must invalidate after repositioning");
+
+  // Adding a regular user collection "Z_Notes" via _addSortedRow must insert BEFORE Word collections
+  const zNotes = { id: 6, key: "K6", libraryID: 1, name: "Z_Notes" };
+  globalThis.Zotero.Collections._map.set(6, zNotes);
+  await cv._addSortedRow("collection", 6);
+
+  const newWordIdx = cv._rows.findIndex(r => r.id === "C901");
+  const zNotesIdx = cv._rows.findIndex(r => r.id === "C6");
+  const newPubIdx = cv._rows.findIndex(r => r.type === "publications");
+  assert.equal(zNotesIdx, newWordIdx - 1, "Regular collection Z_Notes must be inserted above CiteFlow Word collection");
+  assert.equal(newWordIdx, newPubIdx - 1, "CiteFlow Word collection must remain immediately above My Publications");
+
+  for (const dispose of view._patchDisposers) dispose();
+});
+
+
 
 
 

@@ -4,7 +4,6 @@ const path = require("node:path");
 const vm = require("node:vm");
 
 const sourceDirectory = process.env.CITATION_SOURCE_DIR || ".";
-const isV40Source = /V40/i.test(sourceDirectory);
 const sourcePath = path.join(__dirname, "..", sourceDirectory, "chrome", "content", "scripts", "index.js");
 const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "..", sourceDirectory, "manifest.json"), "utf8"));
 const source = fs.readFileSync(sourcePath, "utf8").replace(/\r\n/g, "\n");
@@ -169,10 +168,8 @@ async function testOrphanNeverUsesZero() {
 async function testDocumentNames() {
   const instance = bareCitation();
   assert.equal(instance._getDocumentDisplayName("C:\\Work\\论文.docx"), "论文.docx");
-  if (isV40Source) {
-    assert.equal(instance._getDocumentDisplayName("C:\\Work\\report#part?.docx"), "report#part?.docx");
-    assert.equal(instance._getDocumentDisplayName("\\\\server\\share\\report#part?.docx"), "report#part?.docx");
-  }
+  assert.equal(instance._getDocumentDisplayName("C:\\Work\\report#part?.docx"), "report#part?.docx");
+  assert.equal(instance._getDocumentDisplayName("\\\\server\\share\\report#part?.docx"), "report#part?.docx");
   assert.equal(instance._getDocumentDisplayName("https://example.test/a/%E6%B5%8B%E8%AF%95.docx?x=1"), "测试.docx");
   assert.equal(instance._getDocumentDisplayName("https://example.test/a/part%2Fother.docx"), "",
     "encoded URL separators must not be mistaken for a document basename");
@@ -251,9 +248,6 @@ async function testZotero10CollectionSelectionAPI() {
   await Object.create(Views.prototype).createCitationColumn();
   assert.equal(options.pluginID, "citeflow@groele");
   assert.equal(options.dataProvider({ id: 1 }, "citation"), "1: A");
-  if (!isV40Source) {
-    return;
-  }
   sandbox.ZoteroPane.getSelectedCollections = () => [];
   assert.equal(options.dataProvider({ id: 1 }, "citation"), "2: Other", "explicit activeSessionID must win over currentSession");
   sandbox.Zotero.ZoteroCitation.api.sessions.OTHER.idData = { 1: { plainCitation: "2: Other" } };

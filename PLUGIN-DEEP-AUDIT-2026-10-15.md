@@ -54,7 +54,7 @@ flowchart LR
 
 | 证据层 | 已有覆盖 | 尚缺的验收 |
 | --- | --- | --- |
-| Node 单元/模拟 | `settings-behavior` 覆盖开关、合成键盘、拖拽取消与 dropEffect=none；`v40-stability` 覆盖若干显式 docId 重命名与会话路径；`v4002-data/word` 覆盖数据及模拟原生命令分支。 | docId=null 的随机文集默认名、编码分隔符、双文档错名、两轮空快照后的恢复、崩溃时标签归属、第三方包装顺序。测试名和模拟通过不等于桌面 Word 成功。 |
+| Node 单元/模拟 | `settings-behavior` 覆盖开关、合成键盘、拖拽取消与 dropEffect=none；`citation-stability` 覆盖若干显式 docId 重命名与会话路径；`citation-data/word` 覆盖数据及模拟原生命令分支。 | docId=null 的随机文集默认名、编码分隔符、双文档错名、两轮空快照后的恢复、崩溃时标签归属、第三方包装顺序。测试名和模拟通过不等于桌面 Word 成功。 |
 | Native 桥接/Word 检查 | 仓库提供 `test-word-native.ps1`、`native-word-session.ps1`，可检查真实 CSL 域和刷新。 | 这些脚本不能代替 OS 物理拖放落点确认和真实键盘布局/IME 事件；需将输入来源与 Word 域证据关联到同一次测试。 |
 | 真实桌面 | 先前的人工 Word 拖放证明某些版本/条件下可插入原生域，且 dropEffect=none 可能是成功结果。 | 非 Word 负向拖放、两个活动文档、随机文集显示名、真实快捷键全矩阵仍无本轮同等证据。此文档不宣称已经验收。 |
 

@@ -22,7 +22,7 @@
 
 `src/hooks.mjs` 在 Zotero 主窗口捕获阶段监听 `keydown`。只有未按修饰键、非重复、非输入法组合，按键值为 `'`，目标不属于输入/可编辑区域，快捷引用设置开启且选择了普通顶层条目时才阻止默认按键并调用 `citeItems()`。
 
-`tests/settings-behavior.test.cjs` 验证了开关、编辑目标、组合键、重复键、IME、非目标键及窗口解绑等分支；`tests/v4002-word.test.js` 验证原生调用的模拟接口。它们尚不能证明真实键盘布局、输入法、Zotero 焦点/事件目标和 Word 活动文档下的体验正确。
+`tests/settings-behavior.test.cjs` 验证了开关、编辑目标、组合键、重复键、IME、非目标键及窗口解绑等分支；`tests/citation-word.test.js` 验证原生调用的模拟接口。它们尚不能证明真实键盘布局、输入法、Zotero 焦点/事件目标和 Word 活动文档下的体验正确。
 
 ### 可复用的验收工具
 

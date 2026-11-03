@@ -6,7 +6,7 @@ const vm = require("node:vm");
 // Reuse only the VM fixture and helpers from the stability suite. Its runner
 // is after this prefix and is intentionally not evaluated here.
 process.env.CITATION_SOURCE_DIR = ".";
-const fixturePath = path.join(__dirname, "v40-stability.test.js");
+const fixturePath = path.join(__dirname, "citation-stability.test.js");
 const fixture = fs.readFileSync(fixturePath, "utf8").replace(/\r\n/g, "\n").split("\n(async () => {\n")[0];
 const checks = `
 (async () => {
@@ -94,7 +94,7 @@ const checks = `
   assert.equal(unregisterCalls, 1);
   assert.equal("ZoteroCitation" in sandbox.Zotero, false);
 
-  console.log("40.0.2 UI lifecycle suites passed");
+  console.log("Citation UI lifecycle suites passed");
 })().catch(error => { console.error(error); process.exitCode = 1; });
 `;
 const sandbox = {
@@ -108,7 +108,7 @@ const sandbox = {
   setInterval,
   clearInterval
 };
-vm.runInNewContext(fixture + checks, sandbox, { filename: "v4002-ui-fixture.js" });
+vm.runInNewContext(fixture + checks, sandbox, { filename: "citation-ui-fixture.js" });
 
 async function testBootstrapWindowLookupAndCancellation() {
 const bootstrapPath = path.join(__dirname, "..", "bootstrap.js");

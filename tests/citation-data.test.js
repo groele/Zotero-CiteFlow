@@ -10,7 +10,7 @@ const start = source.indexOf("  var Citation = class {");
 const endMarker = source.includes("\n  // src/modules/drop-target.mjs")
   ? "\n  };\n\n  // src/modules/drop-target.mjs" : "\n  };\n\n  // src/modules/cite.mjs";
 const end = source.indexOf(endMarker, start);
-assert.ok(start >= 0 && end > start, "Citation class must be extractable from the V40.0.2 bundle");
+assert.ok(start >= 0 && end > start, "Citation class must be extractable from the bundle");
 
 const prefStore = new Map();
 const sandbox = {
@@ -337,5 +337,5 @@ const tests = [testMalformedCacheFallsBackSafely, testEmptySnapshotNeedsTwoReads
     await test();
     console.log(`PASS ${test.name}`);
   }
-  console.log(`V40.0.2 data suites passed: ${tests.length}`);
+  console.log(`Citation data suites passed: ${tests.length}`);
 })().catch(error => { console.error(error); process.exitCode = 1; });
