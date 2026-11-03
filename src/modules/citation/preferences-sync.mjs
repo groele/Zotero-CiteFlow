@@ -161,7 +161,9 @@ export class CitationPreferences {
         if (legacyRaw) rawKeys = legacyRaw;
       }
       const keys = rawKeys ? JSON.parse(rawKeys) : [];
-      const validKeys = Array.isArray(keys) ? keys.filter(k => typeof k === "string" && k) : [];
+      const validKeys = Array.isArray(keys)
+        ? keys.filter(k => (typeof k === "string" || typeof k === "number") && Number.isSafeInteger(Number(k)) && Number(k) > 0).map(String)
+        : [];
       return {
         ids: Object.fromEntries(validKeys.map(k => [k, true])),
         names: Object.fromEntries(validKeys.map(k => [k, "/Citations"]))

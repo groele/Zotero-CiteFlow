@@ -128,10 +128,10 @@ export class CitationCollections {
     const collection = session?.collection;
     if (this._listenerStopped || session?.closing || !collection?.id) return;
 
-    const normalizedTargetIDs = [...new Set(targetIDs.map(Number).filter(Number.isInteger))];
+    const normalizedTargetIDs = [...new Set(targetIDs.map(Number).filter(id => Number.isSafeInteger(id) && id > 0))];
     const currentIDs = collection.getChildItems(true)
       .map(itemOrID => typeof itemOrID === "number" ? itemOrID : itemOrID?.id)
-      .filter(Number.isInteger);
+      .filter(id => Number.isSafeInteger(id) && id > 0);
 
     const targetSet = new Set(normalizedTargetIDs);
     const currentSet = new Set(currentIDs);

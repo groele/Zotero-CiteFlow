@@ -281,8 +281,11 @@ export class CitationFormatting {
     }
     const order = index + 1;
     if (isNoteStyle) return String(order);
-    const citations = citationsByItemID[id];
-    if (!Array.isArray(citations) || citations.length === 0) return `${order}: (error)`;
+    const citations = citationsByItemID[id] ?? citationsByItemID[Number(id)];
+    if (!Array.isArray(citations) || citations.length === 0) {
+      const prev = oldIdData[id]?.plainCitation || oldIdData[String(id)]?.plainCitation;
+      return prev && prev.startsWith(`${order}: `) && !prev.endsWith("(error)") ? prev : `${order}: (error)`;
+    }
     const labels = citations.map(entry => {
       const rawText = typeof entry?.properties?.plainCitation === "string"
         ? entry.properties.plainCitation.replace(/[\u0000-\u001F\u007F]/g, " ").replace(/\s+/g, " ").trim()
@@ -294,18 +297,15 @@ export class CitationFormatting {
 
   /**
    * Formats item plain citations and synchronizes session collection items.
-   * @param {string} sessionID - Session identifier
-   * @param {object} citationsByItemID - Citations indexed by item ID
-   * @param {number[]} sortedItemIDs - Sorted document item order
-   * @param {string} styleClass - Citation style class
-   * @param {number} revision - Expected revision number
-   * @returns {Promise<void>}
    * @private
    */
   async _applyCitations(sessionID, citationsByItemID, sortedItemIDs, styleClass, revision) {
     if (!citationsByItemID || typeof citationsByItemID !== "object" || !Array.isArray(sortedItemIDs)) return;
-
-    const citationIDKeys = Object.keys(citationsByItemID);
+    const citationIDKeySet = new Set(Object.keys(citationsByItemID));
+    for (const id of sortedItemIDs) {
+      if (Number.isSafeInteger(Number(id)) && Number(id) > 0) citationIDKeySet.add(String(id));
+    }
+    const citationIDKeys = [...citationIDKeySet];
     const isNoteStyle = styleClass === "note";
     const idIndexMap = new Map(sortedItemIDs.map((id, idx) => [Number(id), idx]));
     const oldIdData = this.sessions[sessionID]?.idData || {};

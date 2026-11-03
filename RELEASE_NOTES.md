@@ -1,5 +1,19 @@
 # Zotero CiteFlow Release Notes
 
+## 13.0.4 (2026-11-03) — Per-Item Transient Omission Recovery, Ghost-Session Isolation & Dual-Mode ID Hardening
+
+- **单条目瞬态缺失防丢与历史引文回退（`src/modules/citation/formatting.mjs`）**：
+  - 在 `_applyCitations` 中取 `Object.keys(citationsByItemID)` 与 `sortedItemIDs` 的完整并集（`citationIDKeySet`），防止当某篇已在文内被引用的文献（存在于 `sortedItemIDs`）在 `citationsByItemID` 局部刷新瞬态缺失时从文档引文集合与列表回显中脱落；
+  - 在 `_formatItemPlainCitation` 中支持当 `citationsByItemID[id]` 瞬态为空时，若 `oldIdData[id]` 已存有同序号（`${order}: ...`）的有效引文文本，则平滑继承上一帧有效文本而非闪烁 `1: (error)`。
+- **正在关闭/幽灵会话标签防污染（`src/modules/citation/tag-governance.mjs`）**：
+  - 在 `_collectActiveCitedIDSet` 中过滤掉 `session.closing === true` 以及既不在 `Zotero.Integration.sessions` 也不在 `this.sessions` 中的残留幽灵会话 ID，确保关闭 Word 文档后引用标签能够 100% 干净摘除，绝不因残留映射阻止标签回收。
+- **视图层双模态 Item ID 一致性解析（`src/modules/views/session-index.mjs`）**：
+  - 在 `_getSessionIndex` 与 `getCitationText` 中增加 `Number.isSafeInteger(numericID) && numericID > 0` 严格校验，并同时兼容 `session.idData[numericID]` 与 `session.idData[itemID]` 双模态键查找，杜绝字符串/数字键类型差异导致的引文列空白。
+- **集合同步与历史标签迁移正整数加固（`collections.mjs` / `preferences-sync.mjs`）**：
+  - `syncCollectionItems` 升级为 `Number.isSafeInteger(id) && id > 0` 过滤；
+  - `_loadLegacyManagedTagState` 增加正安全整数过滤，防止损坏的历史偏好数组污染标签所有权状态。
+- **全量自动化测试验证**：46 项顶层测试套件（新增 3 项针对单条目瞬态缺失恢复、幽灵会话隔离与双模态 ID 解析的专项测试）100% 通过。
+
 ## 13.0.3 (2026-11-03) — Academic Citation Determinism, Stability & Performance Hardening
 
 - **参考文献引文序数绝对决定性（Zero-Error Academic Citation Ordinal Determinism）**：

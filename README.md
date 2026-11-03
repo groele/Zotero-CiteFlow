@@ -8,7 +8,7 @@
 
 [简体中文](README.md) · [English](README.en.md)
 
-[![当前版本](https://img.shields.io/badge/version-13.0.3-245ac7?style=flat-square)](https://github.com/groele/Zotero-CiteFlow/releases/tag/v13.0.3) · [下载 XPI](https://github.com/groele/Zotero-CiteFlow/releases/download/v13.0.3/zotero-citeflow-13.0.3.xpi) · [问题反馈](https://github.com/groele/Zotero-CiteFlow/issues)
+[![当前版本](https://img.shields.io/badge/version-13.0.4-245ac7?style=flat-square)](https://github.com/groele/Zotero-CiteFlow/releases/tag/v13.0.4) · [下载 XPI](https://github.com/groele/Zotero-CiteFlow/releases/download/v13.0.4/zotero-citeflow-13.0.4.xpi) · [问题反馈](https://github.com/groele/Zotero-CiteFlow/issues)
 
 [产品定位](#overview) · [安装与更新](#installation) · [快速开始](#quick-start) · [核心功能](#features) · [设置与使用](#settings) · [数据、同步与外部服务](#data) · [兼容性与验证范围](#compatibility) · [常见问题](#troubleshooting) · [开发与详细文档](#development) · [系列产品](#series) · [项目来源与许可](#license)
 
@@ -24,7 +24,7 @@
 
 ## 安装与更新
 
-1. 下载 [zotero-citeflow-13.0.3.xpi](https://github.com/groele/Zotero-CiteFlow/releases/download/v13.0.3/zotero-citeflow-13.0.3.xpi)（插件版本 **13.0.3**），不要安装 Source code ZIP.
+1. 下载 [zotero-citeflow-13.0.4.xpi](https://github.com/groele/Zotero-CiteFlow/releases/download/v13.0.4/zotero-citeflow-13.0.4.xpi)（插件版本 **13.0.4**），不要安装 Source code ZIP.
 2. 在 Zotero 打开 **工具 → 插件／附加组件**，从齿轮菜单选择 **从文件安装插件**。
 3. 选择 XPI，完成安装；按提示重启 Zotero。
 
@@ -74,9 +74,9 @@
 
 | 项目 | 范围 |
 |---|---|
-| 当前插件版本 | 13.0.3 |
+| 当前插件版本 | 13.0.4 |
 | 清单声明的 Zotero 范围 | `10.0` 至 `12.*` |
-| 当前说明 | 13.0.3 通过 43 项全量顶层自动化测试套件。深化参考文献学术引文序数决定性、双向撕裂快照防呆、回收站与已删除文献拦截及高频性能加固。 |
+| 当前说明 | 13.0.4 通过 46 项全量顶层自动化测试套件。深化单条目瞬态缺失防丢、幽灵会话标签防污染、双模态 ID 查找与历史配置安全迁移。 |
 
 插件版本与 Zotero 版本分别管理。兼容声明不等于已验证所有宿主、系统和外部服务；本轮仅验证上述定向行为，未覆盖所有业务流程或主环境安装。
 
@@ -103,7 +103,7 @@ npm run package
 - [技术与维护指南 / Technical guide](CORE-TECHNICAL-MAINTENANCE.md)
 - [第三方声明 / Third-party notices](THIRD_PARTY.md)
 - [版本说明 / Release notes](RELEASE_NOTES.md)
-- [v13.0.3 阶段说明 / Milestone notes](docs/releases/v13.0.3.md)
+- [v13.0.4 阶段说明 / Milestone notes](docs/releases/v13.0.4.md)
 - [产品简介 / Product profile](docs/brand/PRODUCT.md)
 - [品牌规范 / Brand guide](docs/brand/BRAND.md)
 - [README 模板 / README template](docs/brand/README-TEMPLATE.md)

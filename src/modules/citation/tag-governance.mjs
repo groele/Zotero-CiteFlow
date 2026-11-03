@@ -121,7 +121,12 @@ export class CitationTagGovernance {
   _collectActiveCitedIDSet() {
     const activeCitedIDSet = new Set();
     if (Zotero.Prefs.get("extensions.zotero.zoterocitation.citationTags.enable", true) !== false) {
+      const liveSessions = Zotero.Integration?.sessions;
       for (const sid in this._sessionCitedIDs) {
+        if (this.sessions?.[sid]?.closing) continue;
+        if (liveSessions && typeof liveSessions === "object" && Object.keys(liveSessions).length > 0 && !(sid in liveSessions) && !(sid in (this.sessions || {}))) {
+          continue;
+        }
         const ids = this._sessionCitedIDs[sid] || [];
         ids.forEach(id => activeCitedIDSet.add(Number(id)));
       }

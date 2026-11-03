@@ -178,3 +178,84 @@ test("trashed and deleted items are strictly blocked by _isWritableCitationItem"
   assert.equal(c._isWritableCitationItem({ libraryID: 1, editable: true, inTrash: true }), false);
 });
 
+test("transiently missing item in citationsByItemID preserves previous valid citation text and includes all sortedItemIDs", async () => {
+  globalThis.Zotero = {
+    Libraries: { userLibraryID: 1 },
+    Items: { get: id => ({ id, libraryID: 1, isTopLevelItem: () => true }) }
+  };
+  const c = Object.create(Citation.prototype);
+  c.sessions = {
+    S1: {
+      idData: {
+        "10": { plainCitation: "1: (Smith, 2024)" },
+        "20": { plainCitation: "2: (Jones, 2025)" }
+      }
+    }
+  };
+  c._sessionUpdateRevision = { S1: 1 };
+  c.syncCollectionItems = async () => {};
+  c._invalidateSessionIndex = () => {};
+  c.scheduleItemsViewRefresh = () => {};
+
+  // Suppose item 20 is in sortedItemIDs at order 2, but transiently missing from citationsByItemID
+  await c._applyCitations(
+    "S1",
+    { "10": [{ properties: { plainCitation: "(Smith, 2024)" } }] },
+    [10, 20],
+    "in-text",
+    1
+  );
+
+  assert.equal(c.sessions.S1.idData["10"].plainCitation, "1: (Smith, 2024)");
+  assert.equal(
+    c.sessions.S1.idData["20"].plainCitation,
+    "2: (Jones, 2025)",
+    "Previous valid citation text for the same ordinal must be preserved when citationsByItemID transiently omits an item"
+  );
+});
+
+test("closing or dead sessions do not retain stale tags in _collectActiveCitedIDSet", () => {
+  globalThis.Zotero = {
+    Prefs: { get: () => true },
+    Integration: { sessions: { S_ALIVE: {} } }
+  };
+  const c = Object.create(Citation.prototype);
+  c.sessions = {
+    S_ALIVE: { closing: false },
+    S_CLOSING: { closing: true }
+  };
+  c._sessionCitedIDs = {
+    S_ALIVE: [101],
+    S_CLOSING: [202],
+    S_GHOST: [303]
+  };
+
+  const activeSet = c._collectActiveCitedIDSet();
+  assert.deepEqual([...activeSet], [101], "Only live non-closing sessions must contribute to active cited tags");
+});
+
+test("Views.getCitationText resolves numeric and string item IDs consistently and rejects invalid IDs", () => {
+  globalThis.Zotero = {
+    ZoteroCitation: {
+      api: {
+        activeSessionID: "S1",
+        sessionRevision: 1,
+        sessions: {
+          S1: {
+            idData: {
+              "42": { plainCitation: "1: (Einstein, 1905)" }
+            }
+          }
+        }
+      }
+    },
+    Integration: { currentSession: null }
+  };
+  const v = new Views();
+  assert.equal(v.getCitationText(42), "1: (Einstein, 1905)");
+  assert.equal(v.getCitationText("42"), "1: (Einstein, 1905)");
+  assert.equal(v.getCitationText(-1), "");
+  assert.equal(v.getCitationText("NaN"), "");
+});
+
+

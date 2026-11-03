@@ -8,7 +8,7 @@ Track Word citations and connect them to Zotero items.
 
 [简体中文](README.md) · [English](README.en.md)
 
-[![Release](https://img.shields.io/badge/version-13.0.3-245ac7?style=flat-square)](https://github.com/groele/Zotero-CiteFlow/releases/tag/v13.0.3) · [Download XPI](https://github.com/groele/Zotero-CiteFlow/releases/download/v13.0.3/zotero-citeflow-13.0.3.xpi) · [Report an issue](https://github.com/groele/Zotero-CiteFlow/issues)
+[![Release](https://img.shields.io/badge/version-13.0.4-245ac7?style=flat-square)](https://github.com/groele/Zotero-CiteFlow/releases/tag/v13.0.4) · [Download XPI](https://github.com/groele/Zotero-CiteFlow/releases/download/v13.0.4/zotero-citeflow-13.0.4.xpi) · [Report an issue](https://github.com/groele/Zotero-CiteFlow/issues)
 
 [Overview](#overview) · [Installation and updates](#installation) · [Quick start](#quick-start) · [Key features](#features) · [Settings](#settings) · [Data, sync, and services](#data) · [Compatibility and validation](#compatibility) · [Troubleshooting](#troubleshooting) · [Development and documentation](#development) · [The Flow series](#series) · [Origin and license](#license)
 
@@ -24,7 +24,7 @@ Install this add-on independently and combine it with other Flow products as nee
 
 ## Installation and updates
 
-1. Download [zotero-citeflow-13.0.3.xpi](https://github.com/groele/Zotero-CiteFlow/releases/download/v13.0.3/zotero-citeflow-13.0.3.xpi) (add-on version **13.0.3**), not the Source code ZIP.
+1. Download [zotero-citeflow-13.0.4.xpi](https://github.com/groele/Zotero-CiteFlow/releases/download/v13.0.4/zotero-citeflow-13.0.4.xpi) (add-on version **13.0.4**), not the Source code ZIP.
 2. In Zotero, open **Tools → Plugins/Add-ons**, then choose **Install Add-on From File** from the gear menu.
 3. Select the XPI, complete installation, and restart if requested.
 
@@ -74,9 +74,9 @@ Restart Zotero after changing citation tracking. Configure dragging, tag text, a
 
 | Item | Scope |
 |---|---|
-| Current add-on version | 13.0.3 |
+| Current add-on version | 13.0.4 |
 | Declared Zotero range | `10.0` through `12.*` |
-| Evidence boundary | 13.0.3 passed 43 top-level automated tests across 27 decoupled source modules, hardening academic citation ordinal determinism, bidirectional torn-snapshot protection, trash/deleted item guards, and high-frequency performance. |
+| Evidence boundary | 13.0.4 passed 46 top-level automated tests across 27 decoupled source modules, hardening per-item transient omission recovery, ghost-session tag isolation, dual-mode item ID resolution, and legacy migration safety. |
 
 Add-on and Zotero versions are separate. Declared compatibility does not establish testing on every host, operating system or service. This patch validates the targeted behaviors listed above, not all plugin workflows or main-profile installation.
 
@@ -103,7 +103,7 @@ npm run package
 - [技术与维护指南 / Technical guide](CORE-TECHNICAL-MAINTENANCE.md)
 - [第三方声明 / Third-party notices](THIRD_PARTY.md)
 - [版本说明 / Release notes](RELEASE_NOTES.md)
-- [v13.0.3 阶段说明 / Milestone notes](docs/releases/v13.0.3.md)
+- [v13.0.4 阶段说明 / Milestone notes](docs/releases/v13.0.4.md)
 - [产品简介 / Product profile](docs/brand/PRODUCT.md)
 - [品牌规范 / Brand guide](docs/brand/BRAND.md)
 - [README 模板 / README template](docs/brand/README-TEMPLATE.md)

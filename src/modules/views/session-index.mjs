@@ -25,9 +25,11 @@ export class ViewsSessionIndex {
         index.byKey.set(key, matches);
       }
       for (const id of Object.keys(session?.idData || {})) {
-        const matches = index.byItem.get(Number(id)) || [];
+        const numericId = Number(id);
+        if (!Number.isSafeInteger(numericId) || numericId <= 0) continue;
+        const matches = index.byItem.get(numericId) || [];
         matches.push(session);
-        index.byItem.set(Number(id), matches);
+        index.byItem.set(numericId, matches);
       }
     }
     this._index = index;
@@ -69,19 +71,29 @@ export class ViewsSessionIndex {
    */
   getCitationText(itemID) {
     try {
+      const numericID = Number(itemID);
+      if (!Number.isSafeInteger(numericID) || numericID <= 0) return "";
       const api = Zotero.ZoteroCitation?.api || {};
       const index = this._getSessionIndex(api);
       const wordSessions = this._resolveSelectedCollectionSessions(index);
 
       if (wordSessions.size) {
-        const matches = [...wordSessions].filter(session => session.idData?.[itemID]);
-        return matches.length === 1 ? matches[0].idData[itemID].plainCitation || "" : "";
+        const matches = [...wordSessions].filter(session => session.idData?.[numericID] || session.idData?.[itemID]);
+        if (matches.length !== 1) return "";
+        const entry = matches[0].idData[numericID] ?? matches[0].idData[itemID];
+        return entry?.plainCitation || "";
       }
       const active = api.activeSessionID && index.sessions[api.activeSessionID]
         ? api.activeSessionID : Zotero.Integration.currentSession?.sessionID;
-      if (active) return index.sessions[active]?.idData?.[itemID]?.plainCitation || "";
-      const matches = index.byItem.get(Number(itemID)) || [];
-      return matches.length === 1 ? matches[0].idData[itemID].plainCitation || "" : "";
+      if (active) {
+        const activeSession = index.sessions[active];
+        const entry = activeSession?.idData?.[numericID] ?? activeSession?.idData?.[itemID];
+        return entry?.plainCitation || "";
+      }
+      const matches = index.byItem.get(numericID) || [];
+      if (matches.length !== 1) return "";
+      const entry = matches[0].idData[numericID] ?? matches[0].idData[itemID];
+      return entry?.plainCitation || "";
     } catch (error) {
       runtime.log("Citation column lookup failed", error);
       return "";

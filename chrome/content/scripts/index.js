@@ -535,7 +535,7 @@
           if (legacyRaw) rawKeys = legacyRaw;
         }
         const keys = rawKeys ? JSON.parse(rawKeys) : [];
-        const validKeys = Array.isArray(keys) ? keys.filter((k) => typeof k === "string" && k) : [];
+        const validKeys = Array.isArray(keys) ? keys.filter((k) => (typeof k === "string" || typeof k === "number") && Number.isSafeInteger(Number(k)) && Number(k) > 0).map(String) : [];
         return {
           ids: Object.fromEntries(validKeys.map((k) => [k, true])),
           names: Object.fromEntries(validKeys.map((k) => [k, "/Citations"]))
@@ -752,8 +752,8 @@
     async syncCollectionItems(session, targetIDs) {
       const collection = session?.collection;
       if (this._listenerStopped || session?.closing || !collection?.id) return;
-      const normalizedTargetIDs = [...new Set(targetIDs.map(Number).filter(Number.isInteger))];
-      const currentIDs = collection.getChildItems(true).map((itemOrID) => typeof itemOrID === "number" ? itemOrID : itemOrID?.id).filter(Number.isInteger);
+      const normalizedTargetIDs = [...new Set(targetIDs.map(Number).filter((id) => Number.isSafeInteger(id) && id > 0))];
+      const currentIDs = collection.getChildItems(true).map((itemOrID) => typeof itemOrID === "number" ? itemOrID : itemOrID?.id).filter((id) => Number.isSafeInteger(id) && id > 0);
       const targetSet = new Set(normalizedTargetIDs);
       const currentSet = new Set(currentIDs);
       const remove = currentIDs.filter((id) => !targetSet.has(id));
@@ -1373,7 +1373,12 @@
     _collectActiveCitedIDSet() {
       const activeCitedIDSet = /* @__PURE__ */ new Set();
       if (Zotero.Prefs.get("extensions.zotero.zoterocitation.citationTags.enable", true) !== false) {
+        const liveSessions = Zotero.Integration?.sessions;
         for (const sid in this._sessionCitedIDs) {
+          if (this.sessions?.[sid]?.closing) continue;
+          if (liveSessions && typeof liveSessions === "object" && Object.keys(liveSessions).length > 0 && !(sid in liveSessions) && !(sid in (this.sessions || {}))) {
+            continue;
+          }
           const ids = this._sessionCitedIDs[sid] || [];
           ids.forEach((id) => activeCitedIDSet.add(Number(id)));
         }
@@ -1816,8 +1821,11 @@
       }
       const order = index + 1;
       if (isNoteStyle) return String(order);
-      const citations = citationsByItemID[id];
-      if (!Array.isArray(citations) || citations.length === 0) return `${order}: (error)`;
+      const citations = citationsByItemID[id] ?? citationsByItemID[Number(id)];
+      if (!Array.isArray(citations) || citations.length === 0) {
+        const prev = oldIdData[id]?.plainCitation || oldIdData[String(id)]?.plainCitation;
+        return prev && prev.startsWith(`${order}: `) && !prev.endsWith("(error)") ? prev : `${order}: (error)`;
+      }
       const labels = citations.map((entry) => {
         const rawText = typeof entry?.properties?.plainCitation === "string" ? entry.properties.plainCitation.replace(/[\u0000-\u001F\u007F]/g, " ").replace(/\s+/g, " ").trim() : "";
         return rawText || "(no text)";
@@ -1826,17 +1834,15 @@
     }
     /**
      * Formats item plain citations and synchronizes session collection items.
-     * @param {string} sessionID - Session identifier
-     * @param {object} citationsByItemID - Citations indexed by item ID
-     * @param {number[]} sortedItemIDs - Sorted document item order
-     * @param {string} styleClass - Citation style class
-     * @param {number} revision - Expected revision number
-     * @returns {Promise<void>}
      * @private
      */
     async _applyCitations(sessionID, citationsByItemID, sortedItemIDs, styleClass, revision) {
       if (!citationsByItemID || typeof citationsByItemID !== "object" || !Array.isArray(sortedItemIDs)) return;
-      const citationIDKeys = Object.keys(citationsByItemID);
+      const citationIDKeySet = new Set(Object.keys(citationsByItemID));
+      for (const id of sortedItemIDs) {
+        if (Number.isSafeInteger(Number(id)) && Number(id) > 0) citationIDKeySet.add(String(id));
+      }
+      const citationIDKeys = [...citationIDKeySet];
       const isNoteStyle = styleClass === "note";
       const idIndexMap = new Map(sortedItemIDs.map((id, idx) => [Number(id), idx]));
       const oldIdData = this.sessions[sessionID]?.idData || {};
@@ -2226,9 +2232,11 @@
           index.byKey.set(key, matches);
         }
         for (const id of Object.keys(session?.idData || {})) {
-          const matches = index.byItem.get(Number(id)) || [];
+          const numericId = Number(id);
+          if (!Number.isSafeInteger(numericId) || numericId <= 0) continue;
+          const matches = index.byItem.get(numericId) || [];
           matches.push(session);
-          index.byItem.set(Number(id), matches);
+          index.byItem.set(numericId, matches);
         }
       }
       this._index = index;
@@ -2268,17 +2276,27 @@
      */
     getCitationText(itemID) {
       try {
+        const numericID = Number(itemID);
+        if (!Number.isSafeInteger(numericID) || numericID <= 0) return "";
         const api = Zotero.ZoteroCitation?.api || {};
         const index = this._getSessionIndex(api);
         const wordSessions = this._resolveSelectedCollectionSessions(index);
         if (wordSessions.size) {
-          const matches2 = [...wordSessions].filter((session) => session.idData?.[itemID]);
-          return matches2.length === 1 ? matches2[0].idData[itemID].plainCitation || "" : "";
+          const matches2 = [...wordSessions].filter((session) => session.idData?.[numericID] || session.idData?.[itemID]);
+          if (matches2.length !== 1) return "";
+          const entry2 = matches2[0].idData[numericID] ?? matches2[0].idData[itemID];
+          return entry2?.plainCitation || "";
         }
         const active = api.activeSessionID && index.sessions[api.activeSessionID] ? api.activeSessionID : Zotero.Integration.currentSession?.sessionID;
-        if (active) return index.sessions[active]?.idData?.[itemID]?.plainCitation || "";
-        const matches = index.byItem.get(Number(itemID)) || [];
-        return matches.length === 1 ? matches[0].idData[itemID].plainCitation || "" : "";
+        if (active) {
+          const activeSession = index.sessions[active];
+          const entry2 = activeSession?.idData?.[numericID] ?? activeSession?.idData?.[itemID];
+          return entry2?.plainCitation || "";
+        }
+        const matches = index.byItem.get(numericID) || [];
+        if (matches.length !== 1) return "";
+        const entry = matches[0].idData[numericID] ?? matches[0].idData[itemID];
+        return entry?.plainCitation || "";
       } catch (error) {
         runtime.log("Citation column lookup failed", error);
         return "";
