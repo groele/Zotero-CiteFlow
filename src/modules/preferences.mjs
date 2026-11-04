@@ -116,6 +116,7 @@ export class Preferences {
       if (typeof setting.defaultValue === "boolean") input.checked = readSetting(setting);
       else { input.value = String(readSetting(setting)); input.setCustomValidity(""); }
       updateStatus();
+      updateDependencies();
     };
     const dispose = () => {
       for (const remove of listeners) remove();
@@ -171,6 +172,7 @@ export class Preferences {
     on(root.querySelector("#zoterocitation-settings-reset"), "click", () => {
       save(settings.map(setting => [setting, setting.defaultValue]));
       for (const setting of settings) sync(setting);
+      updateDependencies();
     });
     on(win, "unload", dispose);
   }

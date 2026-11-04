@@ -1,5 +1,20 @@
 # Zotero CiteFlow Release Notes
 
+## 13.0.11 (2026-11-04) — Multi-Window Unload Fallback, Trashed Item Guard, Collection Teardown Ordering & SHA-512 Feed
+
+- **多窗口卸载回退与回收站安全过滤（`src/hooks.mjs` / `src/addon.mjs`）**：
+  - **多窗口平滑回退（`detachWindow`）**：关闭单主窗口时自动从剩余的活动主窗口（`windowBindings` 或 `Zotero.getMainWindows()`）重新绑定 `globalThis.window / document / ZoteroPane / Zotero_Tabs`，仅当最后一个主窗口关闭时才置空，根除双主窗口下关闭一个导致 `citeItems()` 空指针崩溃的问题；
+  - **回收站与已删除条目严格拦截（`addon.api.citeItems`）**：在注入 Word 之前对条目进行统一安全校验，严格过滤 `item.deleted === true` 与 `item.inTrash === true`，与拖拽引文安全守卫完全对齐；
+- **临时文集擦除顺序与键残留修复（`src/modules/citation/preferences-sync.mjs`）**：
+  - **正序擦除与索引失效**：关闭 `collections.enable` 时，优先从活动会话解除 `session.collection` 绑定并调用 `_invalidateSessionIndex()`，逐一 `await` 集合底层 `eraseTx()`，并从 `_temporaryCollectionKeys` 移除持久化键值后存盘，最后调用 `clearStaleArtifacts()`，彻底消除临时集合残留；
+- **设置页交互、排版与规范深度对齐（`preferences.mjs` / `preferences.xhtml` / `preferences.css`）**：
+  - **全生命周期开关联动（`Preferences.init` / `reset`）**：在设置面板初次挂载及点击“恢复默认设置”时同步触发 `updateDependencies()`，确保子项 `disabled` 状态即时生效；
+  - **首组默认展开规范**：设置页仅保留第 1 组折叠卡片默认展开（`open="open"`），其余卡片默认折叠；
+  - **纯净本地化**：剔除版本信息卡片中的硬编码中文，完全由 Fluent 国际化资源驱动；
+  - **排版对齐修复**：修复第 4 卡片「刷新调度与性能控制」内的一级顶部概述说明被误推至 40px 的问题，一级概述严格贴合 16px 内容基准线（0px 相对偏移）；
+- **在线更新源 sha512 规范严格对齐（`scripts/build.ps1` / `tests/package.test.cjs` / `update.json`）**：
+  - 严格对齐 `AGENTS.md` 205/227 条例，将构建流水线、更新清单及单元测试的哈希前缀统一规范为 `sha512:`。
+
 ## 13.0.10 (2026-11-03) — Modular Preferences Architecture, Dedicated Collections Toggle & Dependency Interlocking Guard
 
 - **设置面板五大业务流转模块化重构与 40px 黄金基准对齐（`chrome/content/preferences.xhtml` / `preferences.css`）**：

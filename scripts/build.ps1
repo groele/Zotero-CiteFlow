@@ -95,7 +95,7 @@ try {
     } finally {
         $zip.Dispose()
     }
-    $archiveHash = Get-FileHash -LiteralPath $archivePath -Algorithm SHA256
+    $archiveHash = Get-FileHash -LiteralPath $archivePath -Algorithm SHA512
     $version = $manifest.version
     $candidateFeed = @{
         addons = @{
@@ -103,7 +103,7 @@ try {
                 updates = @(@{
                     version = $version
                     update_link = "https://github.com/groele/Zotero-CiteFlow/releases/download/v$version/zotero-citeflow-$version.xpi"
-                    update_hash = "sha256:$($archiveHash.Hash.ToLowerInvariant())"
+                    update_hash = "sha512:$($archiveHash.Hash.ToLowerInvariant())"
                     applications = @{ zotero = @{
                         strict_min_version = $manifest.applications.zotero.strict_min_version
                         strict_max_version = $manifest.applications.zotero.strict_max_version

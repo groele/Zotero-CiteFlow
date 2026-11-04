@@ -458,34 +458,51 @@
       this._itemsViewRefreshDebounceMs = this._getClampedIntPref("extensions.zotero.zoterocitation.itemsViewRefreshDebounceMs", 120, 0, 2e3);
       this._healthWindowMs = this._getClampedIntPref("extensions.zotero.zoterocitation.healthWindowMs", 3e5, 1e4, 36e5);
       this._perfSlowThresholdMs = this._getClampedIntPref("extensions.zotero.zoterocitation.perfSlowThresholdMs", 50, 5, 5e3);
+      let collectionTask = Promise.resolve();
       if (collectionsChanged && !collectionsEnabled) {
-        this.clearStaleArtifacts().catch((e) => this.logError("Failed to clear collections on disable", e));
+        const collectionsToErase = [];
         for (const session of Object.values(this.sessions || {})) {
           if (session.collection) {
-            try {
-              session.collection.eraseTx().catch(() => {
-              });
-            } catch {
-            }
+            collectionsToErase.push(session.collection);
             delete session.collection;
           }
         }
-      } else if (collectionsChanged && collectionsEnabled) {
-        for (const [id, session] of Object.entries(this.sessions || {})) {
-          if (!session.collection && !session.closing) {
-            this.initCollection(id, session).catch(() => {
-            });
+        this._invalidateSessionIndex?.();
+        collectionTask = (async () => {
+          for (const col of collectionsToErase) {
+            try {
+              if (col.key) {
+                this._temporaryCollectionKeys?.delete(col.key);
+              }
+              await col.eraseTx();
+            } catch (e) {
+              this.logError("Failed to erase temporary collection on disable", e);
+            }
           }
-        }
+          if (this._temporaryCollectionKeys) {
+            this._saveKeySet(TEMP_COLLECTION_KEYS_PREF, this._temporaryCollectionKeys);
+          }
+          await this.clearStaleArtifacts().catch((e) => this.logError("Failed to clear collections on disable", e));
+        })();
+      } else if (collectionsChanged && collectionsEnabled) {
+        collectionTask = (async () => {
+          for (const [id, session] of Object.entries(this.sessions || {})) {
+            if (!session.collection && !session.closing) {
+              await this.initCollection(id, session).catch(() => {
+              });
+            }
+          }
+        })();
       }
       if (tagsChanged || tagRenamed || this._tagPreferencesNeedSync) {
         this._lastTagSyncSig = {};
         this._tagPreferencesNeedSync = true;
-        return this.syncCitationTags("__preferences__", []).then((result) => {
+        return collectionTask.then(() => this.syncCitationTags("__preferences__", [])).then((result) => {
           this._tagPreferencesNeedSync = result?.complete === false;
           return result;
         });
       }
+      return collectionTask;
     }
     /**
      * Loads a JSON set of string keys from a preference.
@@ -3247,6 +3264,7 @@
           input.setCustomValidity("");
         }
         updateStatus();
+        updateDependencies();
       };
       const dispose = () => {
         for (const remove of listeners) remove();
@@ -3301,6 +3319,7 @@
       on(root.querySelector("#zoterocitation-settings-reset"), "click", () => {
         save(settings.map((setting) => [setting, setting.defaultValue]));
         for (const setting of settings) sync(setting);
+        updateDependencies();
       });
       on(win, "unload", dispose);
     }
@@ -3391,11 +3410,25 @@
     windowBindings.delete(win);
     await runShutdownStep("dispose window UI", () => binding.views.dispose());
     if (globalThis.window === win) {
-      globalThis.window = globalThis.document = globalThis.ZoteroPane = globalThis.Zotero_Tabs = void 0;
+      const nextWin = [...windowBindings.keys()].find((w) => w !== win && w?.document) || Zotero.getMainWindows?.()?.find((w) => w !== win && w?.document) || null;
+      if (nextWin) {
+        globalThis.window = nextWin;
+        globalThis.document = nextWin.document;
+        globalThis.ZoteroPane = nextWin.ZoteroPane;
+        globalThis.Zotero_Tabs = nextWin.Zotero_Tabs;
+      } else {
+        globalThis.window = globalThis.document = globalThis.ZoteroPane = globalThis.Zotero_Tabs = void 0;
+      }
     }
   }
   async function onMainWindowLoad(win) {
     await startupPromise;
+    if (!globalThis.window && win?.document) {
+      globalThis.window = win;
+      globalThis.document = win.document;
+      globalThis.ZoteroPane = win.ZoteroPane;
+      globalThis.Zotero_Tabs = win.Zotero_Tabs;
+    }
     await attachWindow(win);
   }
   async function onMainWindowUnload(win) {
@@ -3659,7 +3692,29 @@
     constructor() {
       this.data = { alive: true, runtime: new NativeRuntime() };
       this.hooks = hooks_default2;
-      this.api = { citeItems };
+      this.api = {
+        citeItems: async (requestedItems = null) => {
+          let items = requestedItems;
+          if (!items) {
+            const win = globalThis.window || Zotero.getMainWindow?.() || Zotero.getMainWindows?.()?.[0];
+            const tabs = win?.Zotero_Tabs || globalThis.Zotero_Tabs;
+            const pane = win?.ZoteroPane || globalThis.ZoteroPane;
+            if (tabs?.selectedIndex === 0) {
+              items = pane?.getSelectedItems?.() || [];
+            } else if (tabs) {
+              const reader = Zotero.Reader?.getByTabID?.(tabs.selectedID);
+              const attachment = reader && Zotero.Items?.get?.(reader.itemID);
+              items = attachment?.parentItem ? [attachment.parentItem] : [];
+            } else {
+              items = [];
+            }
+          }
+          if (!Array.isArray(items) || !items.length) return;
+          const validItems = items.filter((item) => item && item.deleted !== true && item.inTrash !== true && item.isRegularItem?.() && item.isTopLevelItem?.() && Number.isSafeInteger(Number(item.id)) && Number(item.id) > 0);
+          if (!validItems.length) return;
+          return citeItems(validItems);
+        }
+      };
     }
   };
 

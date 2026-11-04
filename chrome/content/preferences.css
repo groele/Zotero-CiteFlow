@@ -164,8 +164,16 @@
   text-align: left;
 }
 
+/* Level 1: Card Top Overview Description - Flush with 16px content line */
+#zoterocitation-settings .zoterocitation-setting-content > .zoterocitation-description:first-child {
+  margin: 2px 0 10px 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 /* Level 3: Subordinate Help Description - Enforce 24px indent to align at 40px line */
-#zoterocitation-settings .zoterocitation-setting-content > .zoterocitation-description {
+#zoterocitation-settings .zoterocitation-option + .zoterocitation-description,
+#zoterocitation-settings .zoterocitation-subordinate-desc {
   margin: 2px 0 10px 24px;
   font-size: 13px;
   line-height: 1.6;
@@ -323,7 +331,8 @@
     gap: 4px;
   }
 
-  #zoterocitation-settings .zoterocitation-setting-content > .zoterocitation-description {
+  #zoterocitation-settings .zoterocitation-option + .zoterocitation-description,
+  #zoterocitation-settings .zoterocitation-subordinate-desc {
     margin-inline-start: 0;
   }
 

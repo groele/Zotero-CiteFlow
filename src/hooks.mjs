@@ -74,11 +74,27 @@ async function detachWindow(win) {
   windowBindings.delete(win);
   await runShutdownStep("dispose window UI", () => binding.views.dispose());
   if (globalThis.window === win) {
-    globalThis.window = globalThis.document = globalThis.ZoteroPane = globalThis.Zotero_Tabs = undefined;
+    const nextWin = [...windowBindings.keys()].find(w => w !== win && w?.document)
+      || Zotero.getMainWindows?.()?.find(w => w !== win && w?.document)
+      || null;
+    if (nextWin) {
+      globalThis.window = nextWin;
+      globalThis.document = nextWin.document;
+      globalThis.ZoteroPane = nextWin.ZoteroPane;
+      globalThis.Zotero_Tabs = nextWin.Zotero_Tabs;
+    } else {
+      globalThis.window = globalThis.document = globalThis.ZoteroPane = globalThis.Zotero_Tabs = undefined;
+    }
   }
 }
 async function onMainWindowLoad(win) {
   await startupPromise;
+  if (!globalThis.window && win?.document) {
+    globalThis.window = win;
+    globalThis.document = win.document;
+    globalThis.ZoteroPane = win.ZoteroPane;
+    globalThis.Zotero_Tabs = win.Zotero_Tabs;
+  }
   await attachWindow(win);
 }
 async function onMainWindowUnload(win) {

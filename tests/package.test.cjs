@@ -62,7 +62,7 @@ test('published update manifest remains separate from an unpublished local candi
   else assert.equal(update.version, manifest.version);
   assert.equal(update.update_link,
     `https://github.com/groele/Zotero-CiteFlow/releases/download/v${update.version}/zotero-citeflow-${update.version}.xpi`);
-  assert.match(update.update_hash, /^sha256:[a-f0-9]{64}$/i);
+  assert.match(update.update_hash, /^sha512:[a-f0-9]{128}$/i);
   assert.equal(update.applications.zotero.strict_min_version, '10.0');
   assert.equal(update.applications.zotero.strict_max_version, '12.*');
 });

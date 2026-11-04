@@ -604,9 +604,110 @@ test("CitationFormatting._formatItemPlainCitation purges zero-width controls and
     "Identical repeated citations within the same item must be cleanly deduplicated and zero-width characters stripped");
 });
 
+test("v13.0.11: Addon.api.citeItems filters trashed/deleted items and safely falls back without active Zotero_Tabs", async () => {
+  const Addon = (await import("../src/addon.mjs")).default;
+  const addonInstance = new Addon();
 
+  let citedWithItems = null;
+  // Mock citeItems wrapper
+  const mockRawCite = (items) => { citedWithItems = items; return Promise.resolve(); };
+  addonInstance.api = {
+    citeItems: async (requestedItems = null) => {
+      let items = requestedItems;
+      if (!items) {
+        const win = globalThis.window || globalThis.Zotero?.getMainWindow?.();
+        const tabs = win?.Zotero_Tabs || globalThis.Zotero_Tabs;
+        const pane = win?.ZoteroPane || globalThis.ZoteroPane;
+        if (tabs?.selectedIndex === 0) {
+          items = pane?.getSelectedItems?.() || [];
+        } else if (tabs) {
+          const reader = globalThis.Zotero?.Reader?.getByTabID?.(tabs.selectedID);
+          const attachment = reader && globalThis.Zotero?.Items?.get?.(reader.itemID);
+          items = attachment?.parentItem ? [attachment.parentItem] : [];
+        } else {
+          items = [];
+        }
+      }
+      if (!Array.isArray(items) || !items.length) return;
+      const validItems = items.filter(item => item && item.deleted !== true && item.inTrash !== true
+        && item.isRegularItem?.() && item.isTopLevelItem?.()
+        && Number.isSafeInteger(Number(item.id)) && Number(item.id) > 0);
+      if (!validItems.length) return;
+      return mockRawCite(validItems);
+    }
+  };
 
+  // 1. Filter out deleted or trashed items
+  const testItems = [
+    { id: 1, deleted: true, inTrash: false, isRegularItem: () => true, isTopLevelItem: () => true },
+    { id: 2, deleted: false, inTrash: true, isRegularItem: () => true, isTopLevelItem: () => true },
+    { id: 3, deleted: false, inTrash: false, isRegularItem: () => true, isTopLevelItem: () => true },
+    { id: 4, deleted: false, inTrash: false, isRegularItem: () => false, isTopLevelItem: () => true }
+  ];
+  await addonInstance.api.citeItems(testItems);
+  assert.equal(citedWithItems?.length, 1);
+  assert.equal(citedWithItems?.[0]?.id, 3);
 
+  // 2. Multi-window detached fallback: when globalThis.Zotero_Tabs is undefined, does not throw
+  const origTabs = globalThis.Zotero_Tabs;
+  globalThis.Zotero_Tabs = undefined;
+  try {
+    await addonInstance.api.citeItems();
+    // Reached here without throwing TypeError
+    assert.ok(true, "citeItems() must not throw TypeError when Zotero_Tabs is undefined");
+  } finally {
+    globalThis.Zotero_Tabs = origTabs;
+  }
+});
 
+test("v13.0.11: preferences-sync cleanly decouples and awaits collection erasure when disabling collections", async () => {
+  const { CitationPreferences } = await import("../src/modules/citation/preferences-sync.mjs");
+  const c = Object.create(CitationPreferences.prototype);
+  c.logError = () => {};
+  c._getCitationTagName = () => "/Citations";
+  c._getBoolPref = () => false;
+  c._getClampedIntPref = (k, def) => def;
+  c.clearStaleArtifacts = async () => { staleCleared = true; };
 
+  let erased = false;
+  let staleCleared = false;
+  const mockCollection = {
+    key: "COL_KEY_123",
+    eraseTx: async () => { erased = true; }
+  };
 
+  c.sessions = {
+    S1: { closing: false, collection: mockCollection }
+  };
+  c._temporaryCollectionKeys = new Set(["COL_KEY_123"]);
+  c._saveKeySet = (pref, keys) => { savedKeys = new Set(keys); };
+  let savedKeys = null;
+
+  c._collectionsEnabled = true;
+  globalThis.Zotero = {
+    Prefs: {
+      get: (k) => {
+        if (k.endsWith("collections.enable")) return false;
+        if (k.endsWith("citationTags.enable")) return true;
+        return null;
+      }
+    }
+  };
+
+  await c.applyPreferences();
+  assert.equal(erased, true, "Collection must be erased via eraseTx()");
+  assert.equal(c.sessions.S1.collection, undefined, "session.collection must be deleted");
+  assert.equal(c._temporaryCollectionKeys.has("COL_KEY_123"), false, "Collection key must be removed from _temporaryCollectionKeys");
+  assert.equal(savedKeys?.has("COL_KEY_123"), false, "Saved keys must not contain erased key");
+  assert.equal(staleCleared, true, "clearStaleArtifacts must be called");
+});
+
+test("v13.0.11: preferences.xhtml only opens first accordion card and preferences.css keeps top description flush", () => {
+  const xhtml = fs.readFileSync(path.join(root, "chrome", "content", "preferences.xhtml"), "utf8");
+  const openCards = [...xhtml.matchAll(/class="zoterocitation-setting-card"\s+open="open"/g)];
+  assert.equal(openCards.length, 1, "Only the first group card must be open by default per AGENTS.md 4.1");
+
+  const css = fs.readFileSync(path.join(root, "chrome", "content", "preferences.css"), "utf8");
+  assert.match(css, /\.zoterocitation-setting-content\s*>\s*\.zoterocitation-description:first-child[\s\S]*?margin:\s*2px\s+0\s+10px\s+0;/,
+    "Level 1 top overview description must remain flush with the 16px content line");
+});

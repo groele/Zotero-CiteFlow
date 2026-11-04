@@ -1,4 +1,4 @@
-import { MANAGED_TAG_IDS_PREF, MANAGED_TAG_STATE_PREF } from "./constants.mjs";
+import { MANAGED_TAG_IDS_PREF, MANAGED_TAG_STATE_PREF, TEMP_COLLECTION_KEYS_PREF } from "./constants.mjs";
 
 // ============================================================================
 // Configuration & State Serialization
@@ -77,32 +77,51 @@ export class CitationPreferences {
     this._healthWindowMs = this._getClampedIntPref("extensions.zotero.zoterocitation.healthWindowMs", 300000, 10000, 3600000);
     this._perfSlowThresholdMs = this._getClampedIntPref("extensions.zotero.zoterocitation.perfSlowThresholdMs", 50, 5, 5000);
 
+    let collectionTask = Promise.resolve();
     if (collectionsChanged && !collectionsEnabled) {
-      this.clearStaleArtifacts().catch(e => this.logError("Failed to clear collections on disable", e));
+      const collectionsToErase = [];
       for (const session of Object.values(this.sessions || {})) {
         if (session.collection) {
-          try {
-            session.collection.eraseTx().catch(() => {});
-          } catch {}
+          collectionsToErase.push(session.collection);
           delete session.collection;
         }
       }
-    } else if (collectionsChanged && collectionsEnabled) {
-      for (const [id, session] of Object.entries(this.sessions || {})) {
-        if (!session.collection && !session.closing) {
-          this.initCollection(id, session).catch(() => {});
+      this._invalidateSessionIndex?.();
+      collectionTask = (async () => {
+        for (const col of collectionsToErase) {
+          try {
+            if (col.key) {
+              this._temporaryCollectionKeys?.delete(col.key);
+            }
+            await col.eraseTx();
+          } catch (e) {
+            this.logError("Failed to erase temporary collection on disable", e);
+          }
         }
-      }
+        if (this._temporaryCollectionKeys) {
+          this._saveKeySet(TEMP_COLLECTION_KEYS_PREF, this._temporaryCollectionKeys);
+        }
+        await this.clearStaleArtifacts().catch(e => this.logError("Failed to clear collections on disable", e));
+      })();
+    } else if (collectionsChanged && collectionsEnabled) {
+      collectionTask = (async () => {
+        for (const [id, session] of Object.entries(this.sessions || {})) {
+          if (!session.collection && !session.closing) {
+            await this.initCollection(id, session).catch(() => {});
+          }
+        }
+      })();
     }
 
     if (tagsChanged || tagRenamed || this._tagPreferencesNeedSync) {
       this._lastTagSyncSig = {};
       this._tagPreferencesNeedSync = true;
-      return this.syncCitationTags("__preferences__", []).then(result => {
+      return collectionTask.then(() => this.syncCitationTags("__preferences__", [])).then(result => {
         this._tagPreferencesNeedSync = result?.complete === false;
         return result;
       });
     }
+    return collectionTask;
   }
 
   /**
