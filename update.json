@@ -9,9 +9,9 @@
               "strict_max_version": "12.*"
             }
           },
-          "update_hash": "sha512:04b518e20304d7164abe7650082d1b63a78cd1e1a5cf929331290b6ef7b33505743400aa44c4c2baf72e9af47798355b9c6f967a104243f1455cb09645aa91c2",
-          "update_link": "https://github.com/groele/Zotero-CiteFlow/releases/download/v13.2.0/zotero-citeflow-13.2.0.xpi",
-          "version": "13.2.0"
+          "update_hash": "sha512:f1a8984b3bd23ad5b120c909da2af8a4f79e27d7cf1682315f06a65f991281dbb81e7fdc2ee091472ffc7fff51b584cd2f76f7029ee21988644ac3eae94bfff6",
+          "version": "13.2.1",
+          "update_link": "https://github.com/groele/Zotero-CiteFlow/releases/download/v13.2.1/zotero-citeflow-13.2.1.xpi"
         }
       ]
     }

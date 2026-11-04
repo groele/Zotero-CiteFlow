@@ -3,11 +3,7 @@
 // ============================================================================
 
 export class CitationWordIntegration {
-  /**
-   * Background polling loop that periodically synchronizes active Word sessions.
-   * @param {number} t - Polling interval in milliseconds
-   * @returns {Promise<void>}
-   */
+  /** Background polling loop that periodically synchronizes active Word sessions. */
   async listener(t) {
     try {
       await this.clearStaleArtifacts();
@@ -53,12 +49,7 @@ export class CitationWordIntegration {
     this._installWordIntegrationHooks();
   }
 
-  /**
-   * Cleans up tracked sessions that have been absent from Zotero.Integration.sessions for 3 ticks.
-   * @param {object} sessions - Active integration sessions map
-   * @returns {Promise<void>}
-   * @private
-   */
+  /** Cleans up tracked sessions absent from Zotero.Integration.sessions for 3 ticks. @private */
   async _pruneMissingWordSessions(sessions) {
     for (const sessionID in this.sessions) {
       if (!(sessionID in sessions)) {
@@ -291,7 +282,10 @@ export class CitationWordIntegration {
     const trackedSession = await this.ensureSession(sessionID, nativeSession);
     const colEnabled = Zotero.Prefs?.get?.("extensions.zotero.zoterocitation.collections.enable", true) !== false;
     if (!trackedSession || trackedSession.pending || (colEnabled && !trackedSession.collection) || this._listenerStopped) return;
-    if (nativeSession) await this.refreshSessionCitations(sessionID, nativeSession);
+    if (nativeSession) {
+      if (this._lastRefreshAt) delete this._lastRefreshAt[sessionID];
+      await this.refreshSessionCitations(sessionID, nativeSession);
+    }
 
     if (trackedSession.collection && targetName && trackedSession.collection.name !== targetName) {
       try {

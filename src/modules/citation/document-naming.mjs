@@ -160,23 +160,23 @@ export class CitationDocumentNaming {
 
     if (typeof addonData?.probeWordWindowTitles === "function") {
       const probed = addonData.probeWordWindowTitles();
+      const claimedByOthers = new Set();
+      let otherUnidentifiedCount = 0;
+      for (const otherID of Object.keys(this.sessions || {})) {
+        if (otherID === sessionID || this.sessions[otherID]?.closing) continue;
+        const otherDocId = this._docIdBySession?.[otherID] || this.sessions[otherID]?.docId;
+        const otherName = otherDocId ? this._getDocumentDisplayName(otherDocId) : "";
+        if (otherName) claimedByOthers.add(otherName);
+        else otherUnidentifiedCount++;
+      }
       if (allowForeground && probed?.foregroundTitle) {
         const fgName = this._parseWordWindowTitle(probed.foregroundTitle);
-        if (fgName) return `window-title:${fgName}`;
+        if (fgName && !claimedByOthers.has(fgName)) return `window-title:${fgName}`;
       }
       const visibleNames = [...new Set(
         (probed?.visibleTitles || []).map(t => this._parseWordWindowTitle(t)).filter(Boolean)
       )];
       if (visibleNames.length > 0) {
-        const claimedByOthers = new Set();
-        let otherUnidentifiedCount = 0;
-        for (const otherID of Object.keys(this.sessions || {})) {
-          if (otherID === sessionID || this.sessions[otherID]?.closing) continue;
-          const otherDocId = this._docIdBySession?.[otherID] || this.sessions[otherID]?.docId;
-          const otherName = otherDocId ? this._getDocumentDisplayName(otherDocId) : "";
-          if (otherName) claimedByOthers.add(otherName);
-          else otherUnidentifiedCount++;
-        }
         const unclaimed = visibleNames.filter(name => !claimedByOthers.has(name));
         if (visibleNames.length === 1 && otherUnidentifiedCount === 0 && !claimedByOthers.has(visibleNames[0])) {
           return `window-title:${visibleNames[0]}`;

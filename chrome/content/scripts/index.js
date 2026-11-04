@@ -490,6 +490,10 @@
             if (!session.collection && !session.closing) {
               await this.initCollection(id, session).catch(() => {
               });
+              if (!Object.keys(session.idData || {}).length && Zotero.Integration?.sessions?.[id]) {
+                await this.refreshSessionCitations?.(id, Zotero.Integration.sessions[id]).catch(() => {
+                });
+              }
               if (session.collection && session.idData) {
                 const libID = session.collection.libraryID ?? Zotero.Libraries?.userLibraryID;
                 const citedIDs = Object.keys(session.idData).map(Number).filter((itemID) => {
@@ -785,23 +789,23 @@
       }
       if (typeof addonData?.probeWordWindowTitles === "function") {
         const probed = addonData.probeWordWindowTitles();
+        const claimedByOthers = /* @__PURE__ */ new Set();
+        let otherUnidentifiedCount = 0;
+        for (const otherID of Object.keys(this.sessions || {})) {
+          if (otherID === sessionID || this.sessions[otherID]?.closing) continue;
+          const otherDocId = this._docIdBySession?.[otherID] || this.sessions[otherID]?.docId;
+          const otherName = otherDocId ? this._getDocumentDisplayName(otherDocId) : "";
+          if (otherName) claimedByOthers.add(otherName);
+          else otherUnidentifiedCount++;
+        }
         if (allowForeground && probed?.foregroundTitle) {
           const fgName = this._parseWordWindowTitle(probed.foregroundTitle);
-          if (fgName) return `window-title:${fgName}`;
+          if (fgName && !claimedByOthers.has(fgName)) return `window-title:${fgName}`;
         }
         const visibleNames = [...new Set(
           (probed?.visibleTitles || []).map((t) => this._parseWordWindowTitle(t)).filter(Boolean)
         )];
         if (visibleNames.length > 0) {
-          const claimedByOthers = /* @__PURE__ */ new Set();
-          let otherUnidentifiedCount = 0;
-          for (const otherID of Object.keys(this.sessions || {})) {
-            if (otherID === sessionID || this.sessions[otherID]?.closing) continue;
-            const otherDocId = this._docIdBySession?.[otherID] || this.sessions[otherID]?.docId;
-            const otherName = otherDocId ? this._getDocumentDisplayName(otherDocId) : "";
-            if (otherName) claimedByOthers.add(otherName);
-            else otherUnidentifiedCount++;
-          }
           const unclaimed = visibleNames.filter((name) => !claimedByOthers.has(name));
           if (visibleNames.length === 1 && otherUnidentifiedCount === 0 && !claimedByOthers.has(visibleNames[0])) {
             return `window-title:${visibleNames[0]}`;
@@ -879,7 +883,7 @@
      * @private
      */
     async _clearStaleTemporaryCollections(libraryID) {
-      const collections = Zotero.Collections.getByLibrary(libraryID, true, true);
+      const collections = Zotero.Collections.getByLibrary(libraryID, true, true) || [];
       const collectionsByKey = new Map(collections.map((c) => [c.key, c]));
       const activeKeys = new Set(
         Object.values(this.sessions || {}).filter((s) => s && !s.closing && s.collection?.key).map((s) => s.collection.key)
@@ -924,7 +928,7 @@
      */
     async _clearStaleManagedSearches(libraryID) {
       if (!this._managedSearchKeys?.size) return;
-      const searchesByKey = new Map(Zotero.Searches.getByLibrary(libraryID).map((s) => [s.key, s]));
+      const searchesByKey = new Map((Zotero.Searches.getByLibrary(libraryID) || []).map((s) => [s.key, s]));
       for (const key of [...this._managedSearchKeys]) {
         const search = searchesByKey.get(key);
         if (!search) {
@@ -969,7 +973,7 @@
       await collection.saveTx({ skipSelect: true });
       this._temporaryCollectionKeys.add(collection.key);
       this._saveKeySet(TEMP_COLLECTION_KEYS_PREF, this._temporaryCollectionKeys);
-      if (this._listenerStopped || this.sessions[sessionID] !== session) {
+      if (this._listenerStopped || session.closing || this.sessions[sessionID] !== session || Zotero.Prefs?.get?.("extensions.zotero.zoterocitation.collections.enable", true) === false) {
         await collection.eraseTx();
         this._temporaryCollectionKeys.delete(collection.key);
         this._saveKeySet(TEMP_COLLECTION_KEYS_PREF, this._temporaryCollectionKeys);
@@ -1094,11 +1098,7 @@
         if (session._renameTask === task) session._renameTask = null;
       }
     }
-    /**
-     * Background polling loop that periodically synchronizes active Word sessions.
-     * @param {number} t - Polling interval in milliseconds
-     * @returns {Promise<void>}
-     */
+    /** Background polling loop that periodically synchronizes active Word sessions. */
     async listener(t) {
       try {
         await this.clearStaleArtifacts();
@@ -1141,12 +1141,7 @@
       this._listenerTimer = globalThis.setTimeout(tick, t);
       this._installWordIntegrationHooks();
     }
-    /**
-     * Cleans up tracked sessions that have been absent from Zotero.Integration.sessions for 3 ticks.
-     * @param {object} sessions - Active integration sessions map
-     * @returns {Promise<void>}
-     * @private
-     */
+    /** Cleans up tracked sessions absent from Zotero.Integration.sessions for 3 ticks. @private */
     async _pruneMissingWordSessions(sessions) {
       for (const sessionID in this.sessions) {
         if (!(sessionID in sessions)) {
@@ -1354,7 +1349,10 @@
       const trackedSession = await this.ensureSession(sessionID, nativeSession);
       const colEnabled = Zotero.Prefs?.get?.("extensions.zotero.zoterocitation.collections.enable", true) !== false;
       if (!trackedSession || trackedSession.pending || colEnabled && !trackedSession.collection || this._listenerStopped) return;
-      if (nativeSession) await this.refreshSessionCitations(sessionID, nativeSession);
+      if (nativeSession) {
+        if (this._lastRefreshAt) delete this._lastRefreshAt[sessionID];
+        await this.refreshSessionCitations(sessionID, nativeSession);
+      }
       if (trackedSession.collection && targetName && trackedSession.collection.name !== targetName) {
         try {
           await this._renameCollection(sessionID, targetName, effectiveDocId);
@@ -1901,7 +1899,7 @@
       if (!session) return;
       session.closing = true;
       this._sessionUpdateRevision[sessionID] = (this._sessionUpdateRevision[sessionID] || 0) + 1;
-      await Promise.allSettled([session._renameTask, this._sessionUpdateQueue[sessionID]].filter(Boolean));
+      await Promise.allSettled([this._initializationTasks?.get?.(sessionID), session._renameTask, this._sessionUpdateQueue[sessionID]].filter(Boolean));
       if (this._tagSyncTimerBySession[sessionID]) {
         globalThis.clearTimeout(this._tagSyncTimerBySession[sessionID]);
         delete this._tagSyncTimerBySession[sessionID];
@@ -1996,6 +1994,9 @@
       if (emptyReadCount < 2) {
         this._scheduleSessionRefresh(sessionID, targetSession, 250);
         return;
+      }
+      if (this._sortedCacheBySession && typeof this._getSortedCacheKey === "function") {
+        delete this._sortedCacheBySession[this._getSortedCacheKey(sessionID)];
       }
       this.scheduleCitationTagSync(sessionID, [], true);
       await this.updateCitations(sessionID, {}, [], targetSession.styleClass);
@@ -3422,21 +3423,35 @@
     }
   }
   async function attachWindow(win) {
-    if (!win?.ZoteroPane || !addon.data.alive || !addon.data.citation || windowBindings.has(win)) return;
+    if (!win?.ZoteroPane || win.closed || !addon.data.alive || !addon.data.citation) return;
+    const existing = windowBindings.get(win);
+    if (existing) return existing.readyPromise;
     const views = new views_default(win);
-    const binding = { views, closed: false };
+    const binding = { views, closed: false, readyPromise: null };
     windowBindings.set(win, binding);
-    try {
-      await views.prepareWindow?.();
-      if (binding.closed || !addon.data.alive) return;
-      await views.patchIcon();
-      if (binding.closed || !addon.data.alive) return;
-      await views.dragCite();
-      if (binding.closed || !addon.data.alive) return;
-    } catch (error) {
-      await detachWindow(win);
-      throw error;
-    }
+    binding.readyPromise = (async () => {
+      try {
+        await views.prepareWindow?.();
+        if (binding.closed || win.closed || !addon.data.alive) {
+          await detachWindow(win);
+          return;
+        }
+        await views.patchIcon();
+        if (binding.closed || win.closed || !addon.data.alive) {
+          await detachWindow(win);
+          return;
+        }
+        await views.dragCite();
+        if (binding.closed || win.closed || !addon.data.alive) {
+          await detachWindow(win);
+          return;
+        }
+      } catch (error) {
+        await detachWindow(win);
+        throw error;
+      }
+    })();
+    return binding.readyPromise;
   }
   function rebindGlobalWindow(closingWin = null) {
     if (closingWin && globalThis.window !== closingWin) return;

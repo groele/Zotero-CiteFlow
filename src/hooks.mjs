@@ -51,21 +51,26 @@ async function onStartup() {
   }
 }
 async function attachWindow(win) {
-  if (!win?.ZoteroPane || !addon.data.alive || !addon.data.citation || windowBindings.has(win)) return;
+  if (!win?.ZoteroPane || win.closed || !addon.data.alive || !addon.data.citation) return;
+  const existing = windowBindings.get(win);
+  if (existing) return existing.readyPromise;
   const views = new Views(win);
-  const binding = { views, closed: false };
+  const binding = { views, closed: false, readyPromise: null };
   windowBindings.set(win, binding);
-  try {
-    await views.prepareWindow?.();
-    if (binding.closed || !addon.data.alive) return;
-    await views.patchIcon();
-    if (binding.closed || !addon.data.alive) return;
-    await views.dragCite();
-    if (binding.closed || !addon.data.alive) return;
-  } catch (error) {
-    await detachWindow(win);
-    throw error;
-  }
+  binding.readyPromise = (async () => {
+    try {
+      await views.prepareWindow?.();
+      if (binding.closed || win.closed || !addon.data.alive) { await detachWindow(win); return; }
+      await views.patchIcon();
+      if (binding.closed || win.closed || !addon.data.alive) { await detachWindow(win); return; }
+      await views.dragCite();
+      if (binding.closed || win.closed || !addon.data.alive) { await detachWindow(win); return; }
+    } catch (error) {
+      await detachWindow(win);
+      throw error;
+    }
+  })();
+  return binding.readyPromise;
 }
 function rebindGlobalWindow(closingWin = null) {
   if (closingWin && globalThis.window !== closingWin) return;

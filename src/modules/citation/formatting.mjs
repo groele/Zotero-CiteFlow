@@ -21,7 +21,7 @@ export class CitationFormatting {
     if (!session) return;
     session.closing = true;
     this._sessionUpdateRevision[sessionID] = (this._sessionUpdateRevision[sessionID] || 0) + 1;
-    await Promise.allSettled([session._renameTask, this._sessionUpdateQueue[sessionID]].filter(Boolean));
+    await Promise.allSettled([this._initializationTasks?.get?.(sessionID), session._renameTask, this._sessionUpdateQueue[sessionID]].filter(Boolean));
 
     if (this._tagSyncTimerBySession[sessionID]) {
       globalThis.clearTimeout(this._tagSyncTimerBySession[sessionID]);
@@ -123,6 +123,9 @@ export class CitationFormatting {
     if (emptyReadCount < 2) {
       this._scheduleSessionRefresh(sessionID, targetSession, 250);
       return;
+    }
+    if (this._sortedCacheBySession && typeof this._getSortedCacheKey === "function") {
+      delete this._sortedCacheBySession[this._getSortedCacheKey(sessionID)];
     }
     this.scheduleCitationTagSync(sessionID, [], true);
     await this.updateCitations(sessionID, {}, [], targetSession.styleClass);

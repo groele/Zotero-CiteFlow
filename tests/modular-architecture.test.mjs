@@ -843,3 +843,88 @@ test("v13.0.13 data pipeline: collections.enable=false independence, all-trashed
   const v = new Views();
   assert.equal(v.getCitationText(10), "1: Live", "Closing session must be ignored by ViewsSessionIndex");
 });
+
+test("v13.2.1 execution logic: initCollection mid-flight abort, foreground title anti-theft, post-command unthrottled refresh, and empty snapshot cache eviction", async () => {
+  const c = Object.create(Citation.prototype);
+  c._initSessionTracking();
+  c._resetInternalTrackingMaps();
+  c.logError = () => {};
+  c.debugLog = () => {};
+  c._recordPerf = () => {};
+  c._bumpDebugCounter = () => {};
+  c._saveManagedTagIDs = () => true;
+  c._saveKeySet = () => {};
+  c._invalidateSessionIndex = () => {};
+  c.scheduleItemsViewRefresh = () => {};
+  c._getPendingCollectionName = () => "Pending 1";
+
+  // 1. initCollection aborts and erases collection if session.closing flips true during saveTx()
+  let erasedMidFlight = false;
+  globalThis.Zotero = {
+    Prefs: { get: () => true },
+    Libraries: { userLibraryID: 1 },
+    Collection: class {
+      constructor() {
+        this.key = "MID_FLIGHT_KEY";
+        this.id = 777;
+      }
+      addRelation() {}
+      async saveTx() {
+        c.sessions.S_RACE.closing = true;
+      }
+      async eraseTx() {
+        erasedMidFlight = true;
+      }
+    }
+  };
+  c._temporaryCollectionKeys = new Set();
+  c.sessions.S_RACE = { closing: false, idData: {} };
+  await c.initCollection("S_RACE", c.sessions.S_RACE);
+  assert.equal(erasedMidFlight, true, "initCollection must erase collection if session.closing flips true during saveTx");
+  assert.equal(c.sessions.S_RACE.collection, undefined, "Closing session must not retain mid-flight collection");
+  assert.equal(c._temporaryCollectionKeys.has("MID_FLIGHT_KEY"), false);
+
+  // 2. Foreground title anti-theft: unidentified S2 must not steal foreground title already claimed by S1
+  c.sessions = {
+    S1: { closing: false, docId: "C:\\Work\\Claimed.docx" },
+    S2: { closing: false }
+  };
+  c._docIdBySession = { S1: "C:\\Work\\Claimed.docx" };
+  globalThis.addon = {
+    data: {
+      alive: true,
+      probeWordWindowTitles: () => ({
+        foregroundTitle: "Claimed.docx - Word",
+        visibleTitles: ["Claimed.docx - Word", "Unclaimed.docx - Word"]
+      })
+    }
+  };
+  const resolvedForS2 = c._resolveFallbackDocumentId("S2", {}, null, true);
+  assert.equal(c._getDocumentDisplayName(resolvedForS2), "Unclaimed.docx",
+    "Unidentified S2 must skip foreground title already claimed by S1 and pick the sole unclaimed visible document");
+
+  // 3. _handleEmptyCitationSnapshot evicts _sortedCacheBySession upon 2nd empty confirmation
+  c._setSortedCache("S1", "0:10;", [10]);
+  assert.ok(c._getSortedCache("S1"), "Precondition: sort cache exists for S1");
+  c.scheduleCitationTagSync = () => {};
+  c.updateCitations = async () => {};
+  c._scheduleSessionRefresh = () => {};
+  await c._handleEmptyCitationSnapshot("S1", { styleClass: "in-text" }, {});
+  assert.ok(c._getSortedCache("S1"), "First empty read must not evict sort cache yet");
+  await c._handleEmptyCitationSnapshot("S1", { styleClass: "in-text" }, {});
+  assert.equal(c._getSortedCache("S1"), undefined, "Second confirmed empty read must evict stale sort cache");
+
+  // 4. _handlePostExecCommand resets _lastRefreshAt so post-command refresh is never throttled by background poll
+  let refreshedImmediately = false;
+  c._minRefreshInterval = 60000;
+  c._lastRefreshAt.S1 = Date.now();
+  c.ensureSession = async () => ({ collection: { name: "Claimed.docx" }, pending: false });
+  c.refreshSessionCitations = async (sid) => {
+    if (!c._lastRefreshAt[sid]) refreshedImmediately = true;
+  };
+  globalThis.Zotero.Integration = {
+    sessions: { S1: { agent: "WinWord" } }
+  };
+  await c._handlePostExecCommand({ bindingID: 1, sessionID: "S1", ambiguous: false }, null, () => {}, "C:\\Work\\Claimed.docx");
+  assert.equal(refreshedImmediately, true, "Post-command refresh must clear _lastRefreshAt and execute unthrottled");
+});

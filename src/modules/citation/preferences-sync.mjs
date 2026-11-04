@@ -108,6 +108,9 @@ export class CitationPreferences {
         for (const [id, session] of Object.entries(this.sessions || {})) {
           if (!session.collection && !session.closing) {
             await this.initCollection(id, session).catch(() => {});
+            if (!Object.keys(session.idData || {}).length && Zotero.Integration?.sessions?.[id]) {
+              await this.refreshSessionCitations?.(id, Zotero.Integration.sessions[id]).catch(() => {});
+            }
             if (session.collection && session.idData) {
               const libID = session.collection.libraryID ?? Zotero.Libraries?.userLibraryID;
               const citedIDs = Object.keys(session.idData).map(Number).filter(itemID => {

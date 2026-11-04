@@ -28,7 +28,7 @@ export class CitationCollections {
    * @private
    */
   async _clearStaleTemporaryCollections(libraryID) {
-    const collections = Zotero.Collections.getByLibrary(libraryID, true, true);
+    const collections = Zotero.Collections.getByLibrary(libraryID, true, true) || [];
     const collectionsByKey = new Map(collections.map(c => [c.key, c]));
     const activeKeys = new Set(
       Object.values(this.sessions || {}).filter(s => s && !s.closing && s.collection?.key).map(s => s.collection.key)
@@ -77,7 +77,7 @@ export class CitationCollections {
    */
   async _clearStaleManagedSearches(libraryID) {
     if (!this._managedSearchKeys?.size) return;
-    const searchesByKey = new Map(Zotero.Searches.getByLibrary(libraryID).map(s => [s.key, s]));
+    const searchesByKey = new Map((Zotero.Searches.getByLibrary(libraryID) || []).map(s => [s.key, s]));
     for (const key of [...this._managedSearchKeys]) {
       const search = searchesByKey.get(key);
       if (!search) {
@@ -123,7 +123,8 @@ export class CitationCollections {
     await collection.saveTx({ skipSelect: true });
     this._temporaryCollectionKeys.add(collection.key);
     this._saveKeySet(TEMP_COLLECTION_KEYS_PREF, this._temporaryCollectionKeys);
-    if (this._listenerStopped || this.sessions[sessionID] !== session) {
+    if (this._listenerStopped || session.closing || this.sessions[sessionID] !== session
+      || Zotero.Prefs?.get?.("extensions.zotero.zoterocitation.collections.enable", true) === false) {
       await collection.eraseTx();
       this._temporaryCollectionKeys.delete(collection.key);
       this._saveKeySet(TEMP_COLLECTION_KEYS_PREF, this._temporaryCollectionKeys);
