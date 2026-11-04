@@ -471,10 +471,10 @@
         collectionTask = (async () => {
           for (const col of collectionsToErase) {
             try {
+              await col.eraseTx();
               if (col.key) {
                 this._temporaryCollectionKeys?.delete(col.key);
               }
-              await col.eraseTx();
             } catch (e) {
               this.logError("Failed to erase temporary collection on disable", e);
             }
@@ -490,6 +490,17 @@
             if (!session.collection && !session.closing) {
               await this.initCollection(id, session).catch(() => {
               });
+              if (session.collection && session.idData) {
+                const libID = session.collection.libraryID ?? Zotero.Libraries?.userLibraryID;
+                const citedIDs = Object.keys(session.idData).map(Number).filter((itemID) => {
+                  if (!Number.isSafeInteger(itemID) || itemID <= 0) return false;
+                  const item = Zotero.Items?.get?.(itemID);
+                  if (!item) return true;
+                  return item.libraryID === libID && item.deleted !== true && item.inTrash !== true && (typeof item.isTopLevelItem !== "function" || item.isTopLevelItem());
+                });
+                if (citedIDs.length) await this.syncCollectionItems?.(session, citedIDs).catch(() => {
+                });
+              }
             }
           }
         })();
@@ -2517,7 +2528,7 @@
      * @type {Document}
      */
     get document() {
-      return this._window?.document ?? globalThis.document;
+      return this._window?.document ?? Zotero.getMainWindow?.()?.document ?? globalThis.document;
     }
     /**
      * Resolves the active window instance.
@@ -3403,23 +3414,26 @@
       throw error;
     }
   }
+  function rebindGlobalWindow(closingWin = null) {
+    if (closingWin && globalThis.window !== closingWin) return;
+    const nextWin = [...windowBindings.keys()].find((w) => w !== closingWin && w?.document && !w.closed) || Zotero.getMainWindows?.()?.find((w) => w !== closingWin && w?.document && !w.closed) || null;
+    if (nextWin) {
+      globalThis.window = nextWin;
+      globalThis.document = nextWin.document;
+      globalThis.ZoteroPane = nextWin.ZoteroPane;
+      globalThis.Zotero_Tabs = nextWin.Zotero_Tabs;
+    } else {
+      globalThis.window = globalThis.document = globalThis.ZoteroPane = globalThis.Zotero_Tabs = void 0;
+    }
+  }
   async function detachWindow(win) {
     const binding = windowBindings.get(win);
-    if (!binding) return;
-    binding.closed = true;
-    windowBindings.delete(win);
-    await runShutdownStep("dispose window UI", () => binding.views.dispose());
-    if (globalThis.window === win) {
-      const nextWin = [...windowBindings.keys()].find((w) => w !== win && w?.document) || Zotero.getMainWindows?.()?.find((w) => w !== win && w?.document) || null;
-      if (nextWin) {
-        globalThis.window = nextWin;
-        globalThis.document = nextWin.document;
-        globalThis.ZoteroPane = nextWin.ZoteroPane;
-        globalThis.Zotero_Tabs = nextWin.Zotero_Tabs;
-      } else {
-        globalThis.window = globalThis.document = globalThis.ZoteroPane = globalThis.Zotero_Tabs = void 0;
-      }
+    if (binding) {
+      binding.closed = true;
+      windowBindings.delete(win);
+      await runShutdownStep("dispose window UI", () => binding.views.dispose());
     }
+    rebindGlobalWindow(win);
   }
   async function onMainWindowLoad(win) {
     await startupPromise;
@@ -3492,15 +3506,19 @@
     }
     let selectedItems = requestedItems;
     if (!selectedItems) {
-      if (Zotero_Tabs.selectedIndex === 0) {
-        selectedItems = ZoteroPane.getSelectedItems();
+      const activeWin = Zotero.getMainWindow?.() || globalThis.window || Zotero.getMainWindows?.()?.[0];
+      const tabs = activeWin?.Zotero_Tabs || globalThis.Zotero_Tabs;
+      const pane = activeWin?.ZoteroPane || globalThis.ZoteroPane;
+      if (!tabs || !pane) return;
+      if (tabs.selectedIndex === 0) {
+        selectedItems = pane.getSelectedItems();
       } else {
-        const reader = Zotero.Reader.getByTabID(Zotero_Tabs.selectedID);
+        const reader = Zotero.Reader.getByTabID(tabs.selectedID);
         const attachment = reader && Zotero.Items.get(reader.itemID);
         selectedItems = attachment?.parentItem ? [attachment.parentItem] : [];
       }
     }
-    if (!Array.isArray(selectedItems) || !selectedItems.length || !selectedItems.every((item) => item?.isRegularItem?.() && item.isTopLevelItem())) return;
+    if (!Array.isArray(selectedItems) || !selectedItems.length || !selectedItems.every((item) => item && item.deleted !== true && item.inTrash !== true && item.isRegularItem?.() && item.isTopLevelItem())) return;
     const selectedIDs = [...new Set(selectedItems.map((item) => item.id))];
     if (typeof Zotero.Integration?.Session?.prototype?.cite !== "function") return;
     citeItemsInFlight = true;
@@ -3692,29 +3710,7 @@
     constructor() {
       this.data = { alive: true, runtime: new NativeRuntime() };
       this.hooks = hooks_default2;
-      this.api = {
-        citeItems: async (requestedItems = null) => {
-          let items = requestedItems;
-          if (!items) {
-            const win = globalThis.window || Zotero.getMainWindow?.() || Zotero.getMainWindows?.()?.[0];
-            const tabs = win?.Zotero_Tabs || globalThis.Zotero_Tabs;
-            const pane = win?.ZoteroPane || globalThis.ZoteroPane;
-            if (tabs?.selectedIndex === 0) {
-              items = pane?.getSelectedItems?.() || [];
-            } else if (tabs) {
-              const reader = Zotero.Reader?.getByTabID?.(tabs.selectedID);
-              const attachment = reader && Zotero.Items?.get?.(reader.itemID);
-              items = attachment?.parentItem ? [attachment.parentItem] : [];
-            } else {
-              items = [];
-            }
-          }
-          if (!Array.isArray(items) || !items.length) return;
-          const validItems = items.filter((item) => item && item.deleted !== true && item.inTrash !== true && item.isRegularItem?.() && item.isTopLevelItem?.() && Number.isSafeInteger(Number(item.id)) && Number(item.id) > 0);
-          if (!validItems.length) return;
-          return citeItems(validItems);
-        }
-      };
+      this.api = { citeItems };
     }
   };
 

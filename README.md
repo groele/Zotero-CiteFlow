@@ -8,7 +8,7 @@
 
 [简体中文](README.md) · [English](README.en.md)
 
-[![当前版本](https://img.shields.io/badge/version-13.0.11-245ac7?style=flat-square)](https://github.com/groele/Zotero-CiteFlow/releases/tag/v13.0.11) · [下载 XPI](https://github.com/groele/Zotero-CiteFlow/releases/download/v13.0.11/zotero-citeflow-13.0.11.xpi) · [问题反馈](https://github.com/groele/Zotero-CiteFlow/issues)
+[![当前版本](https://img.shields.io/badge/version-13.0.12-245ac7?style=flat-square)](https://github.com/groele/Zotero-CiteFlow/releases/tag/v13.0.12) · [下载 XPI](https://github.com/groele/Zotero-CiteFlow/releases/download/v13.0.12/zotero-citeflow-13.0.12.xpi) · [问题反馈](https://github.com/groele/Zotero-CiteFlow/issues)
 
 [产品定位](#overview) · [安装与更新](#installation) · [快速开始](#quick-start) · [核心功能](#features) · [设置与使用](#settings) · [数据、同步与外部服务](#data) · [兼容性与验证范围](#compatibility) · [常见问题](#troubleshooting) · [开发与详细文档](#development) · [系列产品](#series) · [项目来源与许可](#license)
 
@@ -24,7 +24,7 @@
 
 ## 安装与更新
 
-1. 下载 [zotero-citeflow-13.0.11.xpi](https://github.com/groele/Zotero-CiteFlow/releases/download/v13.0.11/zotero-citeflow-13.0.11.xpi)（插件版本 **13.0.11**），不要安装 Source code ZIP.
+1. 下载 [zotero-citeflow-13.0.12.xpi](https://github.com/groele/Zotero-CiteFlow/releases/download/v13.0.12/zotero-citeflow-13.0.12.xpi)（插件版本 **13.0.12**），不要安装 Source code ZIP.
 2. 在 Zotero 打开 **工具 → 插件／附加组件**，从齿轮菜单选择 **从文件安装插件**。
 3. 选择 XPI，完成安装；按提示重启 Zotero。
 
@@ -74,9 +74,9 @@
 
 | 项目 | 范围 |
 |---|---|
-| 当前插件版本 | 13.0.11 |
+| 当前插件版本 | 13.0.12 |
 | 清单声明的 Zotero 范围 | `10.0` 至 `12.*` |
-| 当前说明 | 13.0.11 通过 53 项全量顶层自动化测试套件。重构设置面板为五大业务流转模块卡片，严格落实 14px 字号基准与 40px 黄金垂直对齐线，新增临时文集独立开关与主从开关联动禁用防护。 |
+| 当前说明 | 13.0.12 通过 53 项全量顶层自动化测试套件。重构设置面板为五大业务流转模块卡片，严格落实 14px 字号基准与 40px 黄金垂直对齐线，新增临时文集独立开关与主从开关联动禁用防护。 |
 
 插件版本与 Zotero 版本分别管理。兼容声明不等于已验证所有宿主、系统和外部服务；本轮仅验证上述定向行为，未覆盖所有业务流程或主环境安装。
 
@@ -103,7 +103,7 @@ npm run package
 - [技术与维护指南 / Technical guide](CORE-TECHNICAL-MAINTENANCE.md)
 - [第三方声明 / Third-party notices](THIRD_PARTY.md)
 - [版本说明 / Release notes](RELEASE_NOTES.md)
-- [v13.0.11 阶段说明 / Milestone notes](docs/releases/v13.0.11.md)
+- [v13.0.12 阶段说明 / Milestone notes](docs/releases/v13.0.12.md)
 - [v13.0.9 阶段说明 / Milestone notes](docs/releases/v13.0.9.md)
 - [v13.0.8 阶段说明 / Milestone notes](docs/releases/v13.0.8.md)
 - [v13.0.7 阶段说明 / Milestone notes](docs/releases/v13.0.7.md)

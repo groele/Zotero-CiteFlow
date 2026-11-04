@@ -67,25 +67,28 @@ async function attachWindow(win) {
     throw error;
   }
 }
+function rebindGlobalWindow(closingWin = null) {
+  if (closingWin && globalThis.window !== closingWin) return;
+  const nextWin = [...windowBindings.keys()].find(w => w !== closingWin && w?.document && !w.closed)
+    || Zotero.getMainWindows?.()?.find(w => w !== closingWin && w?.document && !w.closed)
+    || null;
+  if (nextWin) {
+    globalThis.window = nextWin;
+    globalThis.document = nextWin.document;
+    globalThis.ZoteroPane = nextWin.ZoteroPane;
+    globalThis.Zotero_Tabs = nextWin.Zotero_Tabs;
+  } else {
+    globalThis.window = globalThis.document = globalThis.ZoteroPane = globalThis.Zotero_Tabs = undefined;
+  }
+}
 async function detachWindow(win) {
   const binding = windowBindings.get(win);
-  if (!binding) return;
-  binding.closed = true;
-  windowBindings.delete(win);
-  await runShutdownStep("dispose window UI", () => binding.views.dispose());
-  if (globalThis.window === win) {
-    const nextWin = [...windowBindings.keys()].find(w => w !== win && w?.document)
-      || Zotero.getMainWindows?.()?.find(w => w !== win && w?.document)
-      || null;
-    if (nextWin) {
-      globalThis.window = nextWin;
-      globalThis.document = nextWin.document;
-      globalThis.ZoteroPane = nextWin.ZoteroPane;
-      globalThis.Zotero_Tabs = nextWin.Zotero_Tabs;
-    } else {
-      globalThis.window = globalThis.document = globalThis.ZoteroPane = globalThis.Zotero_Tabs = undefined;
-    }
+  if (binding) {
+    binding.closed = true;
+    windowBindings.delete(win);
+    await runShutdownStep("dispose window UI", () => binding.views.dispose());
   }
+  rebindGlobalWindow(win);
 }
 async function onMainWindowLoad(win) {
   await startupPromise;

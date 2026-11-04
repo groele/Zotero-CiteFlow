@@ -43,7 +43,7 @@ var Views = class {
    * @type {Document}
    */
   get document() {
-    return this._window?.document ?? globalThis.document;
+    return this._window?.document ?? Zotero.getMainWindow?.()?.document ?? globalThis.document;
   }
 
   /**

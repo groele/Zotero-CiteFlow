@@ -5,16 +5,21 @@ var citeItems = async (requestedItems = null) => {
   }
   let selectedItems = requestedItems;
   if (!selectedItems) {
-    if (Zotero_Tabs.selectedIndex === 0) {
-      selectedItems = ZoteroPane.getSelectedItems();
+    const activeWin = Zotero.getMainWindow?.() || globalThis.window || Zotero.getMainWindows?.()?.[0];
+    const tabs = activeWin?.Zotero_Tabs || globalThis.Zotero_Tabs;
+    const pane = activeWin?.ZoteroPane || globalThis.ZoteroPane;
+    if (!tabs || !pane) return;
+    if (tabs.selectedIndex === 0) {
+      selectedItems = pane.getSelectedItems();
     } else {
-      const reader = Zotero.Reader.getByTabID(Zotero_Tabs.selectedID);
+      const reader = Zotero.Reader.getByTabID(tabs.selectedID);
       const attachment = reader && Zotero.Items.get(reader.itemID);
       selectedItems = attachment?.parentItem ? [attachment.parentItem] : [];
     }
   }
   if (!Array.isArray(selectedItems) || !selectedItems.length
-    || !selectedItems.every((item) => item?.isRegularItem?.() && item.isTopLevelItem())) return;
+    || !selectedItems.every((item) => item && item.deleted !== true && item.inTrash !== true
+      && item.isRegularItem?.() && item.isTopLevelItem())) return;
   const selectedIDs = [...new Set(selectedItems.map((item) => item.id))];
   if (typeof Zotero.Integration?.Session?.prototype?.cite !== "function") return;
   citeItemsInFlight = true;

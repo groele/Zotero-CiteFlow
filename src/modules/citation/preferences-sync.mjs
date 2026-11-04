@@ -90,10 +90,10 @@ export class CitationPreferences {
       collectionTask = (async () => {
         for (const col of collectionsToErase) {
           try {
+            await col.eraseTx();
             if (col.key) {
               this._temporaryCollectionKeys?.delete(col.key);
             }
-            await col.eraseTx();
           } catch (e) {
             this.logError("Failed to erase temporary collection on disable", e);
           }
@@ -108,6 +108,17 @@ export class CitationPreferences {
         for (const [id, session] of Object.entries(this.sessions || {})) {
           if (!session.collection && !session.closing) {
             await this.initCollection(id, session).catch(() => {});
+            if (session.collection && session.idData) {
+              const libID = session.collection.libraryID ?? Zotero.Libraries?.userLibraryID;
+              const citedIDs = Object.keys(session.idData).map(Number).filter(itemID => {
+                if (!Number.isSafeInteger(itemID) || itemID <= 0) return false;
+                const item = Zotero.Items?.get?.(itemID);
+                if (!item) return true;
+                return item.libraryID === libID && item.deleted !== true && item.inTrash !== true
+                  && (typeof item.isTopLevelItem !== "function" || item.isTopLevelItem());
+              });
+              if (citedIDs.length) await this.syncCollectionItems?.(session, citedIDs).catch(() => {});
+            }
           }
         }
       })();

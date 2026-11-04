@@ -604,102 +604,124 @@ test("CitationFormatting._formatItemPlainCitation purges zero-width controls and
     "Identical repeated citations within the same item must be cleanly deduplicated and zero-width characters stripped");
 });
 
-test("v13.0.11: Addon.api.citeItems filters trashed/deleted items and safely falls back without active Zotero_Tabs", async () => {
-  const Addon = (await import("../src/addon.mjs")).default;
-  const addonInstance = new Addon();
+test("v13.0.12: direct citeItems in src/modules/cite.mjs blocks trashed/deleted items and resolves multi-window Zotero_Tabs", async () => {
+  const { citeItems } = await import("../src/modules/cite.mjs");
+  const hooks = (await import("../src/hooks.mjs")).default;
 
-  let citedWithItems = null;
-  // Mock citeItems wrapper
-  const mockRawCite = (items) => { citedWithItems = items; return Promise.resolve(); };
-  addonInstance.api = {
-    citeItems: async (requestedItems = null) => {
-      let items = requestedItems;
-      if (!items) {
-        const win = globalThis.window || globalThis.Zotero?.getMainWindow?.();
-        const tabs = win?.Zotero_Tabs || globalThis.Zotero_Tabs;
-        const pane = win?.ZoteroPane || globalThis.ZoteroPane;
-        if (tabs?.selectedIndex === 0) {
-          items = pane?.getSelectedItems?.() || [];
-        } else if (tabs) {
-          const reader = globalThis.Zotero?.Reader?.getByTabID?.(tabs.selectedID);
-          const attachment = reader && globalThis.Zotero?.Items?.get?.(reader.itemID);
-          items = attachment?.parentItem ? [attachment.parentItem] : [];
-        } else {
-          items = [];
-        }
-      }
-      if (!Array.isArray(items) || !items.length) return;
-      const validItems = items.filter(item => item && item.deleted !== true && item.inTrash !== true
-        && item.isRegularItem?.() && item.isTopLevelItem?.()
-        && Number.isSafeInteger(Number(item.id)) && Number(item.id) > 0);
-      if (!validItems.length) return;
-      return mockRawCite(validItems);
+  globalThis.addon = { data: { alive: true } };
+  globalThis.Zotero = {
+    Integration: {
+      Session: class {
+        cite() {}
+      },
+      execCommand: async () => {}
     }
   };
+  globalThis.Zotero.Integration.Session.prototype.cite = function() {};
 
-  // 1. Filter out deleted or trashed items
-  const testItems = [
-    { id: 1, deleted: true, inTrash: false, isRegularItem: () => true, isTopLevelItem: () => true },
-    { id: 2, deleted: false, inTrash: true, isRegularItem: () => true, isTopLevelItem: () => true },
-    { id: 3, deleted: false, inTrash: false, isRegularItem: () => true, isTopLevelItem: () => true },
-    { id: 4, deleted: false, inTrash: false, isRegularItem: () => false, isTopLevelItem: () => true }
-  ];
-  await addonInstance.api.citeItems(testItems);
-  assert.equal(citedWithItems?.length, 1);
-  assert.equal(citedWithItems?.[0]?.id, 3);
+  // 1. Deleted or trashed items are rejected directly by citeItems() in cite.mjs
+  let execCalled = false;
+  globalThis.Zotero.Integration.execCommand = async () => { execCalled = true; };
 
-  // 2. Multi-window detached fallback: when globalThis.Zotero_Tabs is undefined, does not throw
-  const origTabs = globalThis.Zotero_Tabs;
+  await citeItems([
+    { id: 10, deleted: true, inTrash: false, isRegularItem: () => true, isTopLevelItem: () => true }
+  ]);
+  assert.equal(execCalled, false, "Deleted item must be blocked directly by src/modules/cite.mjs");
+
+  await citeItems([
+    { id: 11, deleted: false, inTrash: true, isRegularItem: () => true, isTopLevelItem: () => true }
+  ]);
+  assert.equal(execCalled, false, "Trashed item must be blocked directly by src/modules/cite.mjs");
+
+  // 2. Multi-window unload rebinds globalThis.window / Zotero_Tabs to remaining open window
+  const win1 = {
+    closed: false,
+    document: { id: "doc1" },
+    ZoteroPane: { getSelectedItems: () => [{ id: 101, deleted: false, inTrash: false, isRegularItem: () => true, isTopLevelItem: () => true }] },
+    Zotero_Tabs: { selectedIndex: 0 }
+  };
+  const win2 = {
+    closed: false,
+    document: { id: "doc2" },
+    ZoteroPane: { getSelectedItems: () => [{ id: 202, deleted: false, inTrash: false, isRegularItem: () => true, isTopLevelItem: () => true }] },
+    Zotero_Tabs: { selectedIndex: 0 }
+  };
+  globalThis.window = win1;
+  globalThis.document = win1.document;
+  globalThis.ZoteroPane = win1.ZoteroPane;
+  globalThis.Zotero_Tabs = win1.Zotero_Tabs;
+  globalThis.Zotero.getMainWindows = () => [win1, win2];
+  globalThis.Zotero.getMainWindow = () => win2;
+
+  hooks.onMainWindowUnload(win1);
+  assert.equal(globalThis.window, win2, "Unloading win1 must rebind globalThis.window to remaining open win2");
+  assert.equal(globalThis.Zotero_Tabs, win2.Zotero_Tabs, "Unloading win1 must rebind globalThis.Zotero_Tabs to win2");
+
+  // Even if globalThis.Zotero_Tabs is cleared, citeItems() resolves via Zotero.getMainWindow() without throwing
   globalThis.Zotero_Tabs = undefined;
-  try {
-    await addonInstance.api.citeItems();
-    // Reached here without throwing TypeError
-    assert.ok(true, "citeItems() must not throw TypeError when Zotero_Tabs is undefined");
-  } finally {
-    globalThis.Zotero_Tabs = origTabs;
-  }
+  globalThis.ZoteroPane = undefined;
+  await citeItems();
+  assert.equal(execCalled, true, "citeItems() must succeed via Zotero.getMainWindow() when globalThis.Zotero_Tabs is undefined");
 });
 
-test("v13.0.11: preferences-sync cleanly decouples and awaits collection erasure when disabling collections", async () => {
+test("v13.0.12: preferences-sync awaits collection erasure, retains key on eraseTx error, and populates existing items on re-enable", async () => {
   const { CitationPreferences } = await import("../src/modules/citation/preferences-sync.mjs");
   const c = Object.create(CitationPreferences.prototype);
   c.logError = () => {};
   c._getCitationTagName = () => "/Citations";
   c._getBoolPref = () => false;
   c._getClampedIntPref = (k, def) => def;
-  c.clearStaleArtifacts = async () => { staleCleared = true; };
+  c._invalidateSessionIndex = () => { invalidatedCount += 1; };
 
   let erased = false;
   let staleCleared = false;
+  let invalidatedCount = 0;
+  let savedKeys = null;
+  c.clearStaleArtifacts = async () => { staleCleared = true; };
+  c._saveKeySet = (_pref, keys) => { savedKeys = new Set(keys); };
+
   const mockCollection = {
     key: "COL_KEY_123",
     eraseTx: async () => { erased = true; }
   };
 
   c.sessions = {
-    S1: { closing: false, collection: mockCollection }
+    S1: { closing: false, collection: mockCollection, idData: { "10": {}, "20": {} } }
   };
   c._temporaryCollectionKeys = new Set(["COL_KEY_123"]);
-  c._saveKeySet = (pref, keys) => { savedKeys = new Set(keys); };
-  let savedKeys = null;
-
   c._collectionsEnabled = true;
+
+  let prefEnabled = false;
   globalThis.Zotero = {
     Prefs: {
       get: (k) => {
-        if (k.endsWith("collections.enable")) return false;
+        if (k.endsWith("collections.enable")) return prefEnabled;
         if (k.endsWith("citationTags.enable")) return true;
         return null;
       }
     }
   };
 
+  // 1. Disabling collections erases collection, removes key, and clears stale artifacts
   await c.applyPreferences();
   assert.equal(erased, true, "Collection must be erased via eraseTx()");
   assert.equal(c.sessions.S1.collection, undefined, "session.collection must be deleted");
   assert.equal(c._temporaryCollectionKeys.has("COL_KEY_123"), false, "Collection key must be removed from _temporaryCollectionKeys");
   assert.equal(savedKeys?.has("COL_KEY_123"), false, "Saved keys must not contain erased key");
   assert.equal(staleCleared, true, "clearStaleArtifacts must be called");
+
+  // 2. Re-enabling collections initializes collection and immediately populates existing session.idData items
+  prefEnabled = true;
+  let syncedIDs = null;
+  c.initCollection = async (_id, session) => {
+    session.collection = { key: "COL_KEY_NEW" };
+  };
+  c.syncCollectionItems = async (_session, ids) => {
+    syncedIDs = ids;
+  };
+  await c.applyPreferences();
+  assert.equal(c.sessions.S1.collection?.key, "COL_KEY_NEW");
+  assert.deepEqual(syncedIDs, [10, 20], "Re-enabling collections must immediately populate existing session items");
 });
 
 test("v13.0.11: preferences.xhtml only opens first accordion card and preferences.css keeps top description flush", () => {

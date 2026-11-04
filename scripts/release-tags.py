@@ -46,7 +46,7 @@ def main():
     parser.add_argument('--self-test', action='store_true')
     args = parser.parse_args()
     if args.self_test:
-        for value in ('v0.0.0', 'v12.6.0', 'v13.0.0', 'v13.0.1', 'v13.0.2', 'v13.0.3', 'v13.0.4', 'v13.0.5', 'v13.0.6', 'v13.0.7', 'v13.0.8', 'v13.0.9', 'v13.0.9-rc.1', 'v13.0.10', 'v13.0.10-rc.1', 'v13.0.11', 'v13.0.11-rc.1', 'v1.0.0-alpha.2', 'v1.0.0-beta.1'):
+        for value in ('v0.0.0', 'v12.6.0', 'v13.0.0', 'v13.0.1', 'v13.0.2', 'v13.0.3', 'v13.0.4', 'v13.0.5', 'v13.0.6', 'v13.0.7', 'v13.0.8', 'v13.0.9', 'v13.0.9-rc.1', 'v13.0.10', 'v13.0.10-rc.1', 'v13.0.12', 'v13.0.12-rc.1', 'v13.0.11', 'v13.0.11-rc.1', 'v1.0.0-alpha.2', 'v1.0.0-beta.1'):
             assert valid_tag(value), value
         for value in ('V12.6.0', '12.6.0', 'v12', 'v12.6', 'v01.2.3', 'v1.2.3-rc.0', 'v1.2.3-rc.01', 'v1.2.3+build', 'refflow-v1.2.3', 'v1.2.3\n', ''):
             assert not valid_tag(value), value
