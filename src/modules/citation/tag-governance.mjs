@@ -261,7 +261,8 @@ export class CitationTagGovernance {
           const item = await this._resolveItemByID(itemID);
           if (!item) continue;
           if (!this._isWritableCitationItem(item)) {
-            if (item.libraryID === Zotero.Libraries?.userLibraryID || this._managedCitationTagIDs[itemID]) skipped = true;
+            const isTrashed = item.deleted === true || item.inTrash === true;
+            if (!isTrashed && (item.libraryID === Zotero.Libraries?.userLibraryID || this._managedCitationTagIDs[itemID])) skipped = true;
             continue;
           }
           if (Zotero.Prefs.get("extensions.zotero.zoterocitation.citationTags.enable", true) === false || this._citationTagName !== tagName) break;
@@ -297,7 +298,7 @@ export class CitationTagGovernance {
             continue;
           }
           if (!this._isWritableCitationItem(item)) {
-            skipped = true;
+            if (item.deleted !== true && item.inTrash !== true) skipped = true;
             continue;
           }
 

@@ -733,3 +733,113 @@ test("v13.0.11: preferences.xhtml only opens first accordion card and preference
   assert.match(css, /\.zoterocitation-setting-content\s*>\s*\.zoterocitation-description:first-child[\s\S]*?margin:\s*2px\s+0\s+10px\s+0;/,
     "Level 1 top overview description must remain flush with the 16px content line");
 });
+
+test("v13.0.13 data pipeline: collections.enable=false independence, all-trashed document clearing, polluted key filtering, trashed tag complete status, and closing session exclusion", async () => {
+  const c = Object.create(Citation.prototype);
+  c._initSessionTracking();
+  c._resetInternalTrackingMaps();
+  c._minRefreshInterval = 0;
+  c.logError = () => {};
+  c.debugLog = () => {};
+  c._recordPerf = () => {};
+  c._bumpDebugCounter = () => {};
+  c._saveManagedTagIDs = () => true;
+  c._invalidateSessionIndex = () => {};
+  c.scheduleItemsViewRefresh = () => {};
+  c._isPendingCollectionName = () => true;
+  c._getPendingCollectionName = () => "Pending 1";
+  c._resolveFallbackDocumentId = () => "C:\\Docs\\Paper.docx";
+
+  // 1. When collections.enable = false, ensureSession & _syncActiveWordSessions still refresh citations and tags
+  let collectionsEnabled = false;
+  globalThis.Zotero = {
+    Prefs: {
+      get: (k) => {
+        if (k.endsWith("collections.enable")) return collectionsEnabled;
+        if (k.endsWith("citationTags.enable")) return true;
+        return true;
+      }
+    },
+    Libraries: { userLibraryID: 1, get: () => ({ editable: true }) },
+    Items: {
+      get: (id) => ({
+        id,
+        libraryID: 1,
+        editable: true,
+        deleted: false,
+        inTrash: false,
+        isTopLevelItem: () => true
+      })
+    },
+    Integration: {
+      sessions: {
+        S1: {
+          agent: "WinWord",
+          styleClass: "in-text",
+          citationsByIndex: { "0": { citationItems: [{ id: 10 }] } },
+          citationsByItemID: { "10": [{ properties: { plainCitation: "(Alpha, 2026)" } }] }
+        }
+      }
+    }
+  };
+
+  await c._syncActiveWordSessions(globalThis.Zotero.Integration.sessions);
+  assert.equal(c.sessions.S1?.collection, undefined, "No collection should be created when collections.enable is false");
+  assert.equal(c.sessions.S1?.docId, "C:\\Docs\\Paper.docx", "Document ID must still be resolved and remembered when collections are disabled");
+  assert.equal(c.sessions.S1?.idData?.["10"]?.plainCitation, "1: (Alpha, 2026)", "Citation column data must still update when collections.enable is false");
+  assert.deepEqual(c._sessionCitedIDs.S1, [10], "Citation tag tracking must still update when collections.enable is false");
+
+  // 2. Polluted keys in citationsByItemID are rejected by _applyCitations
+  c._sessionUpdateRevision.S1 = 99;
+  await c._applyCitations(
+    "S1",
+    {
+      "10": [{ properties: { plainCitation: "(Alpha, 2026)" } }],
+      "NaN": [{ properties: { plainCitation: "bad" } }],
+      "-1": [{ properties: { plainCitation: "bad" } }],
+      "0": [{ properties: { plainCitation: "bad" } }],
+      "__meta__": [{ properties: { plainCitation: "bad" } }]
+    },
+    [10],
+    "in-text",
+    99
+  );
+  assert.deepEqual(Object.keys(c.sessions.S1.idData), ["10"], "Polluted non-positive-integer keys in citationsByItemID must be rejected");
+
+  // 3. When all cited items in a Word document are moved to Zotero Trash, refreshSessionCitations clears idData and _sessionCitedIDs
+  globalThis.Zotero.Items.get = (id) => ({
+    id,
+    libraryID: 1,
+    editable: true,
+    deleted: false,
+    inTrash: true,
+    isTopLevelItem: () => true
+  });
+  c._minRefreshInterval = 0;
+  c._lastRefreshAt = {};
+  await c.refreshSessionCitations("S1", globalThis.Zotero.Integration.sessions.S1);
+  assert.deepEqual(c.sessions.S1.idData, {}, "All-trashed document must clear stale citation column entries");
+  assert.equal(c._sessionCitedIDs.S1, undefined, "All-trashed document must clear active session cited IDs");
+
+  // 4. Trashed item with a previously managed tag is protected from writes AND does not cause syncCitationTags to return complete: false
+  c._managedCitationTagIDs = { 10: true };
+  c._managedCitationTagNames = { 10: "/Citations" };
+  c._citationTagName = "/Citations";
+  const tagRes = await c.syncCitationTags("S1", []);
+  assert.equal(tagRes.complete, true, "Trashed item must not cause syncCitationTags to report complete: false");
+  assert.equal(c._managedCitationTagIDs[10], true, "Managed tag record is retained in case item is restored from Trash");
+
+  // 5. ViewsSessionIndex skips closing sessions
+  globalThis.Zotero.ZoteroCitation = {
+    api: {
+      activeSessionID: "S_CLOSING",
+      sessionRevision: 5,
+      sessions: {
+        S_CLOSING: { closing: true, idData: { "10": { plainCitation: "1: Stale" } } },
+        S_OPEN: { closing: false, idData: { "10": { plainCitation: "1: Live" } } }
+      }
+    }
+  };
+  const v = new Views();
+  assert.equal(v.getCitationText(10), "1: Live", "Closing session must be ignored by ViewsSessionIndex");
+});

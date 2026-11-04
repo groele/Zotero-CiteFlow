@@ -5,13 +5,7 @@ import { TEMP_COLLECTION_KEYS_PREF } from "./constants.mjs";
 // ============================================================================
 
 export class CitationFormatting {
-  /**
-   * Schedules a debounced session refresh after retry delay.
-   * @param {string} sessionID - Session identifier
-   * @param {object} targetSession - Word session
-   * @param {number} [delayMs=180] - Debounce delay in milliseconds
-   * @private
-   */
+  /** Schedules a debounced session refresh after retry delay. @private */
   _scheduleSessionRefresh(sessionID, targetSession, delayMs = 180) {
     if (this._listenerStopped || this._refreshRetryTimerBySession[sessionID]) return;
     this._refreshRetryTimerBySession[sessionID] = globalThis.setTimeout(() => {
@@ -21,12 +15,7 @@ export class CitationFormatting {
     }, Math.max(50, delayMs));
   }
 
-  /**
-   * Terminates and cleans up an individual Word session.
-   * @param {string} sessionID - Session identifier
-   * @param {boolean} [skipTagCleanup=false] - Whether to bypass tag removal
-   * @returns {Promise<void>}
-   */
+  /** Terminates and cleans up an individual Word session. */
   async clearSession(sessionID, skipTagCleanup = false) {
     const session = this.sessions?.[sessionID];
     if (!session) return;
@@ -190,10 +179,10 @@ export class CitationFormatting {
       this._emptyReadCountBySession[sessionID] = 0;
       const sortedItemIDs = this.getSortedItemIDs(citationsByIndex, sessionID);
       if (this._listenerStopped || !this.sessions?.[sessionID]) return;
-      if (!Array.isArray(sortedItemIDs) || sortedItemIDs.length === 0) return;
+      if (!Array.isArray(sortedItemIDs) || (sortedItemIDs.length === 0 && !this._hasOnlyTrashedCitationItems?.(citationsByIndex))) return;
 
       this.scheduleCitationTagSync(sessionID, sortedItemIDs);
-      await this.updateCitations(sessionID, citationsByItemID, sortedItemIDs, targetSession.styleClass);
+      await this.updateCitations(sessionID, sortedItemIDs.length ? citationsByItemID : {}, sortedItemIDs, targetSession.styleClass);
     } catch (e) {
       this.logError("Citation snapshot refresh failed", e);
     } finally {
@@ -302,7 +291,11 @@ export class CitationFormatting {
    */
   async _applyCitations(sessionID, citationsByItemID, sortedItemIDs, styleClass, revision) {
     if (!citationsByItemID || typeof citationsByItemID !== "object" || !Array.isArray(sortedItemIDs)) return;
-    const citationIDKeySet = new Set(Object.keys(citationsByItemID));
+    const citationIDKeySet = new Set();
+    for (const rawKey of Object.keys(citationsByItemID)) {
+      const parsed = this._parseValidItemID ? this._parseValidItemID(rawKey) : (Number.isSafeInteger(Number(rawKey)) && Number(rawKey) > 0 ? Number(rawKey) : null);
+      if (parsed !== null) citationIDKeySet.add(String(parsed));
+    }
     for (const id of sortedItemIDs) {
       if (Number.isSafeInteger(Number(id)) && Number(id) > 0) citationIDKeySet.add(String(id));
     }

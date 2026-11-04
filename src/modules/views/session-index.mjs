@@ -18,6 +18,7 @@ export class ViewsSessionIndex {
     }
     const index = { sessions, revision, byKey: new Map(), byItem: new Map() };
     for (const session of Object.values(sessions)) {
+      if (!session || session.closing) continue;
       const key = session?.collection?.key;
       if (key) {
         const matches = index.byKey.get(key) || [];
@@ -84,9 +85,9 @@ export class ViewsSessionIndex {
         return entry?.plainCitation || "";
       }
       const currentSessionID = Zotero.Integration.currentSession?.sessionID;
-      const active = api.activeSessionID && index.sessions[api.activeSessionID]
+      const active = api.activeSessionID && index.sessions[api.activeSessionID] && !index.sessions[api.activeSessionID].closing
         ? api.activeSessionID
-        : (currentSessionID && index.sessions[currentSessionID] ? currentSessionID : null);
+        : (currentSessionID && index.sessions[currentSessionID] && !index.sessions[currentSessionID].closing ? currentSessionID : null);
       if (active) {
         const activeSession = index.sessions[active];
         const entry = activeSession?.idData?.[numericID] ?? activeSession?.idData?.[itemID];

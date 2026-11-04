@@ -1174,7 +1174,8 @@
         let tracked;
         try {
           tracked = await this.ensureSession(sessionID, session);
-          if (!tracked || tracked.pending || !tracked.collection || this._listenerStopped) continue;
+          const colEnabled = Zotero.Prefs?.get?.("extensions.zotero.zoterocitation.collections.enable", true) !== false;
+          if (!tracked || tracked.pending || colEnabled && !tracked.collection || this._listenerStopped) continue;
           await this._syncSessionDocumentName(sessionID, session, tracked);
         } catch (error) {
           this.logError("Cannot initialize a Word citation collection", error);
@@ -1189,10 +1190,10 @@
      * @private
      */
     async _syncSessionDocumentName(sessionID, nativeSession, trackedSession) {
-      if (this._listenerStopped || !trackedSession?.collection || trackedSession.closing) return;
+      if (this._listenerStopped || !trackedSession || trackedSession.closing) return;
       const currentDocId = this._docIdBySession?.[sessionID] || trackedSession.docId || "";
       const isWindowTitleDerived = typeof currentDocId === "string" && currentDocId.startsWith("window-title:");
-      const isPending = this._isPendingCollectionName?.(trackedSession.collection.name, sessionID);
+      const isPending = !trackedSession.collection || this._isPendingCollectionName?.(trackedSession.collection.name, sessionID);
       if (!currentDocId || isPending || isWindowTitleDerived) {
         const resolvedDocId = this._resolveFallbackDocumentId?.(sessionID, nativeSession, null, false);
         if (resolvedDocId && this._getDocumentDisplayName(resolvedDocId)) {
@@ -1201,7 +1202,7 @@
       }
       const effectiveDocId = this._docIdBySession?.[sessionID] || trackedSession.docId;
       const targetName = effectiveDocId ? this._getDocumentDisplayName(effectiveDocId) : "";
-      if (targetName && trackedSession.collection.name !== targetName) {
+      if (trackedSession.collection && targetName && trackedSession.collection.name !== targetName) {
         try {
           await this._renameCollection(sessionID, targetName, effectiveDocId);
         } catch (error) {
@@ -1350,10 +1351,11 @@
       }
       this._setActiveSessionID(sessionID);
       if (targetName) addon.data.docId = effectiveDocId;
-      const trackedSession = await this.ensureSession(sessionID);
-      if (!trackedSession?.collection || this._listenerStopped) return;
+      const trackedSession = await this.ensureSession(sessionID, nativeSession);
+      const colEnabled = Zotero.Prefs?.get?.("extensions.zotero.zoterocitation.collections.enable", true) !== false;
+      if (!trackedSession || trackedSession.pending || colEnabled && !trackedSession.collection || this._listenerStopped) return;
       if (nativeSession) await this.refreshSessionCitations(sessionID, nativeSession);
-      if (targetName && trackedSession.collection.name !== targetName) {
+      if (trackedSession.collection && targetName && trackedSession.collection.name !== targetName) {
         try {
           await this._renameCollection(sessionID, targetName, effectiveDocId);
         } catch (error) {
@@ -1372,7 +1374,8 @@
       if (this._listenerStopped || !nativeSession) return;
       const existing = this.sessions[sessionID];
       if (existing?.closing) return;
-      if (existing?.collection) return existing;
+      const colEnabled = Zotero.Prefs?.get?.("extensions.zotero.zoterocitation.collections.enable", true) !== false;
+      if (existing && !existing.pending && (existing.collection || !colEnabled)) return existing;
       this._initializationTasks ??= /* @__PURE__ */ new Map();
       if (this._initializationTasks.has(sessionID)) return this._initializationTasks.get(sessionID);
       const initialDocId = this._docIdBySession[sessionID] || this._extractSessionDocumentId?.(nativeSession) || void 0;
@@ -1479,6 +1482,32 @@
         delete this._sortedCacheBySession[existingKeys[0]];
       }
       this._sortedCacheBySession[key] = { sig, result: [...result] };
+    }
+    /**
+     * Checks whether a non-empty citationsByIndex snapshot had valid item IDs that were all trashed/deleted.
+     * Distinguishes all-trashed documents from malformed snapshots.
+     * @param {object} citationsByIndex - Native citation index dictionary
+     * @returns {boolean}
+     * @private
+     */
+    _hasOnlyTrashedCitationItems(citationsByIndex) {
+      if (!citationsByIndex || typeof citationsByIndex !== "object") return false;
+      let sawValidID = false;
+      for (const key of Object.keys(citationsByIndex)) {
+        if (!this._isValidCitationIndexKey(key)) continue;
+        const items = citationsByIndex[key]?.citationItems;
+        if (!Array.isArray(items)) continue;
+        for (const item of items) {
+          const id = this._parseValidItemID(item?.id);
+          if (id === null) continue;
+          sawValidID = true;
+          const zotItem = typeof Zotero !== "undefined" && typeof Zotero.Items?.get === "function" ? Zotero.Items.get(id) : null;
+          if (!zotItem || zotItem.deleted !== true && zotItem.inTrash !== true) {
+            return false;
+          }
+        }
+      }
+      return sawValidID;
     }
     /**
      * Extracts and sorts item IDs according to their exact order of appearance in the Word document.
@@ -1796,7 +1825,8 @@
             const item = await this._resolveItemByID(itemID);
             if (!item) continue;
             if (!this._isWritableCitationItem(item)) {
-              if (item.libraryID === Zotero.Libraries?.userLibraryID || this._managedCitationTagIDs[itemID]) skipped = true;
+              const isTrashed = item.deleted === true || item.inTrash === true;
+              if (!isTrashed && (item.libraryID === Zotero.Libraries?.userLibraryID || this._managedCitationTagIDs[itemID])) skipped = true;
               continue;
             }
             if (Zotero.Prefs.get("extensions.zotero.zoterocitation.citationTags.enable", true) === false || this._citationTagName !== tagName) break;
@@ -1829,7 +1859,7 @@
               continue;
             }
             if (!this._isWritableCitationItem(item)) {
-              skipped = true;
+              if (item.deleted !== true && item.inTrash !== true) skipped = true;
               continue;
             }
             const res = await this._removeUncitedManagedItemTag(item, itemID);
@@ -1856,13 +1886,7 @@
       }
       return { complete: !hadFailures && !skipped, touchedCount };
     }
-    /**
-     * Schedules a debounced session refresh after retry delay.
-     * @param {string} sessionID - Session identifier
-     * @param {object} targetSession - Word session
-     * @param {number} [delayMs=180] - Debounce delay in milliseconds
-     * @private
-     */
+    /** Schedules a debounced session refresh after retry delay. @private */
     _scheduleSessionRefresh(sessionID, targetSession, delayMs = 180) {
       if (this._listenerStopped || this._refreshRetryTimerBySession[sessionID]) return;
       this._refreshRetryTimerBySession[sessionID] = globalThis.setTimeout(() => {
@@ -1871,12 +1895,7 @@
         void this.refreshSessionCitations(sessionID, targetSession).catch((error) => this.logError("Failed to retry citation refresh", error));
       }, Math.max(50, delayMs));
     }
-    /**
-     * Terminates and cleans up an individual Word session.
-     * @param {string} sessionID - Session identifier
-     * @param {boolean} [skipTagCleanup=false] - Whether to bypass tag removal
-     * @returns {Promise<void>}
-     */
+    /** Terminates and cleans up an individual Word session. */
     async clearSession(sessionID, skipTagCleanup = false) {
       const session = this.sessions?.[sessionID];
       if (!session) return;
@@ -2028,9 +2047,9 @@
         this._emptyReadCountBySession[sessionID] = 0;
         const sortedItemIDs = this.getSortedItemIDs(citationsByIndex, sessionID);
         if (this._listenerStopped || !this.sessions?.[sessionID]) return;
-        if (!Array.isArray(sortedItemIDs) || sortedItemIDs.length === 0) return;
+        if (!Array.isArray(sortedItemIDs) || sortedItemIDs.length === 0 && !this._hasOnlyTrashedCitationItems?.(citationsByIndex)) return;
         this.scheduleCitationTagSync(sessionID, sortedItemIDs);
-        await this.updateCitations(sessionID, citationsByItemID, sortedItemIDs, targetSession.styleClass);
+        await this.updateCitations(sessionID, sortedItemIDs.length ? citationsByItemID : {}, sortedItemIDs, targetSession.styleClass);
       } catch (e) {
         this.logError("Citation snapshot refresh failed", e);
       } finally {
@@ -2131,7 +2150,11 @@
      */
     async _applyCitations(sessionID, citationsByItemID, sortedItemIDs, styleClass, revision) {
       if (!citationsByItemID || typeof citationsByItemID !== "object" || !Array.isArray(sortedItemIDs)) return;
-      const citationIDKeySet = new Set(Object.keys(citationsByItemID));
+      const citationIDKeySet = /* @__PURE__ */ new Set();
+      for (const rawKey of Object.keys(citationsByItemID)) {
+        const parsed = this._parseValidItemID ? this._parseValidItemID(rawKey) : Number.isSafeInteger(Number(rawKey)) && Number(rawKey) > 0 ? Number(rawKey) : null;
+        if (parsed !== null) citationIDKeySet.add(String(parsed));
+      }
       for (const id of sortedItemIDs) {
         if (Number.isSafeInteger(Number(id)) && Number(id) > 0) citationIDKeySet.add(String(id));
       }
@@ -2642,6 +2665,7 @@
       }
       const index = { sessions, revision, byKey: /* @__PURE__ */ new Map(), byItem: /* @__PURE__ */ new Map() };
       for (const session of Object.values(sessions)) {
+        if (!session || session.closing) continue;
         const key = session?.collection?.key;
         if (key) {
           const matches = index.byKey.get(key) || [];
@@ -2705,7 +2729,7 @@
           return entry2?.plainCitation || "";
         }
         const currentSessionID = Zotero.Integration.currentSession?.sessionID;
-        const active = api.activeSessionID && index.sessions[api.activeSessionID] ? api.activeSessionID : currentSessionID && index.sessions[currentSessionID] ? currentSessionID : null;
+        const active = api.activeSessionID && index.sessions[api.activeSessionID] && !index.sessions[api.activeSessionID].closing ? api.activeSessionID : currentSessionID && index.sessions[currentSessionID] && !index.sessions[currentSessionID].closing ? currentSessionID : null;
         if (active) {
           const activeSession = index.sessions[active];
           const entry2 = activeSession?.idData?.[numericID] ?? activeSession?.idData?.[itemID];

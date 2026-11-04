@@ -87,7 +87,8 @@ export class CitationWordIntegration {
       let tracked;
       try {
         tracked = await this.ensureSession(sessionID, session);
-        if (!tracked || tracked.pending || !tracked.collection || this._listenerStopped) continue;
+        const colEnabled = Zotero.Prefs?.get?.("extensions.zotero.zoterocitation.collections.enable", true) !== false;
+        if (!tracked || tracked.pending || (colEnabled && !tracked.collection) || this._listenerStopped) continue;
         await this._syncSessionDocumentName(sessionID, session, tracked);
       } catch (error) {
         this.logError("Cannot initialize a Word citation collection", error);
@@ -103,10 +104,10 @@ export class CitationWordIntegration {
    * @private
    */
   async _syncSessionDocumentName(sessionID, nativeSession, trackedSession) {
-    if (this._listenerStopped || !trackedSession?.collection || trackedSession.closing) return;
+    if (this._listenerStopped || !trackedSession || trackedSession.closing) return;
     const currentDocId = this._docIdBySession?.[sessionID] || trackedSession.docId || "";
     const isWindowTitleDerived = typeof currentDocId === "string" && currentDocId.startsWith("window-title:");
-    const isPending = this._isPendingCollectionName?.(trackedSession.collection.name, sessionID);
+    const isPending = !trackedSession.collection || this._isPendingCollectionName?.(trackedSession.collection.name, sessionID);
 
     if (!currentDocId || isPending || isWindowTitleDerived) {
       const resolvedDocId = this._resolveFallbackDocumentId?.(sessionID, nativeSession, null, false);
@@ -117,7 +118,7 @@ export class CitationWordIntegration {
 
     const effectiveDocId = this._docIdBySession?.[sessionID] || trackedSession.docId;
     const targetName = effectiveDocId ? this._getDocumentDisplayName(effectiveDocId) : "";
-    if (targetName && trackedSession.collection.name !== targetName) {
+    if (trackedSession.collection && targetName && trackedSession.collection.name !== targetName) {
       try {
         await this._renameCollection(sessionID, targetName, effectiveDocId);
       } catch (error) {
@@ -287,11 +288,12 @@ export class CitationWordIntegration {
     this._setActiveSessionID(sessionID);
     if (targetName) addon.data.docId = effectiveDocId;
 
-    const trackedSession = await this.ensureSession(sessionID);
-    if (!trackedSession?.collection || this._listenerStopped) return;
+    const trackedSession = await this.ensureSession(sessionID, nativeSession);
+    const colEnabled = Zotero.Prefs?.get?.("extensions.zotero.zoterocitation.collections.enable", true) !== false;
+    if (!trackedSession || trackedSession.pending || (colEnabled && !trackedSession.collection) || this._listenerStopped) return;
     if (nativeSession) await this.refreshSessionCitations(sessionID, nativeSession);
 
-    if (targetName && trackedSession.collection.name !== targetName) {
+    if (trackedSession.collection && targetName && trackedSession.collection.name !== targetName) {
       try {
         await this._renameCollection(sessionID, targetName, effectiveDocId);
       } catch (error) {
@@ -311,7 +313,8 @@ export class CitationWordIntegration {
     if (this._listenerStopped || !nativeSession) return;
     const existing = this.sessions[sessionID];
     if (existing?.closing) return;
-    if (existing?.collection) return existing;
+    const colEnabled = Zotero.Prefs?.get?.("extensions.zotero.zoterocitation.collections.enable", true) !== false;
+    if (existing && !existing.pending && (existing.collection || !colEnabled)) return existing;
     this._initializationTasks ??= new Map();
     if (this._initializationTasks.has(sessionID)) return this._initializationTasks.get(sessionID);
 

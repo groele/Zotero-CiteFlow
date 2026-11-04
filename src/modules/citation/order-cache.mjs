@@ -83,6 +83,35 @@ export class CitationOrderCache {
   }
 
   /**
+   * Checks whether a non-empty citationsByIndex snapshot had valid item IDs that were all trashed/deleted.
+   * Distinguishes all-trashed documents from malformed snapshots.
+   * @param {object} citationsByIndex - Native citation index dictionary
+   * @returns {boolean}
+   * @private
+   */
+  _hasOnlyTrashedCitationItems(citationsByIndex) {
+    if (!citationsByIndex || typeof citationsByIndex !== "object") return false;
+    let sawValidID = false;
+    for (const key of Object.keys(citationsByIndex)) {
+      if (!this._isValidCitationIndexKey(key)) continue;
+      const items = citationsByIndex[key]?.citationItems;
+      if (!Array.isArray(items)) continue;
+      for (const item of items) {
+        const id = this._parseValidItemID(item?.id);
+        if (id === null) continue;
+        sawValidID = true;
+        const zotItem = typeof Zotero !== "undefined" && typeof Zotero.Items?.get === "function"
+          ? Zotero.Items.get(id)
+          : null;
+        if (!zotItem || (zotItem.deleted !== true && zotItem.inTrash !== true)) {
+          return false;
+        }
+      }
+    }
+    return sawValidID;
+  }
+
+  /**
    * Extracts and sorts item IDs according to their exact order of appearance in the Word document.
    * @param {object} citationsByIndex - Native citation index dictionary
    * @param {string} sessionID - Session identifier
