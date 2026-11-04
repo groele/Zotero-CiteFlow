@@ -179,7 +179,7 @@
   line-height: 1.6;
 }
 
-/* Level 3: Number & Text Inputs Grid */
+/* Level 2 / Level 3: Number & Text Inputs Grid */
 #zoterocitation-settings .zoterocitation-number-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(7em, 12em);
@@ -187,6 +187,10 @@
   gap: 8px 12px;
   min-width: 0;
   margin-block: 8px;
+  margin-inline-start: 0;
+}
+
+#zoterocitation-settings .zoterocitation-number-row.zoterocitation-subordinate-row {
   margin-inline-start: 24px;
 }
 

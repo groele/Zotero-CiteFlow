@@ -129,7 +129,8 @@ var Views = class {
     const cleanup = action => {
       try { action(); } catch (error) { (Zotero?.logError || runtime?.log || console.error)(error); }
     };
-    if (this._dragEndHandler) cleanup(() => this.document.removeEventListener("dragend", this._dragEndHandler, true));
+    if (this._dragEndHandler) cleanup(() => (this._dragDocument || this.document)?.removeEventListener("dragend", this._dragEndHandler, true));
+    this._dragDocument = null;
     this._dragEndHandler = null;
     for (const [iconNode, state] of this._iconNodeStates || []) {
       cleanup(() => this._restoreIconNode(iconNode, state));

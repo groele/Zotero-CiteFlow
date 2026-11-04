@@ -5,13 +5,13 @@
         {
           "applications": {
             "zotero": {
-              "strict_min_version": "10.0",
-              "strict_max_version": "12.*"
+              "strict_max_version": "12.*",
+              "strict_min_version": "10.0"
             }
           },
-          "update_hash": "sha512:f1a8984b3bd23ad5b120c909da2af8a4f79e27d7cf1682315f06a65f991281dbb81e7fdc2ee091472ffc7fff51b584cd2f76f7029ee21988644ac3eae94bfff6",
-          "version": "13.2.1",
-          "update_link": "https://github.com/groele/Zotero-CiteFlow/releases/download/v13.2.1/zotero-citeflow-13.2.1.xpi"
+          "update_link": "https://github.com/groele/Zotero-CiteFlow/releases/download/v13.2.2/zotero-citeflow-13.2.2.xpi",
+          "update_hash": "sha512:a6218cde1504ace9eb949aa59f1e3a8be85c2c4a954e9e7103cf3ed059df3f69acdcc9f6cb10438c29583783bf02b48fb40fac32fb99376f5f0e1660bfa72d2c",
+          "version": "13.2.2"
         }
       ]
     }

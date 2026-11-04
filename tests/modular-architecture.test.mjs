@@ -927,4 +927,9 @@ test("v13.2.1 execution logic: initCollection mid-flight abort, foreground title
   };
   await c._handlePostExecCommand({ bindingID: 1, sessionID: "S1", ambiguous: false }, null, () => {}, "C:\\Work\\Claimed.docx");
   assert.equal(refreshedImmediately, true, "Post-command refresh must clear _lastRefreshAt and execute unthrottled");
+
+  // 5. Card 4 primary number rows align at 0px (16px content line) while Card 3 subordinate row aligns at 24px (40px golden line)
+  const css = fs.readFileSync(path.join(root, "chrome", "content", "preferences.css"), "utf8");
+  assert.match(css, /\.zoterocitation-number-row\s*\{[\s\S]*?margin-inline-start:\s*0;/);
+  assert.match(css, /\.zoterocitation-number-row\.zoterocitation-subordinate-row\s*\{[\s\S]*?margin-inline-start:\s*24px;/);
 });

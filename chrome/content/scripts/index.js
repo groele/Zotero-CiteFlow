@@ -2638,7 +2638,8 @@
           (Zotero?.logError || runtime?.log || console.error)(error);
         }
       };
-      if (this._dragEndHandler) cleanup(() => this.document.removeEventListener("dragend", this._dragEndHandler, true));
+      if (this._dragEndHandler) cleanup(() => (this._dragDocument || this.document)?.removeEventListener("dragend", this._dragEndHandler, true));
+      this._dragDocument = null;
       this._dragEndHandler = null;
       for (const [iconNode, state] of this._iconNodeStates || []) {
         cleanup(() => this._restoreIconNode(iconNode, state));
@@ -2860,7 +2861,9 @@
         if (!validItems.length) return;
         void addon.api.citeItems(validItems).catch((error) => Zotero.logError(error));
       };
-      this.document.addEventListener("dragend", this._dragEndHandler, true);
+      const dragDoc = this.document;
+      this._dragDocument = dragDoc;
+      dragDoc.addEventListener("dragend", this._dragEndHandler, true);
       try {
         const restore = runtime.patch(
           this.pane.itemsView,
@@ -2871,7 +2874,7 @@
             this._dragStartedAt = 0;
             const selection = this.pane.itemsView.selection;
             if (this._dragEnabled() && Number.isInteger(row) && selection && !selection.isSelected(row)) selection.select(row);
-            const items = this.pane.getSelectedItems();
+            const items = this.pane?.getSelectedItems?.();
             if (this._dragEnabled() && event.dataTransfer && items?.length && items.every((item) => item && item.deleted !== true && item.inTrash !== true && item.isRegularItem?.() && item.isTopLevelItem())) {
               const seenIDs = /* @__PURE__ */ new Set();
               this._dragItems = items.filter((item) => {
@@ -2890,7 +2893,8 @@
         );
         if (typeof restore === "function") (this._patchDisposers ??= []).push(restore);
       } catch (error) {
-        this.document.removeEventListener("dragend", this._dragEndHandler, true);
+        dragDoc.removeEventListener("dragend", this._dragEndHandler, true);
+        this._dragDocument = null;
         this._dragEndHandler = null;
         throw error;
       }

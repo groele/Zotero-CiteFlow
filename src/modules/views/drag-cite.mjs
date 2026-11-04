@@ -68,7 +68,9 @@ export class ViewsDragCite {
       if (!validItems.length) return;
       void addon.api.citeItems(validItems).catch((error) => Zotero.logError(error));
     };
-    this.document.addEventListener("dragend", this._dragEndHandler, true);
+    const dragDoc = this.document;
+    this._dragDocument = dragDoc;
+    dragDoc.addEventListener("dragend", this._dragEndHandler, true);
     try {
       const restore = runtime.patch(this.pane.itemsView, "onDragStart", config.addonRef,
         (original) => (event, row) => {
@@ -77,7 +79,7 @@ export class ViewsDragCite {
           const selection = this.pane.itemsView.selection;
           if (this._dragEnabled() && Number.isInteger(row) && selection
             && !selection.isSelected(row)) selection.select(row);
-          const items = this.pane.getSelectedItems();
+          const items = this.pane?.getSelectedItems?.();
           if (this._dragEnabled() && event.dataTransfer && items?.length
             && items.every((item) => item && item.deleted !== true && item.inTrash !== true
               && item.isRegularItem?.() && item.isTopLevelItem())) {
@@ -97,7 +99,8 @@ export class ViewsDragCite {
         });
       if (typeof restore === "function") (this._patchDisposers ??= []).push(restore);
     } catch (error) {
-      this.document.removeEventListener("dragend", this._dragEndHandler, true);
+      dragDoc.removeEventListener("dragend", this._dragEndHandler, true);
+      this._dragDocument = null;
       this._dragEndHandler = null;
       throw error;
     }
