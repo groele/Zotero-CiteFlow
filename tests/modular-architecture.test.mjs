@@ -4,15 +4,27 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { Citation, CITATION_DOMAIN_MODULES } from "../src/modules/citation.mjs";
-import Views from "../src/modules/views.mjs";
-import { ViewsSessionIndex } from "../src/modules/views/session-index.mjs";
-import { ViewsColumnManager } from "../src/modules/views/column-manager.mjs";
-import { ViewsWindowPrep } from "../src/modules/views/window-prep.mjs";
-import { ViewsDragCite } from "../src/modules/views/drag-cite.mjs";
-import { ViewsIconPatch } from "../src/modules/views/icon-patch.mjs";
+import { Citation, CITATION_DOMAIN_MODULES } from "../src/modules/citation.ts";
+import Views from "../src/modules/views.ts";
+import { ViewsSessionIndex } from "../src/modules/views/session-index.ts";
+import { ViewsColumnManager } from "../src/modules/views/column-manager.ts";
+import { ViewsWindowPrep } from "../src/modules/views/window-prep.ts";
+import { ViewsDragCite } from "../src/modules/views/drag-cite.ts";
+import { ViewsIconPatch } from "../src/modules/views/icon-patch.ts";
+import { composeDomains } from "../src/modules/domain-composition.ts";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+
+test("domain composition rejects coordinator and domain collisions before mutation", () => {
+  class Coordinator { existing() {} }
+  class Safe { safe() {} }
+  class Conflict { existing() {} }
+  assert.throws(() => composeDomains(Coordinator.prototype, [Safe, Conflict]), /Duplicate domain member: existing/);
+  assert.equal(Object.hasOwn(Coordinator.prototype, "safe"), false);
+  class Duplicate { safe() {} }
+  assert.throws(() => composeDomains(Coordinator.prototype, [Safe, Duplicate]), /Duplicate domain member: safe/);
+  assert.equal(Object.hasOwn(Coordinator.prototype, "safe"), false);
+});
 
 function collectSourceFiles(dir) {
   const results = [];
@@ -20,7 +32,7 @@ function collectSourceFiles(dir) {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       results.push(...collectSourceFiles(fullPath));
-    } else if (entry.isFile() && /\.(mjs|js)$/.test(entry.name)) {
+    } else if (entry.isFile() && /\.(mjs|js|ts)$/.test(entry.name)) {
       results.push(fullPath);
     }
   }
@@ -452,9 +464,9 @@ test("Word document identification: parses Word window titles, SharePoint/OneDri
 });
 
 test("ViewsIconPatch positions CiteFlow Word collections immediately above My Publications regardless of locale collation", async () => {
-  const { ViewsIconPatch } = await import("../src/modules/views/icon-patch.mjs");
-  const { ViewsSessionIndex } = await import("../src/modules/views/session-index.mjs");
-  const { NativeRuntime } = await import("../src/runtime.mjs");
+  const { ViewsIconPatch } = await import("../src/modules/views/icon-patch.ts");
+  const { ViewsSessionIndex } = await import("../src/modules/views/session-index.ts");
+  const { NativeRuntime } = await import("../src/runtime.ts");
 
   const makeRow = (type, id, level, ref = null) => ({
     type,
@@ -586,7 +598,7 @@ test("ViewsIconPatch positions CiteFlow Word collections immediately above My Pu
 });
 
 test("CitationFormatting._formatItemPlainCitation purges zero-width controls and deduplicates repeated identical citations", async () => {
-  const { CitationFormatting } = await import("../src/modules/citation/formatting.mjs");
+  const { CitationFormatting } = await import("../src/modules/citation/formatting.ts");
   const instance = Object.create(CitationFormatting.prototype);
 
   const idIndexMap = new Map([[101, 0]]);
@@ -604,9 +616,9 @@ test("CitationFormatting._formatItemPlainCitation purges zero-width controls and
     "Identical repeated citations within the same item must be cleanly deduplicated and zero-width characters stripped");
 });
 
-test("v13.0.12: direct citeItems in src/modules/cite.mjs blocks trashed/deleted items and resolves multi-window Zotero_Tabs", async () => {
-  const { citeItems } = await import("../src/modules/cite.mjs");
-  const hooks = (await import("../src/hooks.mjs")).default;
+test("v13.0.12: direct citeItems in src/modules/cite.ts blocks trashed/deleted items and resolves multi-window Zotero_Tabs", async () => {
+  const { citeItems } = await import("../src/modules/cite.ts");
+  const hooks = (await import("../src/hooks.ts")).default;
 
   globalThis.addon = { data: { alive: true } };
   globalThis.Zotero = {
@@ -619,19 +631,19 @@ test("v13.0.12: direct citeItems in src/modules/cite.mjs blocks trashed/deleted 
   };
   globalThis.Zotero.Integration.Session.prototype.cite = function() {};
 
-  // 1. Deleted or trashed items are rejected directly by citeItems() in cite.mjs
+  // 1. Deleted or trashed items are rejected directly by citeItems() in cite.ts
   let execCalled = false;
   globalThis.Zotero.Integration.execCommand = async () => { execCalled = true; };
 
   await citeItems([
     { id: 10, deleted: true, inTrash: false, isRegularItem: () => true, isTopLevelItem: () => true }
   ]);
-  assert.equal(execCalled, false, "Deleted item must be blocked directly by src/modules/cite.mjs");
+  assert.equal(execCalled, false, "Deleted item must be blocked directly by src/modules/cite.ts");
 
   await citeItems([
     { id: 11, deleted: false, inTrash: true, isRegularItem: () => true, isTopLevelItem: () => true }
   ]);
-  assert.equal(execCalled, false, "Trashed item must be blocked directly by src/modules/cite.mjs");
+  assert.equal(execCalled, false, "Trashed item must be blocked directly by src/modules/cite.ts");
 
   // 2. Multi-window unload rebinds globalThis.window / Zotero_Tabs to remaining open window
   const win1 = {
@@ -665,7 +677,7 @@ test("v13.0.12: direct citeItems in src/modules/cite.mjs blocks trashed/deleted 
 });
 
 test("v13.0.12: preferences-sync awaits collection erasure, retains key on eraseTx error, and populates existing items on re-enable", async () => {
-  const { CitationPreferences } = await import("../src/modules/citation/preferences-sync.mjs");
+  const { CitationPreferences } = await import("../src/modules/citation/preferences-sync.ts");
   const c = Object.create(CitationPreferences.prototype);
   c.logError = () => {};
   c._getCitationTagName = () => "/Citations";

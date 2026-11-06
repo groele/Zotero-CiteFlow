@@ -1,3 +1,10 @@
+import type { CitationSessionApi as SessionApi, CitationSessionSnapshot as Session } from "../citation/session-contract.ts";
+export interface SessionIndex { sessions: Record<string, Session>; revision?: number; byKey: Map<string, Session[]>; byItem: Map<number, Session[]> }
+interface Collection { key?: string; libraryID?: number | null }
+interface Pane { getSelectedCollections?: () => Collection[]; collectionsView?: { getSelectedCollections?: () => Collection[] } }
+export interface SessionContext { _index?: SessionIndex | null; pane?: Pane; _getSessionIndex(api: SessionApi): SessionIndex; _resolveSelectedCollectionSessions(index: SessionIndex): Set<Session> }
+declare const runtime: { log(...args: unknown[]): void };
+type Host = { ZoteroCitation?: { api?: SessionApi }; Integration: { currentSession?: { sessionID?: string } } };
 // ============================================================================
 // Views Session Index & Citation Text Resolution
 // ============================================================================
@@ -10,13 +17,13 @@ export class ViewsSessionIndex {
    * @returns {object} Indexed session cache
    * @private
    */
-  _getSessionIndex(api) {
+  _getSessionIndex(this: SessionContext, api: SessionApi): SessionIndex {
     const sessions = api.sessions || {};
     const revision = api.sessionRevision;
     if (Number.isSafeInteger(revision) && this._index?.sessions === sessions && this._index.revision === revision) {
       return this._index;
     }
-    const index = { sessions, revision, byKey: new Map(), byItem: new Map() };
+    const index: SessionIndex = { sessions, revision, byKey: new Map(), byItem: new Map() };
     for (const session of Object.values(sessions)) {
       if (!session || session.closing) continue;
       const key = session?.collection?.key;
@@ -43,21 +50,21 @@ export class ViewsSessionIndex {
    * @returns {Set<object>} Matching Word sessions
    * @private
    */
-  _resolveSelectedCollectionSessions(index) {
+  _resolveSelectedCollectionSessions(this: SessionContext, index: SessionIndex): Set<Session> {
     const pane = this.pane;
     const getSelected = pane?.getSelectedCollections || pane?.collectionsView?.getSelectedCollections;
-    let selected = [];
+    let selected: Collection[] = [];
     try {
-      if (getSelected) selected = getSelected.call(pane.getSelectedCollections ? pane : pane.collectionsView) || [];
+      if (getSelected) selected = getSelected.call(pane?.getSelectedCollections ? pane : pane?.collectionsView) || [];
     } catch (error) {
       runtime.log("Cannot resolve citation collection selection", error);
     }
-    const wordSessions = new Set();
+    const wordSessions = new Set<Session>();
     for (const collection of selected) {
-      let candidates = index.byKey.get(collection?.key) || [];
+      let candidates = index.byKey.get(collection?.key || "") || [];
       if (collection.libraryID == null && candidates.length !== 1) continue;
       if (collection.libraryID != null) {
-        candidates = candidates.filter(session => session.collection.libraryID == null || session.collection.libraryID === collection.libraryID);
+        candidates = candidates.filter(session => session.collection!.libraryID == null || session.collection!.libraryID === collection.libraryID);
       }
       for (const session of candidates) wordSessions.add(session);
     }
@@ -70,21 +77,22 @@ export class ViewsSessionIndex {
    * @param {number|string} itemID - Zotero item ID
    * @returns {string} Formatted citation string or empty string
    */
-  getCitationText(itemID) {
+  getCitationText(this: SessionContext, itemID: number | string): string {
     try {
       const numericID = Number(itemID);
       if (!Number.isSafeInteger(numericID) || numericID <= 0) return "";
-      const api = Zotero.ZoteroCitation?.api || {};
+      const host = Zotero as unknown as Host;
+      const api = host.ZoteroCitation?.api || {};
       const index = this._getSessionIndex(api);
       const wordSessions = this._resolveSelectedCollectionSessions(index);
 
       if (wordSessions.size) {
         const matches = [...wordSessions].filter(session => session.idData?.[numericID] || session.idData?.[itemID]);
         if (matches.length !== 1) return "";
-        const entry = matches[0].idData[numericID] ?? matches[0].idData[itemID];
+        const entry = matches[0].idData?.[numericID] ?? matches[0].idData?.[itemID];
         return entry?.plainCitation || "";
       }
-      const currentSessionID = Zotero.Integration.currentSession?.sessionID;
+      const currentSessionID = host.Integration.currentSession?.sessionID;
       const active = api.activeSessionID && index.sessions[api.activeSessionID] && !index.sessions[api.activeSessionID].closing
         ? api.activeSessionID
         : (currentSessionID && index.sessions[currentSessionID] && !index.sessions[currentSessionID].closing ? currentSessionID : null);
@@ -95,7 +103,7 @@ export class ViewsSessionIndex {
       }
       const matches = index.byItem.get(numericID) || [];
       if (matches.length !== 1) return "";
-      const entry = matches[0].idData[numericID] ?? matches[0].idData[itemID];
+      const entry = matches[0].idData?.[numericID] ?? matches[0].idData?.[itemID];
       return entry?.plainCitation || "";
     } catch (error) {
       runtime.log("Citation column lookup failed", error);

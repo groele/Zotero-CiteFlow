@@ -1,26 +1,24 @@
-// Zotero inserts preference fragments after loading their registered scripts.
-// The fragment receives a non-bubbling load event, so listen in capture phase.
+"use strict";
 (() => {
-  const rootID = "zoterocitation-settings";
-  const loaderKey = "__zoteroCiteFlowPreferencesLoader";
-  window[loaderKey]?.();
-
-  const initialize = () => {
-    if (document.getElementById(rootID)) {
-      Zotero.ZoteroCitation?.api?.initPreferences?.(window);
-    }
+  // src/preferences.ts
+  var preferencesWindow = window;
+  var preferencesHost = Zotero;
+  var rootID = "zoterocitation-settings";
+  var loaderKey = "__zoteroCiteFlowPreferencesLoader";
+  preferencesWindow[loaderKey]?.();
+  var controller = new AbortController();
+  var initialize = () => {
+    if (document.getElementById(rootID)) preferencesHost.ZoteroCitation?.api?.initPreferences?.(window);
   };
-  const onLoad = event => {
+  var onLoad = (event) => {
     if (event.target?.id === rootID) initialize();
   };
-  const dispose = () => {
-    document.removeEventListener("load", onLoad, true);
-    window.removeEventListener("unload", dispose);
-    if (window[loaderKey] === dispose) delete window[loaderKey];
+  var dispose = () => {
+    controller.abort();
+    if (preferencesWindow[loaderKey] === dispose) delete preferencesWindow[loaderKey];
   };
-
-  window[loaderKey] = dispose;
-  document.addEventListener("load", onLoad, true);
-  window.addEventListener("unload", dispose);
+  preferencesWindow[loaderKey] = dispose;
+  document.addEventListener("load", onLoad, { capture: true, signal: controller.signal });
+  window.addEventListener("unload", dispose, { signal: controller.signal });
   initialize();
 })();

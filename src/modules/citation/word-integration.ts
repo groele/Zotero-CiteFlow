@@ -1,10 +1,13 @@
+import type {NativeSession,TrackedSession,HostMethod,Binding,Integration,WordContext} from "./word-contract.ts";
+const timers = globalThis as unknown as {setTimeout(callback:()=>void|Promise<void>,ms:number):number;clearTimeout(id:number):void};
+declare const addon: {data:{docId?:string}};
 // ============================================================================
 // Word Process Hooks & Integration Engine
 // ============================================================================
 
 export class CitationWordIntegration {
   /** Background polling loop that periodically synchronizes active Word sessions. */
-  async listener(t) {
+  async listener(this: WordContext, t: number) {
     try {
       await this.clearStaleArtifacts();
     } catch (error) {
@@ -15,7 +18,7 @@ export class CitationWordIntegration {
     this.debugLog("[Citation debug] listener started", this._debugCounters);
 
     if (this._listenerTimer) {
-      globalThis.clearTimeout(this._listenerTimer);
+      timers.clearTimeout(this._listenerTimer);
       this._listenerTimer = null;
     }
 
@@ -23,13 +26,13 @@ export class CitationWordIntegration {
       if (this._listenerStopped || this._isTickRunning) return;
       this._isTickRunning = true;
       try {
-        if (!Zotero.ZoteroCitation) {
+        if (!(Zotero as unknown as {ZoteroCitation?:unknown}).ZoteroCitation) {
           void this.clear().catch(error => this.logError("Failed to clear after plugin instance removal", error));
           return;
         }
         if (this._isExecCommandRunning) return;
 
-        const sessions = Zotero.Integration.sessions || {};
+        const sessions = (Zotero.Integration as unknown as Integration).sessions || {};
         await this._pruneMissingWordSessions(sessions);
         await this._syncActiveWordSessions(sessions);
       } catch (e) {
@@ -37,7 +40,7 @@ export class CitationWordIntegration {
       } finally {
         this._isTickRunning = false;
         if (!this._listenerStopped) {
-          this._listenerTimer = globalThis.setTimeout(
+          this._listenerTimer = timers.setTimeout(
             () => { this._listenerTickTask = tick(); },
             Object.keys(this.sessions).length ? t : Math.max(t, 5000)
           );
@@ -45,12 +48,12 @@ export class CitationWordIntegration {
       }
     };
 
-    this._listenerTimer = globalThis.setTimeout(tick, t);
+    this._listenerTimer = timers.setTimeout(tick, t);
     this._installWordIntegrationHooks();
   }
 
-  /** Cleans up tracked sessions absent from Zotero.Integration.sessions for 3 ticks. @private */
-  async _pruneMissingWordSessions(sessions) {
+  /** Cleans up tracked sessions absent from (Zotero.Integration as unknown as Integration).sessions for 3 ticks. @private */
+  async _pruneMissingWordSessions(this: WordContext, sessions: Record<string,NativeSession>) {
     for (const sessionID in this.sessions) {
       if (!(sessionID in sessions)) {
         const missingCount = (this._missingSessionCountBySession[sessionID] || 0) + 1;
@@ -71,7 +74,7 @@ export class CitationWordIntegration {
    * @returns {Promise<void>}
    * @private
    */
-  async _syncActiveWordSessions(sessions) {
+  async _syncActiveWordSessions(this: WordContext, sessions: Record<string,NativeSession>) {
     for (const sessionID in sessions) {
       const session = sessions[sessionID];
       if (!/(WinWord|MacWord|Word)/i.test(String(session?.agent || ""))) continue;
@@ -94,7 +97,7 @@ export class CitationWordIntegration {
    * Self-heals pending or window-title-derived collection names during background session sync.
    * @private
    */
-  async _syncSessionDocumentName(sessionID, nativeSession, trackedSession) {
+  async _syncSessionDocumentName(this: WordContext, sessionID:string, nativeSession:NativeSession, trackedSession:TrackedSession) {
     if (this._listenerStopped || !trackedSession || trackedSession.closing) return;
     const currentDocId = this._docIdBySession?.[sessionID] || trackedSession.docId || "";
     const isWindowTitleDerived = typeof currentDocId === "string" && currentDocId.startsWith("window-title:");
@@ -120,12 +123,12 @@ export class CitationWordIntegration {
   }
 
   /**
-   * Installs interception wrappers on Zotero.Integration.execCommand and getSession.
+   * Installs interception wrappers on (Zotero.Integration as unknown as Integration).execCommand and getSession.
    * @private
    */
-  _installWordIntegrationHooks() {
+  _installWordIntegrationHooks(this: WordContext) {
     if (this._isExecCommandHooked) return;
-    this._originalExecCommand = Zotero.Integration.execCommand;
+    this._originalExecCommand = (Zotero.Integration as unknown as Integration).execCommand;
     if (typeof this._originalExecCommand !== "function") {
       this.logError("Word integration command API is unavailable");
       return;
@@ -134,39 +137,39 @@ export class CitationWordIntegration {
     this._bumpDebugCounter("execHookInstalled");
 
     const originalExecCommand = this._originalExecCommand;
-    const originalGetSession = Zotero.Integration.getSession;
+    const originalGetSession = (Zotero.Integration as unknown as Integration).getSession;
 
     if (typeof originalGetSession === "function") {
       const getSessionWrapper = this._createGetSessionWrapper(originalGetSession);
       this._originalGetSession = originalGetSession;
       this._getSessionWrapper = getSessionWrapper;
-      Zotero.Integration.getSession = getSessionWrapper;
+      (Zotero.Integration as unknown as Integration).getSession = getSessionWrapper;
     }
 
     const execCommandWrapper = this._createExecCommandWrapper(originalExecCommand, originalGetSession);
     this._execCommandWrapper = execCommandWrapper;
-    Zotero.Integration.execCommand = execCommandWrapper;
+    (Zotero.Integration as unknown as Integration).execCommand = execCommandWrapper;
   }
 
-  _isMatchingWordBinding(binding, agent, command) {
+  _isMatchingWordBinding(this: WordContext, binding:Binding, agent:unknown, command:unknown) {
     if (!binding || binding.command !== command) return false;
     if (binding.agent === agent) return true;
     return /^MacWord/i.test(String(binding.agent || "")) && /^MacWord/i.test(String(agent || ""));
   }
 
   /**
-   * Creates an interception wrapper for Zotero.Integration.getSession to bind command sessions.
+   * Creates an interception wrapper for (Zotero.Integration as unknown as Integration).getSession to bind command sessions.
    * @param {Function} originalGetSession - Host getSession function
    * @returns {Function} Wrapped getSession function
    * @private
    */
-  _createGetSessionWrapper(originalGetSession) {
+  _createGetSessionWrapper(this: WordContext, originalGetSession:HostMethod) {
     const citationModule = this;
-    return async function(app, doc, agent, command) {
+    return async function(this:unknown, app:unknown, doc:unknown, agent:unknown, command:unknown) {
       const candidates = [...citationModule._execCommandBindings.values()]
         .filter(binding => citationModule._isMatchingWordBinding(binding, agent, command));
       const binding = candidates.length === 1 ? candidates[0] : null;
-      const result = await originalGetSession.apply(this, arguments);
+      const result = await originalGetSession.apply(this, arguments as unknown as unknown[]);
       if (!citationModule._listenerStopped && binding && !binding.ambiguous
         && citationModule._execCommandBindings.get(binding.bindingID) === binding) {
         const sessionObj = Array.isArray(result) ? result[0] : result;
@@ -181,27 +184,27 @@ export class CitationWordIntegration {
   }
 
   /**
-   * Creates an interception wrapper for Zotero.Integration.execCommand to track Word commands.
+   * Creates an interception wrapper for (Zotero.Integration as unknown as Integration).execCommand to track Word commands.
    * @param {Function} originalExecCommand - Host execCommand function
    * @param {Function} [originalGetSession] - Host getSession function
    * @returns {Function} Wrapped execCommand function
    * @private
    */
-  _createExecCommandWrapper(originalExecCommand, originalGetSession) {
+  _createExecCommandWrapper(this: WordContext, originalExecCommand:HostMethod, originalGetSession?:HostMethod) {
     const citationModule = this;
-    return async function(agent, command, docId) {
+    return async function(this:unknown, agent:unknown, command:unknown, docId:unknown) {
       if (citationModule._listenerStopped || !/(WinWord|MacWord|Word)/i.test(String(agent || ""))) {
-        return originalExecCommand.apply(this, arguments);
+        return originalExecCommand.apply(this, arguments as unknown as unknown[]);
       }
       citationModule._bumpDebugCounter("execCommandCalls");
       citationModule.debugLog("[Citation execCommand]", agent, command, docId);
 
-      const integration = Zotero.Integration;
+      const integration = (Zotero.Integration as unknown as Integration);
       const sessionsBefore = new Set(Object.keys(integration?.sessions || {}));
       const currentBefore = integration?.currentSession;
       const boundBefore = typeof currentBefore?.sessionID === "string" ? currentBefore.sessionID : null;
       const bindingID = ++citationModule._execCommandSerial;
-      const binding = { bindingID, sessionID: null, docId, sessionsBefore, agent, command, ambiguous: false };
+      const binding: Binding = { bindingID, sessionID: null, docId, sessionsBefore, agent, command, ambiguous: false };
 
       for (const pending of citationModule._execCommandBindings.values()) {
         pending.ambiguous = binding.ambiguous = true;
@@ -212,7 +215,7 @@ export class CitationWordIntegration {
 
       let result;
       try {
-        result = await originalExecCommand.apply(this, arguments);
+        result = await originalExecCommand.apply(this, arguments as unknown as unknown[]);
       } catch (error) {
         citationModule._execCommandBindings.delete(bindingID);
         throw error;
@@ -241,9 +244,9 @@ export class CitationWordIntegration {
    * @returns {Promise<void>}
    * @private
    */
-  async _handlePostExecCommand(binding, boundBefore, originalGetSession, docId) {
+  async _handlePostExecCommand(this: WordContext, binding:Binding, boundBefore:string|null, originalGetSession:HostMethod|undefined, docId:unknown) {
     if (this._listenerStopped || binding.ambiguous) return;
-    const integration = Zotero.Integration;
+    const integration = (Zotero.Integration as unknown as Integration);
     if (!binding.sessionID && typeof originalGetSession !== "function") {
       const currentAfter = integration?.currentSession;
       const currentAfterID = typeof currentAfter?.sessionID === "string" ? currentAfter.sessionID : null;
@@ -303,7 +306,7 @@ export class CitationWordIntegration {
    * @param {object} [nativeSession] - Zotero Integration native session
    * @returns {Promise<object|undefined>}
    */
-  async ensureSession(sessionID, nativeSession = Zotero.Integration.sessions?.[sessionID]) {
+  async ensureSession(this: WordContext, sessionID:string, nativeSession:NativeSession = (Zotero.Integration as unknown as Integration).sessions?.[sessionID]) {
     if (this._listenerStopped || !nativeSession) return;
     const existing = this.sessions[sessionID];
     if (existing?.closing) return;

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
-import { Preferences, settings, readSetting } from "../src/modules/preferences.mjs";
+import { Preferences, settings, readSetting } from "../src/modules/preferences.ts";
 
 const prefix = "extensions.zotero.zoterocitation.";
 function fixture() {
@@ -35,7 +35,10 @@ function fixture() {
     handlers = new Map();
     value = "";
     checked = false;
-    addEventListener(type, fn) { this.handlers.set(type, fn); }
+    addEventListener(type, fn, options = {}) {
+      this.handlers.set(type, fn);
+      options.signal?.addEventListener('abort', () => this.removeEventListener(type, fn), { once: true });
+    }
     removeEventListener(type, fn) { if (this.handlers.get(type) === fn) this.handlers.delete(type); }
     dispatch(type) { this.handlers.get(type)?.(); }
     setCustomValidity(value) { this.validityMessage = value; }
@@ -46,6 +49,7 @@ function fixture() {
   nodes.set("#zoterocitation-settings-status", new Node());
   const root = { querySelector: id => nodes.get(id) };
   const win = new Node();
+  win.AbortController = AbortController;
   win.document = {
     getElementById: () => root,
     l10n: { setAttributes(node, id, args) { node.l10nID = id; node.l10nArgs = args; } }
@@ -141,22 +145,19 @@ test('shutdown during pane registration removes a late pane without attaching ob
   assert.equal(f.observers.size, 0); assert.equal(prefs._paneID, undefined);
 });
 
-test('live changes update citation performance and debug state', () => {
+test('live changes update citation performance and debug state', async () => {
   const f = fixture();
-  const code = fs.readFileSync(new URL('../chrome/content/scripts/index.js', import.meta.url), 'utf8');
-  const start = code.indexOf('  var Citation = class {');
-  const end = code.indexOf('\n  };\n\n  // src/modules/drop-target.mjs', start);
-  const context = vm.createContext({ Zotero, addon: { data: {} } });
-  vm.runInContext(code.slice(start, end + 5) + '; globalThis.CitationClass = Citation;', context);
-  const citation = Object.create(context.CitationClass.prototype);
+  globalThis.addon = { data: {} };
+  const { Citation } = await import('../src/modules/citation.ts');
+  const citation = Object.create(Citation.prototype);
   f.store.set(prefix + 'debug', true); f.store.set(prefix + 'citationTagDebounceMs', 625);
   citation.applyPreferences();
-  assert.equal(citation._debugEnabled, true); assert.equal(context.addon.data.citationDebugEnabled, true);
+  assert.equal(citation._debugEnabled, true); assert.equal(globalThis.addon.data.citationDebugEnabled, true);
   assert.equal(citation._tagSyncDebounceMs, 625); assert.equal(citation._healthWindowMs, 300000);
 });
 
 test('startup registers settings before the tracking-enabled early return', () => {
-  const code = fs.readFileSync(new URL('../src/hooks.mjs', import.meta.url), 'utf8');
+  const code = fs.readFileSync(new URL('../src/hooks.ts', import.meta.url), 'utf8');
   assert.ok(code.indexOf('await preferences.register()') < code.indexOf('zoterocitation.enable'));
   assert.match(code, /await binding.views.dragCite\(\)/);
 });
@@ -237,19 +238,25 @@ test('external pane loader initializes after fragment insertion and releases its
   const root = f.win.document.getElementById('zoterocitation-settings');
   const document = {
     getElementById: id => id === 'zoterocitation-settings' && mounted ? root : null,
-    addEventListener: (type, handler, capture) => listeners.set(type, { handler, capture }),
+    addEventListener: (type, handler, options) => {
+      listeners.set(type, { handler, capture: options.capture });
+      options.signal.addEventListener('abort', () => document.removeEventListener(type, handler), { once: true });
+    },
     removeEventListener: (type, handler) => {
       if (listeners.get(type)?.handler === handler) listeners.delete(type);
     }
   };
   const window = {
-    addEventListener: (type, handler) => listeners.set(`window:${type}`, { handler }),
+    addEventListener: (type, handler, options) => {
+      listeners.set(`window:${type}`, { handler });
+      options.signal.addEventListener('abort', () => window.removeEventListener(type, handler), { once: true });
+    },
     removeEventListener: (type, handler) => {
       if (listeners.get(`window:${type}`)?.handler === handler) listeners.delete(`window:${type}`);
     }
   };
   const Zotero = { ZoteroCitation: { api: { initPreferences: () => { initCalls++; prefs.init(f.win); } } } };
-  const context = vm.createContext({ document, window, Zotero });
+  const context = vm.createContext({ document, window, Zotero, AbortController });
   vm.runInContext(script, context);
   assert.equal(initCalls, 0);
   assert.equal(listeners.get('load').capture, true);

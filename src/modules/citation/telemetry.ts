@@ -1,3 +1,13 @@
+interface Metric { count:number; totalMs:number; maxMs:number; lastMs:number; slowCount:number }
+interface TelemetryState {
+ _errors: {message:string;time:number}[]; _debugCounters: Record<string,number>; _perfStats: Record<string,Metric>;
+ sessions: Record<string,unknown>; _listenerStopped:boolean; _initializationTasks:Map<unknown,unknown>;
+ _activeRefreshTasks:Set<unknown>; _sessionUpdateQueue:Record<string,unknown>; _tagSyncQueue?:Promise<unknown>;
+ _healthWindowMs:number; _debugEnabled:boolean; _isExecCommandHooked:boolean; _isExecCommandRunning:boolean;
+ _tagSyncDebounceMs:number; _itemsViewRefreshDebounceMs:number; _perfSlowThresholdMs:number;
+}
+type TelemetryContext = TelemetryState & CitationTelemetry;
+declare const runtime: {log(...args:unknown[]):void};
 // ============================================================================
 // Telemetry, Metrics & Health Diagnostics
 // ============================================================================
@@ -8,7 +18,7 @@ export class CitationTelemetry {
    * @param {string} message - Descriptive error message
    * @param {Error} [cause] - Underlying exception
    */
-  logError(message, cause) {
+  logError(this: TelemetryContext, message: string, cause?: unknown) {
     const error = new Error(message, cause ? { cause } : undefined);
     (this._errors ??= []).push({ message, time: Date.now() });
     if (this._errors.length > 20) this._errors.shift();
@@ -25,7 +35,7 @@ export class CitationTelemetry {
    * @param {number} [delta=1] - Increment step
    * @private
    */
-  _bumpDebugCounter(key, delta = 1) {
+  _bumpDebugCounter(this: TelemetryContext, key: string, delta = 1) {
     this._debugCounters ??= {};
     if (!(key in this._debugCounters)) this._debugCounters[key] = 0;
     this._debugCounters[key] += delta;
@@ -37,7 +47,7 @@ export class CitationTelemetry {
    * @param {number} durationMs - Duration in milliseconds
    * @private
    */
-  _recordPerf(name, durationMs) {
+  _recordPerf(this: TelemetryContext, name: string, durationMs: number) {
     this._perfStats ??= {};
     const metric = this._perfStats[name];
     if (!metric || !Number.isFinite(durationMs) || durationMs < 0) return;
@@ -52,7 +62,7 @@ export class CitationTelemetry {
    * Returns a comprehensive diagnostic snapshot of CiteFlow subsystems.
    * @returns {object} Diagnostic snapshot
    */
-  getDiagnostics() {
+  getDiagnostics(this: TelemetryContext) {
     return {
       activeSessions: Object.keys(this.sessions || {}).length,
       listenerStopped: !!this._listenerStopped,
@@ -69,7 +79,7 @@ export class CitationTelemetry {
    * Returns internal debug statistics, counters, and execution states.
    * @returns {object} Debug statistics
    */
-  getDebugStats() {
+  getDebugStats(this: TelemetryContext) {
     const healthWindow = this._healthWindowMs || 300000;
     return {
       counters: { ...(this._debugCounters || {}) },
@@ -95,7 +105,7 @@ export class CitationTelemetry {
    * Resets all debug counters and error history.
    * @returns {object} Clean debug statistics
    */
-  resetDebugStats() {
+  resetDebugStats(this: TelemetryContext) {
     for (const key in this._debugCounters || {}) this._debugCounters[key] = 0;
     this._errors = [];
     return this.getDebugStats();
@@ -105,7 +115,7 @@ export class CitationTelemetry {
    * Asserts system health status and returns error/warning issues.
    * @returns {{ status: "ok"|"warn"|"error", errors: string[], warnings: string[], issues: string[], stats: object }}
    */
-  assertHealth() {
+  assertHealth(this: TelemetryContext) {
     const stats = this.getDebugStats();
     const errors = [];
     const warnings = [];
@@ -128,7 +138,7 @@ export class CitationTelemetry {
    * Returns a high-level summary of health signals and last operation counts.
    * @returns {object} Health summary
    */
-  getHealthSummary() {
+  getHealthSummary(this: TelemetryContext) {
     const health = this.assertHealth();
     const { stats, status, errors, warnings } = health;
     const counters = stats?.counters || {};
@@ -162,7 +172,7 @@ export class CitationTelemetry {
    * @returns {number} Safe wait duration in milliseconds
    * @private
    */
-  _sanitizeCheckWaitMs(waitMs) {
+  _sanitizeCheckWaitMs(this: TelemetryContext, waitMs: number) {
     return Number.isFinite(Number(waitMs))
       ? Math.max(0, Math.min(600000, Math.trunc(Number(waitMs))))
       : 0;
@@ -173,7 +183,7 @@ export class CitationTelemetry {
    * @param {{ reset?: boolean, waitMs?: number }} [options]
    * @returns {Promise<object>}
    */
-  async runHealthSummaryCheck(options = {}) {
+  async runHealthSummaryCheck(this: TelemetryContext, options: {reset?:boolean;waitMs?:number} = {}) {
     const { reset = false, waitMs = 0 } = options || {};
     if (reset) this.resetDebugStats();
     const safeWaitMs = this._sanitizeCheckWaitMs(waitMs);
@@ -186,7 +196,7 @@ export class CitationTelemetry {
    * @param {{ reset?: boolean, waitMs?: number }} [options]
    * @returns {Promise<object>}
    */
-  async runHealthCheck(options = {}) {
+  async runHealthCheck(this: TelemetryContext, options: {reset?:boolean;waitMs?:number} = {}) {
     const { reset = true, waitMs = 0 } = options || {};
     if (reset) this.resetDebugStats();
     const safeWaitMs = this._sanitizeCheckWaitMs(waitMs);
@@ -199,8 +209,8 @@ export class CitationTelemetry {
    * Returns latency and frequency metrics for performance-critical operations.
    * @returns {object} Performance statistics
    */
-  getPerformanceStats() {
-    const result = {};
+  getPerformanceStats(this: TelemetryContext) {
+    const result: Record<string, Metric & {avgMs:number}> = {};
     for (const key in this._perfStats || {}) {
       const metric = this._perfStats[key];
       result[key] = {
@@ -221,7 +231,7 @@ export class CitationTelemetry {
    * Resets all performance metric accumulators.
    * @returns {object} Reset performance statistics
    */
-  resetPerformanceStats() {
+  resetPerformanceStats(this: TelemetryContext) {
     for (const key in this._perfStats || {}) {
       this._perfStats[key] = { count: 0, totalMs: 0, maxMs: 0, lastMs: 0, slowCount: 0 };
     }
@@ -233,7 +243,7 @@ export class CitationTelemetry {
    * @param {{ reset?: boolean, waitMs?: number }} [options]
    * @returns {Promise<object>}
    */
-  async runPerformanceCheck(options = {}) {
+  async runPerformanceCheck(this: TelemetryContext, options: {reset?:boolean;waitMs?:number} = {}) {
     const { reset = false, waitMs = 0 } = options || {};
     if (reset) this.resetPerformanceStats();
     const safeWaitMs = this._sanitizeCheckWaitMs(waitMs);

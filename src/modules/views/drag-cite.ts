@@ -1,7 +1,20 @@
-import { config } from "../../config.mjs";
-import { getString } from "../locale.mjs";
-import { resolveWordDropTarget } from "../drop-target.mjs";
+import { config } from "../../config.ts";
+import { getString } from "../locale.ts";
+import { resolveWordDropTarget } from "../drop-target.ts";
 
+import type { NativeRuntime } from "../../runtime.ts";
+export interface CiteItem { id?: number; deleted?: boolean; inTrash?: boolean; isRegularItem?(): boolean; isTopLevelItem(): boolean }
+interface DragSelection { isSelected(row: number): boolean; select(row: number): void }
+interface ItemsView { selection?: DragSelection; [key: string]: unknown }
+interface DragPane { itemsView: ItemsView; getSelectedItems?(): CiteItem[] }
+export interface DragContext {
+  _disposed: boolean; _lastUnknownDropNotice: number; _dragEndHandler?: ((event: DragEvent) => void) | null;
+  _dragItems?: CiteItem[] | null; _dragStartedAt?: number; _dragDocument?: Document | null;
+  _patchDisposers: Array<() => void>; document: Document; pane: DragPane;
+  _dragEnabled(): boolean; _resolveDropTarget(): string; _notifyUnknownDropTarget(): void;
+}
+declare const addon: { data: { alive: boolean }; api: { citeItems(items: CiteItem[]): Promise<void> } };
+declare const runtime: NativeRuntime;
 // ============================================================================
 // Drag Citation & Word Target Interception
 // ============================================================================
@@ -12,7 +25,7 @@ export class ViewsDragCite {
    * @returns {boolean}
    * @private
    */
-  _dragEnabled() {
+  _dragEnabled(this: DragContext): boolean {
     return !this._disposed && addon.data.alive !== false
       && Zotero.Prefs.get("extensions.zotero.zoterocitation.dragCite.enable", true) !== false;
   }
@@ -22,7 +35,7 @@ export class ViewsDragCite {
    * @returns {"word-confirmed"|"non-word"|"unknown"}
    * @private
    */
-  _resolveDropTarget() {
+  _resolveDropTarget(): string {
     return resolveWordDropTarget();
   }
 
@@ -30,7 +43,7 @@ export class ViewsDragCite {
    * Displays a transient notice when a drop target cannot be confirmed as Word.
    * @private
    */
-  _notifyUnknownDropTarget() {
+  _notifyUnknownDropTarget(this: DragContext): void {
     const now = Date.now();
     if (now - this._lastUnknownDropNotice < 15000) return;
     this._lastUnknownDropNotice = now;
@@ -40,7 +53,7 @@ export class ViewsDragCite {
       notice.show();
       notice.startCloseTimer(5000);
     } catch (error) {
-      Zotero.logError(error);
+      Zotero.logError(error as Error);
     }
   }
 
@@ -48,16 +61,16 @@ export class ViewsDragCite {
    * Installs drag-and-drop citation handler for Microsoft Word.
    * @returns {Promise<void>}
    */
-  async dragCite() {
+  async dragCite(this: DragContext): Promise<void> {
     if (this._dragEndHandler || this._disposed || addon.data.alive === false
       || Zotero.Prefs.get("extensions.zotero.zoterocitation.dragCite.enable", true) === false) return;
-    this._dragEndHandler = (event) => {
+    this._dragEndHandler = (event: DragEvent) => {
       const items = this._dragItems;
       const startedAt = this._dragStartedAt || 0;
       this._dragItems = null;
       this._dragStartedAt = 0;
       if (!items?.length || !this._dragEnabled() || !event.dataTransfer
-        || event.dataTransfer.mozUserCancelled) return;
+        || (event.dataTransfer as DataTransfer & { mozUserCancelled?: boolean }).mozUserCancelled) return;
       if (startedAt > 0 && Date.now() - startedAt > 60000) return;
       const target = this._resolveDropTarget();
       if (target === "unknown") this._notifyUnknownDropTarget();
@@ -73,7 +86,9 @@ export class ViewsDragCite {
     dragDoc.addEventListener("dragend", this._dragEndHandler, true);
     try {
       const restore = runtime.patch(this.pane.itemsView, "onDragStart", config.addonRef,
-        (original) => (event, row) => {
+        (original) => (...args: unknown[]) => {
+          const event = args[0] as DragEvent;
+          const row = args[1] as number;
           this._dragItems = null;
           this._dragStartedAt = 0;
           const selection = this.pane.itemsView.selection;
@@ -83,7 +98,7 @@ export class ViewsDragCite {
           if (this._dragEnabled() && event.dataTransfer && items?.length
             && items.every((item) => item && item.deleted !== true && item.inTrash !== true
               && item.isRegularItem?.() && item.isTopLevelItem())) {
-            const seenIDs = new Set();
+            const seenIDs = new Set<number>();
             this._dragItems = items.filter((item) => {
               if (item.id != null) {
                 if (seenIDs.has(item.id)) return false;

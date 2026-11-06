@@ -74,8 +74,8 @@ const checks = `
   await disabledView.dragCite();
   assert.equal(handlers.size, 0, "disabled drag preference must not install a dragend listener");
 
-  const hookStart = source.indexOf("  // src/hooks.mjs");
-  const hookEnd = source.indexOf("  // src/addon.mjs", hookStart);
+  const hookStart = source.indexOf("  // src/hooks.ts");
+  const hookEnd = source.indexOf("  // src/addon.ts", hookStart);
   assert.ok(hookStart >= 0 && hookEnd > hookStart, "hooks slice must be present");
   vm.runInContext(source.slice(hookStart, hookEnd) + "; globalThis.__hooks = hooks_default;", sandbox);
   let clearCalls = 0, disposeCalls = 0, unregisterCalls = 0;

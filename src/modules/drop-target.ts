@@ -1,11 +1,36 @@
+interface NativePointer { isNull(): boolean }
+interface NativeNumber { value: number; address(): unknown }
+interface NativeBuffer { length: number; readString(): string }
+interface ScalarFactory { (value?: number): NativeNumber; ptr: unknown }
+interface BufferFactory { ptr: unknown; array(length: number): () => NativeBuffer }
+interface Point { address(): unknown }
+interface PointFactory { (): Point; ptr: unknown }
+interface NativeLibrary { declare(name: string, ...types: unknown[]): unknown; close(): void }
+interface NativeCtypes {
+  StructType: new (name: string, fields: unknown[]) => PointFactory;
+  long: unknown; int32_t: unknown; voidptr_t: { ptr: unknown }; uint32_t: ScalarFactory;
+  jschar: BufferFactory; winapi_abi: unknown; open(name: string): NativeLibrary;
+}
+interface NativeDropApi {
+  ctypes: NativeCtypes; POINT: PointFactory; user32: NativeLibrary; kernel32: NativeLibrary;
+  getCursorPos(point: unknown): number; windowFromPoint(point: Point): NativePointer;
+  getWindowThreadProcessId(window: NativePointer, process: unknown): number;
+  openProcess(flags: number, inherit: boolean, id: number): NativePointer;
+  queryFullProcessImageName(process: NativePointer, flags: number, buffer: NativeBuffer, size: unknown): number;
+  closeHandle(process: NativePointer): number; getAncestor(window: NativePointer, flags: number): NativePointer;
+  getForegroundWindow(): NativePointer; findWindowEx(parent: null, previous: NativePointer | null, name: string, title: null): NativePointer;
+  isWindowVisible(window: NativePointer): number; getWindowText(window: NativePointer, buffer: NativeBuffer, size: number): number;
+  pathBuffer: NativeBuffer; titleBuffer: NativeBuffer;
+}
+declare const addon: { data?: { lastDroppedWordWindow?: { title: string; at: number } } };
 // Resolve the process directly under the native cursor while dragend is still
 // being dispatched. Gecko's dropEffect is "none" after a successful Word drop
 // with CiteFlow's empty payload, so it cannot identify the target.
-let cachedCtypes = null;
+let cachedCtypes: NativeDropApi | null = null;
 
-function getDropTargetCtypes() {
+function getDropTargetCtypes(): NativeDropApi {
   if (cachedCtypes) return cachedCtypes;
-  const { ctypes } = ChromeUtils.importESModule("resource://gre/modules/ctypes.sys.mjs");
+  const ctypes = ChromeUtils.importESModule("resource://gre/modules/ctypes.sys.mjs").ctypes as unknown as NativeCtypes;
   const POINT = new ctypes.StructType("CiteFlowDropPoint", [
     { x: ctypes.long }, { y: ctypes.long }
   ]);
@@ -40,19 +65,19 @@ function getDropTargetCtypes() {
       ctypes.int32_t, ctypes.voidptr_t, ctypes.jschar.ptr, ctypes.int32_t),
     pathBuffer: ctypes.jschar.array(32768)(),
     titleBuffer: ctypes.jschar.array(1024)()
-  };
+  } as unknown as NativeDropApi;
   return cachedCtypes;
 }
 
-function readWindowTitle(api, hwnd) {
+function readWindowTitle(api: NativeDropApi, hwnd: NativePointer | null): string {
   if (!hwnd || hwnd.isNull()) return "";
   const len = api.getWindowText(hwnd, api.titleBuffer, api.titleBuffer.length);
   return len > 0 ? api.titleBuffer.readString() : "";
 }
 
-function isWinWordWindow(api, hwnd) {
+function isWinWordWindow(api: NativeDropApi, hwnd: NativePointer | null): boolean {
   if (!hwnd || hwnd.isNull()) return false;
-  let processHandle;
+  let processHandle: NativePointer | undefined;
   try {
     const processID = api.ctypes.uint32_t();
     if (!api.getWindowThreadProcessId(hwnd, processID.address()) || !processID.value) return false;
@@ -60,7 +85,7 @@ function isWinWordWindow(api, hwnd) {
     if (processHandle.isNull()) return false;
     const pathLength = api.ctypes.uint32_t(api.pathBuffer.length);
     if (!api.queryFullProcessImageName(processHandle, 0, api.pathBuffer, pathLength.address())) return false;
-    return api.pathBuffer.readString().split(/[\\/]/).pop().toLowerCase() === "winword.exe";
+    return api.pathBuffer.readString().split(/[\\/]/).pop()?.toLowerCase() === "winword.exe";
   } catch {
     return false;
   } finally {
@@ -68,7 +93,7 @@ function isWinWordWindow(api, hwnd) {
   }
 }
 
-export function closeDropTargetCtypes() {
+export function closeDropTargetCtypes(): void {
   if (!cachedCtypes) return;
   const { user32, kernel32 } = cachedCtypes;
   cachedCtypes = null;
@@ -76,7 +101,7 @@ export function closeDropTargetCtypes() {
   try { user32?.close(); } catch { }
 }
 
-export function probeWordWindowTitles() {
+export function probeWordWindowTitles(): { foregroundTitle: string; visibleTitles: string[] } {
   if (typeof Zotero === "undefined" || !Zotero.isWin) return { foregroundTitle: "", visibleTitles: [] };
   try {
     const api = getDropTargetCtypes();
@@ -89,8 +114,8 @@ export function probeWordWindowTitles() {
         foregroundTitle = readWindowTitle(api, targetFg);
       }
     }
-    const visibleTitles = [];
-    let current = null;
+    const visibleTitles: string[] = [];
+    let current: NativePointer | null = null;
     for (let i = 0; i < 32; i++) {
       current = api.findWindowEx(null, current, "OpusApp", null);
       if (!current || current.isNull()) break;
@@ -104,10 +129,10 @@ export function probeWordWindowTitles() {
   }
 }
 
-export function resolveWordDropTarget() {
+export function resolveWordDropTarget(): "word-confirmed" | "non-word" | "unknown" {
   if (!Zotero.isWin) return "unknown";
-  let processHandle;
-  let closeHandle;
+  let processHandle: NativePointer | undefined;
+  let closeHandle: NativeDropApi["closeHandle"] | undefined;
   try {
     const api = getDropTargetCtypes();
     closeHandle = api.closeHandle;
@@ -121,7 +146,7 @@ export function resolveWordDropTarget() {
     if (processHandle.isNull()) return "unknown";
     const pathLength = api.ctypes.uint32_t(api.pathBuffer.length);
     if (!api.queryFullProcessImageName(processHandle, 0, api.pathBuffer, pathLength.address())) return "unknown";
-    const executable = api.pathBuffer.readString().split(/[\\/]/).pop().toLowerCase();
+    const executable = api.pathBuffer.readString().split(/[\\/]/).pop()?.toLowerCase();
     const isWord = executable === "winword.exe";
     if (isWord) {
       try {

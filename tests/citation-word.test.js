@@ -6,14 +6,6 @@ const vm = require("node:vm");
 const sourceDirectory = process.env.CITATION_SOURCE_DIR || ".";
 const sourcePath = path.join(__dirname, "..", sourceDirectory, "chrome", "content", "scripts", "index.js");
 const source = fs.readFileSync(sourcePath, "utf8").replace(/\r\n/g, "\n");
-const classStart = source.indexOf("  var Citation = class {");
-const hasDropTarget = source.includes("\n  // src/modules/drop-target.mjs");
-const classEnd = source.indexOf(hasDropTarget
-  ? "\n  };\n\n  // src/modules/drop-target.mjs" : "\n  };\n\n  // src/modules/cite.mjs", classStart);
-const citeStart = source.indexOf("  var citeItemsInFlight = false;");
-const citeEnd = source.indexOf(hasDropTarget ? "\n  // src/runtime.mjs" : "\n  // src/modules/views.mjs", citeStart);
-assert.ok(classStart >= 0 && classEnd > classStart, "Citation class must be extractable");
-assert.ok(citeStart >= 0 && citeEnd > citeStart, "cite module must be extractable");
 
 const prefStore = new Map();
 const sandbox = {
@@ -49,9 +41,10 @@ const sandbox = {
   }
 };
 vm.createContext(sandbox);
-vm.runInContext(`${source.slice(classStart, classEnd + 5)}\nglobalThis.__Citation = Citation;`, sandbox);
-vm.runInContext(`${source.slice(citeStart, citeEnd)}\nglobalThis.__citeItems = citeItems;`, sandbox);
-const Citation = sandbox.__Citation;
+const { Citation, Views, citeItems } = require("./helpers/domain-bundle.cjs").loadDomains(sandbox);
+sandbox.__Citation = Citation;
+sandbox.__Views = Views;
+sandbox.__citeItems = citeItems;
 
 function bareCitation() {
   const instance = Object.create(Citation.prototype);

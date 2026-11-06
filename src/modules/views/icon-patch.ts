@@ -1,5 +1,30 @@
-import { config } from "../../config.mjs";
+import { config } from "../../config.ts";
 
+import type { CitationSessionApi } from "../citation/session-contract.ts";
+interface CollectionRef { key?: string; libraryID?: number; name?: string; parentID?: number | null; _isCiteFlowCollection?: boolean; getRelationsByPredicate?(key: string): string[] }
+interface TreeRow { type?: string; level?: number; id?: string; ref?: CollectionRef; isCollection?(): boolean; isLibrary?(groups: boolean): boolean; isPublications?(): boolean; isDuplicates?(): boolean; isUnfiled?(): boolean; isRetracted?(): boolean; isTrash?(): boolean }
+interface CollectionView {
+  _rows: TreeRow[]; _rowMap?: Record<string, number>; selection?: { focused: number; pivot: number; selected: Set<number> };
+  tree?: { invalidate?(): void }; getRow(index: number | undefined): TreeRow; isContainerOpen?(index: number): boolean;
+  isContainerEmpty?(index: number): boolean; getLevel?(index: number): number; _refreshRowMap?(): void;
+  _includedInTree?(collection: CollectionRef): boolean; _addRow(row: TreeRow, index: number): void;
+  _expandRow?: unknown; _addSortedRow?: unknown; [key: string]: unknown;
+}
+interface IconState { backgroundImage: string; hadSearch: boolean; hadCollection: boolean; hadPublications: boolean }
+interface IconContext {
+  pane?: { collectionsView?: CollectionView }; _disposed: boolean; _patchDisposers: Array<() => void>;
+  _iconNodeStates: Map<HTMLElement, IconState>;
+  _getSessionIndex?(api: CitationSessionApi): { byKey: Map<string, Array<{ collection?: { libraryID?: number } }>> };
+  _isCitationCollection(ref?: CollectionRef): boolean; _isBottomVirtualRow(row?: TreeRow): boolean;
+  _compareCollectionNames(a?: string, b?: string): number; _reorderCitationRowsInSlice(rows: TreeRow[], start: number, end: number, level: number): boolean;
+  _getAllCollectionsViews(): Set<CollectionView>; _reorderViewCollections(view: CollectionView): boolean;
+  _insertCitationRowAbovePublications(view: CollectionView, collection: CollectionRef): number | false;
+  repositionCitationCollections(): boolean; _rememberIconNode(node: HTMLElement): void; _restoreIconNode(node: HTMLElement, state?: IconState): void;
+}
+type HostMethod = (this: unknown, ...args: unknown[]) => unknown;
+declare const addon: { data: { alive: boolean; citation?: { _temporaryCollectionKeys?: Set<string> } } };
+declare const runtime: { patch(owner: CollectionView, key: string, name: string, create: (original: HostMethod) => HostMethod): () => void; log(...args: unknown[]): void };
+type Host = { ZoteroCitation?: { api?: CitationSessionApi }; CollectionTreeRow: new (view: CollectionView, type: string, collection: CollectionRef, level: number) => TreeRow };
 // ============================================================================
 // Collection Icon Patching, Positioning Above My Publications & Visual State
 // ============================================================================
@@ -15,13 +40,13 @@ export class ViewsIconPatch {
    * Determines whether a Zotero collection reference is a CiteFlow temporary Word collection.
    * @private
    */
-  _isCitationCollection(rowRef) {
+  _isCitationCollection(this: IconContext, rowRef?: CollectionRef): boolean {
     if (!rowRef || typeof rowRef !== "object") return false;
     if (rowRef._isCiteFlowCollection === true) return true;
     const key = rowRef.key;
     if (typeof key === "string" && key) {
       if (addon?.data?.citation?._temporaryCollectionKeys?.has?.(key)) return true;
-      const candidates = this._getSessionIndex?.(Zotero.ZoteroCitation?.api || {})?.byKey?.get?.(key) || [];
+      const candidates = this._getSessionIndex?.((Zotero as unknown as Host).ZoteroCitation?.api || {})?.byKey?.get?.(key) || [];
       if (candidates.some(s => s?.collection?.libraryID == null || rowRef.libraryID == null || s.collection.libraryID === rowRef.libraryID)) {
         return true;
       }
@@ -37,7 +62,7 @@ export class ViewsIconPatch {
    * Checks whether a CollectionTreeRow is a bottom virtual library row (starting at My Publications).
    * @private
    */
-  _isBottomVirtualRow(treeRow) {
+  _isBottomVirtualRow(treeRow?: TreeRow): boolean {
     if (!treeRow || typeof treeRow !== "object") return false;
     const t = treeRow.type;
     return t === "publications" || t === "duplicates" || t === "unfiled" || t === "retracted" || t === "trash"
@@ -48,7 +73,7 @@ export class ViewsIconPatch {
    * Compares two collection names using Zotero's locale collator.
    * @private
    */
-  _compareCollectionNames(nameA, nameB) {
+  _compareCollectionNames(nameA?: string, nameB?: string): number {
     const a = String(nameA ?? ""), b = String(nameB ?? "");
     return typeof Zotero?.localeCompare === "function" ? Zotero.localeCompare(a, b) : a.localeCompare(b);
   }
@@ -58,9 +83,9 @@ export class ViewsIconPatch {
    * after all regular user collections/searches and immediately above My Publications.
    * @private
    */
-  _reorderCitationRowsInSlice(rows, startIndex, endIndex, targetLevel) {
+  _reorderCitationRowsInSlice(this: IconContext, rows: TreeRow[], startIndex: number, endIndex: number, targetLevel: number): boolean {
     if (!Array.isArray(rows) || startIndex < 0 || endIndex <= startIndex || endIndex > rows.length) return false;
-    const beforeBlocks = [], citationBlocks = [], afterBlocks = [];
+    const beforeBlocks: TreeRow[][] = [], citationBlocks: TreeRow[][] = [], afterBlocks: TreeRow[][] = [];
     let i = startIndex, reachedBottomVirtual = false;
 
     while (i < endIndex) {
@@ -96,11 +121,12 @@ export class ViewsIconPatch {
    * Enumerates all unique active collectionsView instances across main and detached windows.
    * @private
    */
-  _getAllCollectionsViews() {
-    const views = new Set([this.pane?.collectionsView].filter(Boolean));
+  _getAllCollectionsViews(this: IconContext): Set<CollectionView> {
+    const views = new Set<CollectionView>();
+    if (this.pane?.collectionsView) views.add(this.pane.collectionsView);
     if (typeof Zotero?.getMainWindows === "function") {
       for (const win of Zotero.getMainWindows()) {
-        const cv = win?.ZoteroPane?.collectionsView;
+        const cv = win?.ZoteroPane?.collectionsView as unknown as CollectionView | undefined;
         if (cv) views.add(cv);
       }
     }
@@ -111,7 +137,7 @@ export class ViewsIconPatch {
    * Reorders Word collections in a single collectionsView instance.
    * @private
    */
-  _reorderViewCollections(cv) {
+  _reorderViewCollections(this: IconContext, cv: CollectionView): boolean {
     const rows = cv?._rows;
     if (!cv || !Array.isArray(rows) || !rows.length) return false;
 
@@ -145,7 +171,7 @@ export class ViewsIconPatch {
       if (focusedID && typeof cv._rowMap[focusedID] === "number") cv.selection.focused = cv._rowMap[focusedID];
       if (pivotID && typeof cv._rowMap[pivotID] === "number") cv.selection.pivot = cv._rowMap[pivotID];
       if (cv.selection.selected instanceof Set && selectedIDs.length) {
-        cv.selection.selected = new Set(selectedIDs.map(id => cv._rowMap[id]).filter(idx => typeof idx === "number"));
+        cv.selection.selected = new Set(selectedIDs.map(id => cv._rowMap![id!]).filter(idx => typeof idx === "number"));
       }
     }
     cv.tree?.invalidate?.();
@@ -155,7 +181,7 @@ export class ViewsIconPatch {
   /**
    * Repositions active CiteFlow Word collection rows across all open views to sit right above My Publications.
    */
-  repositionCitationCollections() {
+  repositionCitationCollections(this: IconContext): boolean {
     if (this._disposed || addon?.data?.alive === false) return false;
     let anyChanged = false;
     for (const cv of this._getAllCollectionsViews()) {
@@ -168,7 +194,7 @@ export class ViewsIconPatch {
    * Inserts a CiteFlow temporary Word collection row immediately above My Publications in collectionsView.
    * @private
    */
-  _insertCitationRowAbovePublications(cv, col) {
+  _insertCitationRowAbovePublications(this: IconContext, cv: CollectionView, col: CollectionRef): number | false {
     const startRow = cv._rowMap?.["L" + col.libraryID];
     if (startRow === undefined || (typeof cv.isContainerOpen === "function" && !cv.isContainerOpen(startRow))) return false;
     const libLevel = typeof cv.getLevel === "function" ? cv.getLevel(startRow) : (cv._rows?.[startRow]?.level ?? 0);
@@ -192,7 +218,7 @@ export class ViewsIconPatch {
       }
     }
     if (typeof cv._includedInTree !== "function" || cv._includedInTree(col)) {
-      cv._addRow(new Zotero.CollectionTreeRow(cv, "collection", col, level), beforeRow);
+      cv._addRow(new (Zotero as unknown as Host).CollectionTreeRow(cv, "collection", col, level), beforeRow);
     }
     return beforeRow;
   }
@@ -201,22 +227,23 @@ export class ViewsIconPatch {
    * Patches collectionsView.renderItem, _expandRow, and _addSortedRow to display the Word icon
    * and position CiteFlow temporary collections immediately above My Publications.
    */
-  async patchIcon() {
+  async patchIcon(this: IconContext): Promise<void> {
     try {
       const view = this;
       const cv = this.pane?.collectionsView;
       if (!cv) return;
-      const restoreRender = runtime.patch(cv, "renderItem", config.addonRef, (original) => (index, selection, oldDiv, columns) => {
-        const previousIcon = oldDiv?.querySelector?.(".cell-icon");
+      const restoreRender = runtime.patch(cv, "renderItem", config.addonRef, (original) => (...args: unknown[]) => {
+        const [index, selection, oldDiv, columns] = args as [number, unknown, HTMLElement | null, unknown];
+        const previousIcon = oldDiv?.querySelector<HTMLElement>(".cell-icon");
         if (previousIcon) {
           view._restoreIconNode(previousIcon);
           view._iconNodeStates?.delete(previousIcon);
         }
-        const div = original.call(cv, index, selection, oldDiv, columns);
+        const div = original.call(cv, index, selection, oldDiv, columns) as HTMLElement | null;
         if (view._disposed || addon.data.alive === false) return div;
         const row = cv.getRow(index);
         const isCitationCollection = view._isCitationCollection(row?.ref);
-        const iconNode = div?.querySelector?.(".cell-icon");
+        const iconNode = div?.querySelector<HTMLElement>(".cell-icon");
         if (iconNode && isCitationCollection) {
           view._rememberIconNode(iconNode);
           iconNode.style.backgroundImage = `url(chrome://${config.addonRef}/content/icons/word.png)`;
@@ -231,13 +258,15 @@ export class ViewsIconPatch {
       if (typeof restoreRender === "function") (this._patchDisposers ??= []).push(restoreRender);
 
       if (typeof cv._expandRow === "function") {
-        const restoreExpand = runtime.patch(cv, "_expandRow", config.addonRef, (original) => async function(rows, row, forceOpen) {
-          const added = await original.call(this, rows, row, forceOpen);
+        const restoreExpand = runtime.patch(cv, "_expandRow", config.addonRef, (original) => async function(this: unknown, ...args: unknown[]) {
+          const [rows, row, forceOpen] = args as [TreeRow[], number, boolean];
+          const current = this as CollectionView;
+          const added = await original.call(this, rows, row, forceOpen) as number;
           if (!view._disposed && addon.data.alive !== false && added > 0 && rows?.[row]?.isLibrary?.(true)) {
-            const libLevel = typeof this.getLevel === "function" && rows === this._rows ? this.getLevel(row) : (rows[row]?.level ?? 0);
+            const libLevel = typeof current.getLevel === "function" && rows === current._rows ? current.getLevel(row) : (rows[row]?.level ?? 0);
             if (view._reorderCitationRowsInSlice(rows, row + 1, row + 1 + added, libLevel + 1)) {
-              this._refreshRowMap?.();
-              this.tree?.invalidate?.();
+              current._refreshRowMap?.();
+              current.tree?.invalidate?.();
             }
           }
           return added;
@@ -246,16 +275,18 @@ export class ViewsIconPatch {
       }
 
       if (typeof cv._addSortedRow === "function") {
-        const restoreAddSorted = runtime.patch(cv, "_addSortedRow", config.addonRef, (original) => async function(objectType, id) {
+        const restoreAddSorted = runtime.patch(cv, "_addSortedRow", config.addonRef, (original) => async function(this: unknown, ...args: unknown[]) {
+          const [objectType, id] = args as [string, number];
+          const current = this as CollectionView;
           if (view._disposed || addon.data.alive === false) return original.call(this, objectType, id);
           if (objectType === "collection") {
             const col = Zotero.Collections?.get?.(id) || await Zotero.Collections?.getAsync?.(id);
             if (col && !col.parentID && view._isCitationCollection(col)) {
-              return view._insertCitationRowAbovePublications(this, col);
+              return view._insertCitationRowAbovePublications(current, col as unknown as CollectionRef);
             }
           }
-          const maskedRows = [];
-          for (const row of this._rows || []) {
+          const maskedRows: TreeRow[] = [];
+          for (const row of current._rows || []) {
             if ((row?.isCollection?.() || row?.type === "collection") && view._isCitationCollection(row?.ref)) {
               row.isCollection = () => false;
               maskedRows.push(row);
@@ -280,7 +311,7 @@ export class ViewsIconPatch {
    * Caches original visual properties of an icon DOM node before patching.
    * @private
    */
-  _rememberIconNode(iconNode) {
+  _rememberIconNode(this: IconContext, iconNode: HTMLElement): void {
     this._iconNodeStates ??= new Map();
     if (this._iconNodeStates.size >= 64) {
       for (const node of this._iconNodeStates.keys()) {
@@ -300,7 +331,7 @@ export class ViewsIconPatch {
    * Restores an icon node to its pre-patch visual state.
    * @private
    */
-  _restoreIconNode(iconNode, state = this._iconNodeStates?.get(iconNode)) {
+  _restoreIconNode(this: IconContext, iconNode: HTMLElement, state = this._iconNodeStates?.get(iconNode)): void {
     if (!iconNode || !state) return;
     if (String(iconNode.style?.backgroundImage || "").includes(`/content/icons/word.png`)) {
       iconNode.style.backgroundImage = state.backgroundImage;

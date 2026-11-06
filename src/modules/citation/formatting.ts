@@ -1,4 +1,6 @@
-import { TEMP_COLLECTION_KEYS_PREF } from "./constants.mjs";
+import type {FormatContext, NativeSession, CitationMap, IndexMap, IdData} from "./formatting-contract.ts";
+const timers = globalThis as unknown as {setTimeout(callback:()=>void|Promise<void>,ms:number):number;clearTimeout(id:number):void};
+import { TEMP_COLLECTION_KEYS_PREF } from "./constants.ts";
 
 // ============================================================================
 // Citation Formatting, Snapshot Refresh & Tree View Refresh
@@ -6,9 +8,9 @@ import { TEMP_COLLECTION_KEYS_PREF } from "./constants.mjs";
 
 export class CitationFormatting {
   /** Schedules a debounced session refresh after retry delay. @private */
-  _scheduleSessionRefresh(sessionID, targetSession, delayMs = 180) {
+  _scheduleSessionRefresh(this: FormatContext, sessionID: string, targetSession: NativeSession, delayMs = 180) {
     if (this._listenerStopped || this._refreshRetryTimerBySession[sessionID]) return;
-    this._refreshRetryTimerBySession[sessionID] = globalThis.setTimeout(() => {
+    this._refreshRetryTimerBySession[sessionID] = timers.setTimeout(() => {
       delete this._refreshRetryTimerBySession[sessionID];
       if (this._listenerStopped || !this.sessions?.[sessionID]) return;
       void this.refreshSessionCitations(sessionID, targetSession).catch(error => this.logError("Failed to retry citation refresh", error));
@@ -16,7 +18,7 @@ export class CitationFormatting {
   }
 
   /** Terminates and cleans up an individual Word session. */
-  async clearSession(sessionID, skipTagCleanup = false) {
+  async clearSession(this: FormatContext, sessionID: string, skipTagCleanup = false) {
     const session = this.sessions?.[sessionID];
     if (!session) return;
     session.closing = true;
@@ -24,7 +26,7 @@ export class CitationFormatting {
     await Promise.allSettled([this._initializationTasks?.get?.(sessionID), session._renameTask, this._sessionUpdateQueue[sessionID]].filter(Boolean));
 
     if (this._tagSyncTimerBySession[sessionID]) {
-      globalThis.clearTimeout(this._tagSyncTimerBySession[sessionID]);
+      timers.clearTimeout(this._tagSyncTimerBySession[sessionID]);
       delete this._tagSyncTimerBySession[sessionID];
     }
     delete this._pendingTagSyncIDsBySession[sessionID];
@@ -57,7 +59,7 @@ export class CitationFormatting {
    * @param {object} [session] - Optional native session object
    * @returns {Promise<void>}
    */
-  async refreshSessionCitations(sessionID, session) {
+  async refreshSessionCitations(this: FormatContext, sessionID: string, session?: NativeSession) {
     const task = this._refreshSessionCitations(sessionID, session);
     (this._activeRefreshTasks ??= new Set()).add(task);
     try {
@@ -74,7 +76,7 @@ export class CitationFormatting {
    * @returns {Promise<{ citationsByItemID: object, citationsByIndex: object, transientMismatch: boolean }>}
    * @private
    */
-  async _readSessionCitationSnapshots(targetSession) {
+  async _readSessionCitationSnapshots(this: FormatContext, targetSession: NativeSession) {
     let citationsByItemID = targetSession.citationsByItemID;
     let citationsByIndex = targetSession.citationsByIndex;
 
@@ -111,7 +113,7 @@ export class CitationFormatting {
    * @returns {Promise<void>}
    * @private
    */
-  async _handleEmptyCitationSnapshot(sessionID, targetSession, citationsByItemID) {
+  async _handleEmptyCitationSnapshot(this: FormatContext, sessionID: string, targetSession: NativeSession, citationsByItemID: CitationMap) {
     const emptyItemMap = Object.keys(citationsByItemID).length === 0;
     if (!emptyItemMap) {
       this._emptyReadCountBySession[sessionID] = 0;
@@ -138,7 +140,7 @@ export class CitationFormatting {
    * @returns {Promise<void>}
    * @private
    */
-  async _refreshSessionCitations(sessionID, session) {
+  async _refreshSessionCitations(this: FormatContext, sessionID: string, session?: NativeSession) {
     const perfStart = Date.now();
     if (this._listenerStopped || !this.sessions?.[sessionID] || this.sessions[sessionID].closing) return;
     const targetSession = session || Zotero.Integration.sessions[sessionID];
@@ -201,12 +203,12 @@ export class CitationFormatting {
   /**
    * Schedules a debounced refresh of the citation column in all open Zotero windows.
    */
-  scheduleItemsViewRefresh() {
+  scheduleItemsViewRefresh(this: FormatContext) {
     if (this._itemsViewRefreshTimer || this._listenerStopped) return;
-    this._itemsViewRefreshTimer = globalThis.setTimeout(async () => {
+    this._itemsViewRefreshTimer = timers.setTimeout(async () => {
       this._itemsViewRefreshTimer = null;
       if (this._listenerStopped) return;
-      const panes = Zotero.getMainWindows?.().map(win => win.ZoteroPane) || [globalThis.ZoteroPane];
+      const panes = Zotero.getMainWindows?.().map(win => win.ZoteroPane) || [(globalThis as unknown as {ZoteroPane?: {itemsView?: {refreshAndMaintainSelection():Promise<void>}}}).ZoteroPane];
       const seenViews = new Set();
       for (const pane of panes) {
         const itemsView = pane?.itemsView;
@@ -229,7 +231,7 @@ export class CitationFormatting {
    * @param {string} styleClass - Citation style class ("note" or "in-text")
    * @returns {Promise<void>}
    */
-  async updateCitations(sessionID, citationsByItemID, sortedItemIDs, styleClass) {
+  async updateCitations(this: FormatContext, sessionID: string, citationsByItemID: CitationMap, sortedItemIDs: number[], styleClass?: string) {
     if (this._listenerStopped || !this.sessions?.[sessionID] || this.sessions[sessionID].closing) return;
     if (citationsByItemID && typeof citationsByItemID === "object") {
       citationsByItemID = Object.fromEntries(Object.entries(citationsByItemID).map(([id, values]) => [
@@ -261,7 +263,7 @@ export class CitationFormatting {
    * Formats the plain citation label for a single item ID based on document ordinal and style class.
    * @private
    */
-  _formatItemPlainCitation(id, idIndexMap, citationsByItemID, oldIdData, isNoteStyle) {
+  _formatItemPlainCitation(this: FormatContext, id: string, idIndexMap: Map<number,number>, citationsByItemID: CitationMap, oldIdData: IdData, isNoteStyle: boolean) {
     const index = idIndexMap.get(Number(id));
     if (index === undefined) {
       return oldIdData[id]?.plainCitation || (isNoteStyle ? "—" : "—: (pending)");
@@ -292,9 +294,9 @@ export class CitationFormatting {
    * Formats item plain citations and synchronizes session collection items.
    * @private
    */
-  async _applyCitations(sessionID, citationsByItemID, sortedItemIDs, styleClass, revision) {
+  async _applyCitations(this: FormatContext, sessionID: string, citationsByItemID: CitationMap, sortedItemIDs: number[], styleClass: string | undefined, revision: number) {
     if (!citationsByItemID || typeof citationsByItemID !== "object" || !Array.isArray(sortedItemIDs)) return;
-    const citationIDKeySet = new Set();
+    const citationIDKeySet = new Set<string>();
     for (const rawKey of Object.keys(citationsByItemID)) {
       const parsed = this._parseValidItemID ? this._parseValidItemID(rawKey) : (Number.isSafeInteger(Number(rawKey)) && Number(rawKey) > 0 ? Number(rawKey) : null);
       if (parsed !== null) citationIDKeySet.add(String(parsed));
@@ -306,10 +308,10 @@ export class CitationFormatting {
     const isNoteStyle = styleClass === "note";
     const idIndexMap = new Map(sortedItemIDs.map((id, idx) => [Number(id), idx]));
     const oldIdData = this.sessions[sessionID]?.idData || {};
-    const targetData = {};
+    const targetData: IdData = {};
     for (const id of citationIDKeys) {
       const zotItem = typeof Zotero !== "undefined" && typeof Zotero.Items?.get === "function" ? Zotero.Items.get(Number(id)) : null;
-      if (zotItem && (zotItem.deleted === true || zotItem.inTrash === true)) continue;
+      if (zotItem && (zotItem.deleted === true || (zotItem as typeof zotItem & {inTrash?:boolean}).inTrash === true)) continue;
       try {
         targetData[id] = { plainCitation: this._formatItemPlainCitation(id, idIndexMap, citationsByItemID, oldIdData, isNoteStyle) };
       } catch {
@@ -331,7 +333,7 @@ export class CitationFormatting {
     const targetIDs = citationIDKeys.map(Number).filter(id => {
       if (!Number.isSafeInteger(id) || id <= 0) return false;
       const item = Zotero.Items.get(id);
-      if (!item || item.libraryID !== collectionLibraryID || item.deleted === true || item.inTrash === true) return false;
+      if (!item || item.libraryID !== collectionLibraryID || item.deleted === true || (item as typeof item & {inTrash?:boolean}).inTrash === true) return false;
       return typeof item.isTopLevelItem !== "function" || item.isTopLevelItem();
     });
 

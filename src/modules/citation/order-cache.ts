@@ -1,3 +1,25 @@
+import type { CitationSharedState, CitationSortCache as Cache } from "./state-contract.ts";
+import { isValidCitationIndexKey, parseValidItemID } from "./id-validation.ts";
+
+type CitationIndex = Record<string, { citationItems?: Array<{ id?: unknown } | null> }>;
+interface OrderContext extends Partial<CitationSharedState> {
+  _maxSortedCacheSessions?: number;
+  activeSessionID?: string | null;
+  _docIdBySession?: Record<string, unknown>; _lastRefreshAt?: Record<string, unknown>;
+  _lastTagSyncSig?: Record<string, unknown>; _sessionCitedIDs?: Record<string, unknown>;
+  _tagSyncInFlightBySession?: Record<string, unknown>; _pendingTagSyncIDsBySession?: Record<string, unknown>;
+  _emptyReadCountBySession?: Record<string, unknown>; _missingSessionCountBySession?: Record<string, unknown>;
+  _sessionUpdateQueue?: Record<string, unknown>; _refreshRetryTimerBySession?: Record<string, number>;
+  _tagSyncTimerBySession?: Record<string, number>;
+  _getSortedCacheKey(id: string): string; _isValidCitationIndexKey(key: string): boolean;
+  _parseValidItemID(id: unknown): number | null; _getSortedCache(id: string): Cache | undefined;
+  _setSortedCache(id: string, sig: string, result: number[]): void;
+  _clearCollectionRenameRetry(id: string): void; _invalidateSessionIndex(): void;
+  _setActiveSessionID(id: string | null): void; debugLog(...args: unknown[]): void;
+  _recordPerf(key: string, duration: number): void;
+}
+declare function clearTimeout(handle: number): void;
+declare const runtime: { log(...args: unknown[]): void };
 // ============================================================================
 // Citation Sorting, Signature Cache & Session State Cleanup
 // ============================================================================
@@ -9,7 +31,7 @@ export class CitationOrderCache {
    * @returns {string} Cache key
    * @private
    */
-  _getSortedCacheKey(sessionID) {
+  _getSortedCacheKey(sessionID: string): string {
     return `cache_${sessionID}`;
   }
 
@@ -20,10 +42,8 @@ export class CitationOrderCache {
    * @returns {boolean}
    * @private
    */
-  _isValidCitationIndexKey(key) {
-    if (typeof key !== "string" || !/^\d+$/.test(key)) return false;
-    const num = Number(key);
-    return Number.isSafeInteger(num) && num >= 0;
+  _isValidCitationIndexKey(key: string): boolean {
+    return isValidCitationIndexKey(key);
   }
 
   /**
@@ -32,17 +52,8 @@ export class CitationOrderCache {
    * @returns {number|null} Positive integer ID or null
    * @private
    */
-  _parseValidItemID(rawId) {
-    if (typeof rawId === "number") {
-      return Number.isSafeInteger(rawId) && rawId > 0 ? rawId : null;
-    }
-    if (typeof rawId === "string") {
-      const trimmed = rawId.trim();
-      if (!/^\d+$/.test(trimmed)) return null;
-      const num = Number(trimmed);
-      return Number.isSafeInteger(num) && num > 0 ? num : null;
-    }
-    return null;
+  _parseValidItemID(rawId: unknown): number | null {
+    return parseValidItemID(rawId);
   }
 
   /**
@@ -51,7 +62,7 @@ export class CitationOrderCache {
    * @returns {object|undefined}
    * @private
    */
-  _getSortedCache(sessionID) {
+  _getSortedCache(this: OrderContext, sessionID: string): Cache | undefined {
     if (!this._sortedCacheBySession || typeof this._sortedCacheBySession !== "object") return undefined;
     const key = this._getSortedCacheKey(sessionID);
     const cache = this._sortedCacheBySession[key];
@@ -69,7 +80,7 @@ export class CitationOrderCache {
    * @param {number[]} result - Sorted item IDs
    * @private
    */
-  _setSortedCache(sessionID, sig, result) {
+  _setSortedCache(this: OrderContext, sessionID: string, sig: string, result: number[]): void {
     if (!this._sortedCacheBySession || typeof this._sortedCacheBySession !== "object") {
       this._sortedCacheBySession = {};
     }
@@ -89,7 +100,7 @@ export class CitationOrderCache {
    * @returns {boolean}
    * @private
    */
-  _hasOnlyTrashedCitationItems(citationsByIndex) {
+  _hasOnlyTrashedCitationItems(this: OrderContext, citationsByIndex: CitationIndex): boolean {
     if (!citationsByIndex || typeof citationsByIndex !== "object") return false;
     let sawValidID = false;
     for (const key of Object.keys(citationsByIndex)) {
@@ -100,9 +111,9 @@ export class CitationOrderCache {
         const id = this._parseValidItemID(item?.id);
         if (id === null) continue;
         sawValidID = true;
-        const zotItem = typeof Zotero !== "undefined" && typeof Zotero.Items?.get === "function"
+        const zotItem = (typeof Zotero !== "undefined" && typeof Zotero.Items?.get === "function"
           ? Zotero.Items.get(id)
-          : null;
+          : null) as { deleted?: boolean; inTrash?: boolean } | null;
         if (!zotItem || (zotItem.deleted !== true && zotItem.inTrash !== true)) {
           return false;
         }
@@ -117,7 +128,7 @@ export class CitationOrderCache {
    * @param {string} sessionID - Session identifier
    * @returns {number[]} Sorted unique item IDs
    */
-  getSortedItemIDs(citationsByIndex, sessionID) {
+  getSortedItemIDs(this: OrderContext, citationsByIndex: CitationIndex, sessionID: string): number[] {
     const perfStart = Date.now();
     citationsByIndex ??= {};
     try {
@@ -125,11 +136,11 @@ export class CitationOrderCache {
         .filter(key => this._isValidCitationIndexKey(key))
         .sort((a, b) => Number(a) - Number(b));
       const parts = [];
-      const seenIDs = new Set();
-      const sortedItemIDs = [];
+      const seenIDs = new Set<number>();
+      const sortedItemIDs: number[] = [];
 
       for (const key of indexKeys) {
-        const values = [];
+        const values: number[] = [];
         const items = Array.isArray(citationsByIndex[key]?.citationItems)
           ? citationsByIndex[key].citationItems
           : [];
@@ -137,9 +148,9 @@ export class CitationOrderCache {
           if (!item) continue;
           const id = this._parseValidItemID(item.id);
           if (id === null) continue;
-          const zotItem = typeof Zotero !== "undefined" && typeof Zotero.Items?.get === "function"
+          const zotItem = (typeof Zotero !== "undefined" && typeof Zotero.Items?.get === "function"
             ? Zotero.Items.get(id)
-            : null;
+            : null) as { deleted?: boolean; inTrash?: boolean } | null;
           if (zotItem && (zotItem.deleted === true || zotItem.inTrash === true)) continue;
           values.push(id);
           if (!seenIDs.has(id)) {
@@ -171,7 +182,7 @@ export class CitationOrderCache {
    * @param {string} sessionID - Session identifier
    * @param {boolean} [removeSession=true] - Whether to delete session from this.sessions
    */
-  cleanupSessionState(sessionID, removeSession = true) {
+  cleanupSessionState(this: OrderContext, sessionID: string, removeSession = true): void {
     this._clearCollectionRenameRetry(sessionID);
     if (removeSession && this.sessions) {
       delete this.sessions[sessionID];
@@ -193,11 +204,11 @@ export class CitationOrderCache {
     if (this._sessionUpdateQueue) delete this._sessionUpdateQueue[sessionID];
 
     if (this._refreshRetryTimerBySession?.[sessionID]) {
-      globalThis.clearTimeout(this._refreshRetryTimerBySession[sessionID]);
+      clearTimeout(this._refreshRetryTimerBySession[sessionID]);
       delete this._refreshRetryTimerBySession[sessionID];
     }
     if (this._tagSyncTimerBySession?.[sessionID]) {
-      globalThis.clearTimeout(this._tagSyncTimerBySession[sessionID]);
+      clearTimeout(this._tagSyncTimerBySession[sessionID]);
       delete this._tagSyncTimerBySession[sessionID];
     }
     const cacheKey = this._getSortedCacheKey(sessionID);

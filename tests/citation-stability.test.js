@@ -7,11 +7,6 @@ const sourceDirectory = process.env.CITATION_SOURCE_DIR || ".";
 const sourcePath = path.join(__dirname, "..", sourceDirectory, "chrome", "content", "scripts", "index.js");
 const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "..", sourceDirectory, "manifest.json"), "utf8"));
 const source = fs.readFileSync(sourcePath, "utf8").replace(/\r\n/g, "\n");
-const start = source.indexOf("  var Citation = class {");
-const endMarker = source.includes("\n  // src/modules/drop-target.mjs")
-  ? "\n  };\n\n  // src/modules/drop-target.mjs" : "\n  };\n\n  // src/modules/cite.mjs";
-const end = source.indexOf(endMarker, start);
-assert.ok(start >= 0 && end > start, "Citation class must be extractable from the bundle");
 
 const prefStore = new Map();
 const sandbox = {
@@ -48,13 +43,10 @@ const sandbox = {
   }
 };
 vm.createContext(sandbox);
-vm.runInContext(`${source.slice(start, end + 5)}\nglobalThis.__Citation = Citation;`, sandbox);
-const Citation = sandbox.__Citation;
-const viewsStart = source.indexOf("  var Views = class {");
-const viewsEnd = source.indexOf("\n  };\n  var views_default", viewsStart);
-assert.ok(viewsStart >= 0 && viewsEnd > viewsStart, "Views class must be extractable from the bundle");
-vm.runInContext(`${source.slice(viewsStart, viewsEnd + 5)}\nglobalThis.__Views = Views;`, sandbox);
-const Views = sandbox.__Views;
+const { Citation, Views, citeItems } = require("./helpers/domain-bundle.cjs").loadDomains(sandbox);
+sandbox.__Citation = Citation;
+sandbox.__Views = Views;
+sandbox.__citeItems = citeItems;
 
 function bareCitation() {
   const instance = Object.create(Citation.prototype);
@@ -407,7 +399,7 @@ async function testDragLifecycle() {
   assert.deepEqual(calls, [[1]], "Word can reject an empty transfer while the citation drop remains valid");
   transfer.dropEffect = "copy"; target = 'non-word'; start(); end(); assert.equal(calls.length, 1);
   target = 'unknown'; start(); end(); assert.equal(calls.length, 1);
-  assert.deepEqual(notices, ['drag-target-unknown'], 'unknown target explains the safe fallback');
+  assert.deepEqual(notices, ['zoterocitation-drag-target-unknown'], 'unknown target explains the safe fallback');
   start(); end(); assert.equal(notices.length, 1, 'rapid repeated drops do not flood notices');
   target = 'word-confirmed';
   start(); selected = [regularItem(2)]; end(); assert.deepEqual(calls, [[1], [1]], "must cite drag-start selection");
@@ -469,8 +461,8 @@ async function testRenameRollbackAndObsoleteRename() {
 }
 async function testCiteSelectionAndNativeFailureRecovery() {
   const a = source.indexOf("  var citeItemsInFlight = false;");
-  const b = source.indexOf(source.includes("\n  // src/modules/drop-target.mjs")
-    ? "  // src/runtime.mjs" : "  // src/modules/views.mjs", a);
+  const b = source.indexOf(source.includes("\n  // src/modules/drop-target.ts")
+    ? "  // src/runtime.ts" : "  // src/modules/views.ts", a);
   vm.runInContext(source.slice(a, b), sandbox);
   sandbox.Zotero_Tabs = {selectedIndex: 0};
   sandbox.addon.data.alive = true;

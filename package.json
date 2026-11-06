@@ -1,18 +1,21 @@
 {
   "name": "zotero-citeflow",
-  "version": "13.2.2",
+  "version": "13.2.3",
   "private": true,
   "license": "AGPL-3.0-only",
   "description": "Track Word citations and connect them to Zotero items.",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.14"
   },
   "scripts": {
-    "build": "node scripts/build-source.mjs",
-    "test": "node scripts/build-source.mjs && node --test tests/*.test.*",
-    "package": "pwsh -NoProfile -File scripts/build.ps1"
+    "build": "npm run typecheck && node scripts/build-source.mjs",
+    "test": "npm run build && node --experimental-strip-types --test tests/*.test.*",
+    "package": "pwsh -NoProfile -File scripts/build.ps1",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "esbuild": "0.28.2"
+    "esbuild": "0.28.2",
+    "typescript": "^6.0.3",
+    "zotero-types": "^4.1.3"
   }
 }

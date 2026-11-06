@@ -33,16 +33,13 @@ function bootEnvironment({ loadError, shutdownError, flushError } = {}) {
       } },
       obs: { notifyObservers: () => calls.push('invalidate cache') },
     },
-    Components: {
-      classes: { '@mozilla.org/addons/addon-manager-startup;1': {
+    Ci: { amIAddonManagerStartup: {}, nsIStringBundleService: {} },
+    Cc: { '@mozilla.org/addons/addon-manager-startup;1': {
         getService: () => ({ registerChrome: () => {
           calls.push('register chrome');
           return { destruct: () => calls.push('destruct chrome') };
         } }),
-      } },
-      interfaces: { amIAddonManagerStartup: {}, nsIStringBundleService: {} },
-    },
-    Cc: { '@mozilla.org/intl/stringbundle;1': {
+      }, '@mozilla.org/intl/stringbundle;1': {
       getService: () => ({ flushBundles: () => {
         calls.push('flush bundles');
         if (flushError) throw flushError;

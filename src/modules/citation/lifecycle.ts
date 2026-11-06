@@ -1,3 +1,27 @@
+import type { CitationSharedState } from "./state-contract.ts";
+type HostMethod = (...args: never[]) => unknown;
+interface LifecycleContext extends CitationSharedState {
+  _clearPromise?: Promise<void>; _getSessionWrapper?: HostMethod | null; _originalGetSession?: HostMethod | null;
+  _execCommandWrapper?: HostMethod | null; _originalExecCommand?: HostMethod | null; _isExecCommandHooked?: boolean;
+  _listenerStopped: boolean; _isExecCommandRunning: boolean; _execCommandDepth: number;
+  _itemsViewRefreshTimer?: number | null; _listenerTimer?: number | null;
+  _lastRefreshAt: Record<string, unknown>;
+  _lastTagSyncSig: Record<string, unknown>; _sessionCitedIDs: Record<string, unknown>;
+  _managedCitationTagIDs: Record<string, unknown>; _tagSyncInFlightBySession: Record<string, Promise<unknown>>;
+  _pendingTagSyncIDsBySession: Record<string, unknown>; _tagSyncTimerBySession: Record<string, number>;
+  _sessionUpdateQueue: Record<string, unknown>;
+  _emptyReadCountBySession: Record<string, unknown>; _missingSessionCountBySession: Record<string, unknown>;
+  _docIdBySession: Record<string, unknown>; _pendingCollectionNumber: number;
+  _execCommandBindings: Map<unknown, unknown>; _collectionRenameRetryTimerBySession: Record<string, number>;
+  _collectionRenameRetryCountBySession: Record<string, number>; _refreshRetryTimerBySession: Record<string, number>;
+  _listenerTickTask?: Promise<unknown>; _initializationTasks?: Map<unknown, Promise<unknown>>;
+  _activeRefreshTasks?: Set<Promise<unknown>>; _tagSyncQueue?: Promise<unknown>;
+  _performClear(): Promise<void>; _restoreWordIntegrationHooks(): void; _resetInternalTrackingMaps(): void;
+  _setActiveSessionID(id: string | null): void; _bumpDebugCounter(name: string): void;
+  _clearCollectionRenameRetry(id: string): void; syncCitationTags(id: string, items: number[]): Promise<unknown>;
+  clearSession(id: string, remove: boolean): Promise<unknown>; logError(message: string, error: unknown): void;
+}
+declare function clearTimeout(handle: number): void;
 // ============================================================================
 // Lifecycle Teardown & Resource Disposal
 // ============================================================================
@@ -7,25 +31,26 @@ export class CitationLifecycle {
    * Idempotently initiates citation coordinator teardown.
    * @returns {Promise<void>}
    */
-  clear() {
+  clear(this: LifecycleContext): Promise<void> {
     if (!this._clearPromise) this._clearPromise = this._performClear();
     return this._clearPromise;
   }
 
   /**
-   * Restores Zotero.Integration.getSession and execCommand wrappers during shutdown.
+   * Restores integration.getSession and execCommand wrappers during shutdown.
    * @private
    */
-  _restoreWordIntegrationHooks() {
-    if (this._getSessionWrapper && Zotero.Integration.getSession === this._getSessionWrapper) {
-      Zotero.Integration.getSession = this._originalGetSession;
+  _restoreWordIntegrationHooks(this: LifecycleContext): void {
+    const integration = Zotero.Integration as unknown as { getSession?: HostMethod | null; execCommand?: HostMethod | null };
+    if (this._getSessionWrapper && integration.getSession === this._getSessionWrapper) {
+      integration.getSession = this._originalGetSession;
     }
     this._getSessionWrapper = null;
     this._originalGetSession = null;
 
     if (this._isExecCommandHooked && this._originalExecCommand
-      && Zotero.Integration.execCommand === this._execCommandWrapper) {
-      Zotero.Integration.execCommand = this._originalExecCommand;
+      && integration.execCommand === this._execCommandWrapper) {
+      integration.execCommand = this._originalExecCommand;
       this._isExecCommandHooked = false;
       this._originalExecCommand = null;
       this._execCommandWrapper = null;
@@ -41,10 +66,10 @@ export class CitationLifecycle {
    * Clears all internal tracking caches, timer maps, and session records after teardown.
    * @private
    */
-  _resetInternalTrackingMaps() {
+  _resetInternalTrackingMaps(this: LifecycleContext): void {
     try {
       if (this._itemsViewRefreshTimer) {
-        globalThis.clearTimeout(this._itemsViewRefreshTimer);
+        clearTimeout(this._itemsViewRefreshTimer);
         this._itemsViewRefreshTimer = null;
       }
       this._sortedCacheBySession = {};
@@ -66,7 +91,7 @@ export class CitationLifecycle {
       this._collectionRenameRetryTimerBySession = {};
       this._collectionRenameRetryCountBySession = {};
       for (const sessionID in this._refreshRetryTimerBySession) {
-        globalThis.clearTimeout(this._refreshRetryTimerBySession[sessionID]);
+        clearTimeout(this._refreshRetryTimerBySession[sessionID]);
       }
       this._refreshRetryTimerBySession = {};
     } catch {}
@@ -77,7 +102,7 @@ export class CitationLifecycle {
    * @returns {Promise<void>}
    * @private
    */
-  async _performClear() {
+  async _performClear(this: LifecycleContext): Promise<void> {
     this._listenerStopped = true;
     this._setActiveSessionID(null);
     this._isExecCommandRunning = false;
@@ -89,7 +114,7 @@ export class CitationLifecycle {
       this._clearCollectionRenameRetry(sessionID);
     }
     if (this._listenerTimer) {
-      globalThis.clearTimeout(this._listenerTimer);
+      clearTimeout(this._listenerTimer);
       this._listenerTimer = null;
     }
 
@@ -100,7 +125,7 @@ export class CitationLifecycle {
     ].filter(Boolean));
 
     for (const sessionID in this._tagSyncTimerBySession) {
-      globalThis.clearTimeout(this._tagSyncTimerBySession[sessionID]);
+      clearTimeout(this._tagSyncTimerBySession[sessionID]);
     }
     this._tagSyncTimerBySession = {};
     this._pendingTagSyncIDsBySession = {};

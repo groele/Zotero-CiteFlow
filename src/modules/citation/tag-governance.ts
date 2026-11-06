@@ -2,6 +2,12 @@
 // Tag Governance & Read-Only Protection
 // ============================================================================
 
+type TaggedItem = {libraryID:number;editable?:boolean;deleted?:boolean;inTrash?:boolean;isEditable?():boolean;hasTag?(name:string):boolean;getTags?():Array<string|{tag:string}>;addTag(name:string):void;removeTag(name:string):void;saveTx():Promise<unknown>};
+type SyncResult = {complete:boolean;touchedCount:number} | undefined;
+type TagContext = CitationTagGovernance & {_listenerStopped:boolean;_sessionCitedIDs:Record<string,number[]>;_lastTagSyncSig:Record<string,string>;_pendingTagSyncIDsBySession:Record<string,number[] | undefined>;_tagSyncTimerBySession:Record<string,number>;_tagSyncInFlightBySession:Record<string,Promise<SyncResult> | undefined>;_tagSyncDebounceMs:number;_managedCitationTagIDs:Record<string,boolean>;_managedCitationTagNames:Record<string,string>;_citationTagName:string;_tagSyncQueue:Promise<SyncResult>|null;_tagOwnershipDirty:boolean;sessions:Record<string,{closing?:boolean}>;_bumpDebugCounter(name:string,delta?:number):void;_recordPerf(name:string,ms:number):void;_saveManagedTagIDs():boolean;logError(message:string,error:unknown):void};
+declare const runtime:{log(...args:unknown[]):void};
+const timers = globalThis as unknown as {setTimeout(callback:()=>void,ms:number):number};
+
 export class CitationTagGovernance {
   /**
    * Constructs a deterministic signature from an array of item IDs.
@@ -9,7 +15,7 @@ export class CitationTagGovernance {
    * @returns {string} Comma-separated signature
    * @private
    */
-  _buildCitationTagSig(sortedItemIDs) {
+  _buildCitationTagSig(this: TagContext, sortedItemIDs: number[]) {
     if (!Array.isArray(sortedItemIDs) || sortedItemIDs.length === 0) return "";
     const uniq = Array.from(new Set(
       sortedItemIDs.map(id => Number(id)).filter(id => Number.isInteger(id) && id > 0)
@@ -23,7 +29,7 @@ export class CitationTagGovernance {
    * @param {number[]} sortedItemIDs - Cited item IDs
    * @param {boolean} [force=false] - Force sync even if signature matches
    */
-  scheduleCitationTagSync(sessionID, sortedItemIDs, force = false) {
+  scheduleCitationTagSync(this: TagContext, sessionID: string, sortedItemIDs: number[], force = false) {
     if (this._listenerStopped) return;
     const normalizedIDs = Array.isArray(sortedItemIDs)
       ? sortedItemIDs.map(id => Number(id)).filter(id => Number.isInteger(id) && id > 0)
@@ -39,7 +45,7 @@ export class CitationTagGovernance {
     this._pendingTagSyncIDsBySession[sessionID] = normalizedIDs;
     if (this._tagSyncTimerBySession[sessionID]) return;
 
-    this._tagSyncTimerBySession[sessionID] = globalThis.setTimeout(() => {
+    this._tagSyncTimerBySession[sessionID] = timers.setTimeout(() => {
       delete this._tagSyncTimerBySession[sessionID];
       const pendingIDs = this._pendingTagSyncIDsBySession[sessionID];
       if (!pendingIDs || this._tagSyncInFlightBySession[sessionID]) return;
@@ -68,7 +74,7 @@ export class CitationTagGovernance {
    * @returns {boolean} True if safe to write
    * @private
    */
-  _isWritableCitationItem(item) {
+  _isWritableCitationItem(this: TagContext, item: TaggedItem) {
     const userLibraryID = Zotero.Libraries?.userLibraryID;
     if (!item || item.libraryID !== userLibraryID || item.editable === false
       || item.deleted === true || item.inTrash === true) {
@@ -76,7 +82,7 @@ export class CitationTagGovernance {
     }
     try {
       if (typeof item.isEditable === "function" && !item.isEditable()) return false;
-      const library = typeof Zotero.Libraries?.get === "function" ? Zotero.Libraries.get(item.libraryID) : null;
+      const library = (typeof Zotero.Libraries?.get === "function" ? Zotero.Libraries.get(item.libraryID) : null) as {editable?:boolean | (()=>boolean);readOnly?:boolean;isEditable?():boolean} | null;
       if (library?.editable === false || library?.readOnly === true) return false;
       if (typeof library?.isEditable === "function" && !library.isEditable()) return false;
       if (typeof library?.editable === "function" && !library.editable()) return false;
@@ -93,7 +99,7 @@ export class CitationTagGovernance {
    * @returns {boolean}
    * @private
    */
-  _hasItemTag(item, tagName) {
+  _hasItemTag(this: TagContext, item: TaggedItem, tagName: string) {
     return typeof item.hasTag === "function"
       ? item.hasTag(tagName)
       : (item.getTags?.() || []).some(tag => (typeof tag === "string" ? tag : tag?.tag) === tagName);
@@ -105,12 +111,12 @@ export class CitationTagGovernance {
    * @returns {Promise<Zotero.Item|null>}
    * @private
    */
-  async _resolveItemByID(itemID) {
+  async _resolveItemByID(this: TagContext, itemID: number) {
     let item = Zotero.Items.get(itemID);
     if (!item && typeof Zotero.Items.getAsync === "function") {
       item = await Zotero.Items.getAsync(itemID);
     }
-    return item || null;
+    return (item || null) as unknown as TaggedItem | null;
   }
 
   /**
@@ -118,8 +124,8 @@ export class CitationTagGovernance {
    * @returns {Set<number>}
    * @private
    */
-  _collectActiveCitedIDSet() {
-    const activeCitedIDSet = new Set();
+  _collectActiveCitedIDSet(this: TagContext) {
+    const activeCitedIDSet = new Set<number>();
     if (Zotero.Prefs.get("extensions.zotero.zoterocitation.citationTags.enable", true) !== false) {
       const liveSessions = Zotero.Integration?.sessions;
       for (const sid in this._sessionCitedIDs) {
@@ -142,7 +148,7 @@ export class CitationTagGovernance {
    * @returns {Promise<{ touched: boolean, skipped: boolean, ownershipChanged: boolean }>}
    * @private
    */
-  async _syncActiveItemCitationTag(item, itemID, tagName) {
+  async _syncActiveItemCitationTag(this: TagContext, item: TaggedItem, itemID: number, tagName: string) {
     let touched = false;
     let ownershipChanged = false;
     const oldName = this._managedCitationTagIDs[itemID] && (this._managedCitationTagNames[itemID] || "/Citations");
@@ -190,7 +196,7 @@ export class CitationTagGovernance {
    * @returns {Promise<{ touched: boolean, ownershipChanged: boolean }>}
    * @private
    */
-  async _removeUncitedManagedItemTag(item, itemID) {
+  async _removeUncitedManagedItemTag(this: TagContext, item: TaggedItem, itemID: number) {
     let touched = false;
     const managedName = this._managedCitationTagNames[itemID] || "/Citations";
     const hasCitationTag = this._hasItemTag(item, managedName);
@@ -220,7 +226,7 @@ export class CitationTagGovernance {
    * @param {number[]} sortedItemIDs - Cited item IDs
    * @returns {Promise<{ complete: boolean, touchedCount: number }>}
    */
-  async syncCitationTags(sessionID, sortedItemIDs) {
+  async syncCitationTags(this: TagContext, sessionID: string, sortedItemIDs: number[]) {
     if (this._listenerStopped && sessionID !== "__shutdown__") return;
     const previous = this._tagSyncQueue || Promise.resolve();
     const task = previous.catch(() => {}).then(() => this._syncCitationTags(sessionID, sortedItemIDs));
@@ -239,7 +245,7 @@ export class CitationTagGovernance {
    * @returns {Promise<{ complete: boolean, touchedCount: number }>}
    * @private
    */
-  async _syncCitationTags(sessionID, _sortedItemIDs) {
+  async _syncCitationTags(this: TagContext, sessionID: string, _sortedItemIDs: number[]) {
     if (this._listenerStopped && sessionID !== "__shutdown__") return;
     const tagName = this._citationTagName;
     this._managedCitationTagNames ??= {};

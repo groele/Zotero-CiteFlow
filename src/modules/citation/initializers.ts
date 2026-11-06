@@ -1,5 +1,38 @@
-import { TEMP_COLLECTION_KEYS_PREF, TEMP_SEARCH_KEYS_PREF } from "./constants.mjs";
+import { TEMP_COLLECTION_KEYS_PREF, TEMP_SEARCH_KEYS_PREF } from "./constants.ts";
 
+import type { CitationSharedState } from "./state-contract.ts";
+interface Metric { count: number; totalMs: number; maxMs: number; lastMs: number; slowCount: number }
+type PublicMethod = (...args: never[]) => unknown;
+export interface InitContext extends CitationSharedState {
+  _initializationTasks: Map<string, Promise<unknown>>; _activeRefreshTasks: Set<Promise<unknown>>;
+  _refreshStateBySession: WeakMap<object, unknown>; _sessionUpdateQueue: Record<string, unknown>;
+  _emptyReadCountBySession: Record<string, number>; _refreshRetryTimerBySession: Record<string, number>;
+  _missingSessionCountBySession: Record<string, number>; _docIdBySession: Record<string, string>;
+  _pendingCollectionNumber: number; activeSessionID: string | null; _lastRefreshAt: Record<string, number>;
+  _minRefreshInterval: number; _errors: {message:string;time:number}[]; _debugCounters: Record<string, number>;
+  _perfStats: Record<string, Metric>; _debugEnabled: boolean; _citationTagName: string;
+  _citationTagsEnabled: boolean; _collectionsEnabled: boolean; _lastTagSyncSig: Record<string, string>;
+  _sessionCitedIDs: Record<string, number[]>; _managedCitationTagIDs: Record<string, boolean>;
+  _managedCitationTagNames: Record<string, string>; _temporaryCollectionKeys: Set<string>; _managedSearchKeys: Set<string>;
+  _tagSyncInFlightBySession: Record<string, Promise<unknown>>; _pendingTagSyncIDsBySession: Record<string, number[]>;
+  _tagSyncTimerBySession: Record<string, number>; _execCommandBindings: Map<unknown, unknown>; _execCommandSerial: number;
+  _collectionRenameRetryTimerBySession: Record<string, number>; _collectionRenameRetryCountBySession: Record<string, number>;
+  _originalExecCommand: PublicMethod | null | undefined; _execCommandWrapper: PublicMethod | null | undefined;
+  _isExecCommandHooked: boolean; _isExecCommandRunning: boolean; _execCommandDepth: number;
+  _tagSyncDebounceMs: number; _itemsViewRefreshDebounceMs: number; _healthWindowMs: number;
+  _perfSlowThresholdMs: number; _listenerTimer: number | null; _listenerStopped: boolean;
+  debugLog(...args: unknown[]): void;
+  _getBoolPref(key: string, fallback: boolean): boolean; _getCitationTagName(): string;
+  _loadManagedTagState(): { ids: Record<string, boolean>; names: Record<string, string> };
+  _loadKeySet(key: string): Set<string>; _getClampedIntPref(key: string, fallback: number, min: number, max: number): number;
+  updateCitations: PublicMethod; refreshSessionCitations: PublicMethod; getSortedItemIDs: PublicMethod;
+  syncCitationTags: PublicMethod; scheduleCitationTagSync: PublicMethod; getDiagnostics: PublicMethod;
+  getDebugStats: PublicMethod; resetDebugStats: PublicMethod; assertHealth: PublicMethod; getHealthSummary: PublicMethod;
+  runHealthCheck: PublicMethod; runHealthSummaryCheck: PublicMethod; getPerformanceStats: PublicMethod;
+  resetPerformanceStats: PublicMethod; runPerformanceCheck: PublicMethod;
+}
+declare const addon: { data?: { citationDebugEnabled?: boolean } };
+declare const runtime: { log(...args: unknown[]): void };
 // ============================================================================
 // Citation Subsystem Initialization
 // ============================================================================
@@ -9,7 +42,7 @@ export class CitationInitializers {
    * Initializes session collections, queue maps, and revision trackers.
    * @private
    */
-  _initSessionTracking() {
+  _initSessionTracking(this: InitContext): void {
     this.sessions = {};
     this._initializationTasks = new Map();
     this._activeRefreshTasks = new Set();
@@ -32,7 +65,7 @@ export class CitationInitializers {
    * Initializes diagnostic error buffers and performance metric trackers.
    * @private
    */
-  _initDiagnosticsAndTelemetry() {
+  _initDiagnosticsAndTelemetry(this: InitContext): void {
     this._errors = [];
     this._debugCounters = {
       listenerStarted: 0,
@@ -54,9 +87,9 @@ export class CitationInitializers {
    * Binds public coordinator API onto Zotero.ZoteroCitation.api if present.
    * @private
    */
-  _bindPublicApi() {
-    if (Zotero.ZoteroCitation?.api) {
-      const api = Zotero.ZoteroCitation.api;
+  _bindPublicApi(this: InitContext): void {
+    const api = (Zotero as unknown as { ZoteroCitation?: { api?: Record<string, unknown> } }).ZoteroCitation?.api;
+    if (api) {
       api.sessionRevision = 0;
       api.sessions = this.sessions;
       api.updateCitations = this.updateCitations.bind(this);
@@ -81,10 +114,10 @@ export class CitationInitializers {
    * Loads persisted preferences and state for tags and temporary collections.
    * @private
    */
-  _initPreferencesAndConfig() {
+  _initPreferencesAndConfig(this: InitContext): void {
     this._debugEnabled = this._getBoolPref("extensions.zotero.zoterocitation.debug", false);
     try {
-      if (globalThis.addon?.data) addon.data.citationDebugEnabled = this._debugEnabled;
+      if (typeof addon !== "undefined" && addon.data) addon.data.citationDebugEnabled = this._debugEnabled;
     } catch {}
 
     this._citationTagName = this._getCitationTagName();
@@ -108,7 +141,7 @@ export class CitationInitializers {
    * Initializes Word process interception bindings and rename state.
    * @private
    */
-  _initWordIntegrationState() {
+  _initWordIntegrationState(this: InitContext): void {
     this._execCommandBindings = new Map();
     this._execCommandSerial = 0;
     this._collectionRenameRetryTimerBySession = {};
@@ -124,7 +157,7 @@ export class CitationInitializers {
    * Initializes timers, polling listeners, and debounce threshold settings.
    * @private
    */
-  _initTimersAndDebounce() {
+  _initTimersAndDebounce(this: InitContext): void {
     this._tagSyncDebounceMs = this._getClampedIntPref("extensions.zotero.zoterocitation.citationTagDebounceMs", 150, 0, 2000);
     this._itemsViewRefreshDebounceMs = this._getClampedIntPref("extensions.zotero.zoterocitation.itemsViewRefreshDebounceMs", 120, 0, 2000);
     this._healthWindowMs = this._getClampedIntPref("extensions.zotero.zoterocitation.healthWindowMs", 300000, 10000, 3600000);
@@ -133,7 +166,7 @@ export class CitationInitializers {
     this._listenerTimer = null;
     this._listenerStopped = false;
 
-    this.debugLog = (...args) => {
+    this.debugLog = (...args: unknown[]) => {
       if (this._debugEnabled) runtime.log(...args);
     };
   }

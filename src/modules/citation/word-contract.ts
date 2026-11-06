@@ -1,0 +1,13 @@
+import type {CitationWordIntegration} from "./word-integration.ts";
+export type NativeSession = {agent?:unknown;sessionID?:string};
+export type TrackedSession = {closing?:boolean;pending?:boolean;collection?:{name:string};docId?:string;lastName?:string;idData:Record<string,unknown>};
+export type HostMethod = (this:unknown,...args:unknown[])=>Promise<unknown>;
+export type Binding = {bindingID:number;sessionID:string|null;docId:unknown;sessionsBefore:Set<string>;agent:unknown;command:unknown;ambiguous:boolean;doc?:unknown};
+export type Integration = {sessions:Record<string,NativeSession>;currentSession?:NativeSession;execCommand?:HostMethod;getSession?:HostMethod};
+export type WordContext = CitationWordIntegration & {
+ _listenerStopped:boolean;_isTickRunning:boolean;_isExecCommandRunning:boolean;_isExecCommandHooked:boolean;_listenerTimer:number|null;_listenerTickTask:Promise<void>;_debugCounters:Record<string,number>;
+ sessions:Record<string,TrackedSession>;_missingSessionCountBySession:Record<string,number>;_docIdBySession:Record<string,string>;_lastRefreshAt:Record<string,number>;
+ _originalExecCommand:HostMethod|null|undefined;_originalGetSession?:HostMethod|null;_execCommandWrapper:HostMethod|null|undefined;_getSessionWrapper?:HostMethod|null;_execCommandBindings:Map<number,Binding>;_execCommandSerial:number;_execCommandDepth:number;_initializationTasks:Map<string,Promise<TrackedSession|undefined>>;
+ logError(message:string,error?:unknown):void;debugLog(...args:unknown[]):void;_bumpDebugCounter(name:string):void;clearStaleArtifacts():Promise<void>;clear():Promise<void>;clearSession(id:string):Promise<void>;refreshSessionCitations(id:string,s:NativeSession):Promise<void>;
+ _isPendingCollectionName(name:string,id:string):boolean;_resolveFallbackDocumentId(id:string,s:NativeSession|undefined,doc:unknown,foreground:boolean):string;_getDocumentDisplayName(id:string):string;_rememberSessionDocument(id:string,doc:string):void;_renameCollection(id:string,name:string,doc?:string):Promise<void>;_scheduleCollectionRenameRetry(id:string,name:string,doc?:string):void;_clearCollectionRenameRetry(id:string):void;_setActiveSessionID(id:string):void;_extractSessionDocumentId(session:NativeSession):string;_getPendingCollectionName(id:string):string;_invalidateSessionIndex():void;initCollection(id:string,s:TrackedSession):Promise<void>;
+};

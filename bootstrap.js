@@ -131,8 +131,8 @@ async function startup({ id, version, resourceURI, rootURI }, reason) {
         }
         if (generation !== startupGeneration) return;
 
-        var aomStartup = Components.classes["@mozilla.org/addons/addon-manager-startup;1"].getService(
-            Components.interfaces.amIAddonManagerStartup,
+        var aomStartup = Cc["@mozilla.org/addons/addon-manager-startup;1"].getService(
+            Ci.amIAddonManagerStartup,
         );
         var manifestURI = Services.io.newURI(rootURI + "manifest.json");
         chromeHandle = aomStartup.registerChrome(manifestURI, [
@@ -184,8 +184,8 @@ async function shutdown({ id, version, resourceURI, rootURI }, reason) {
             Services.obs.notifyObservers(null, "startupcache-invalidate", null);
         }
         if (typeof Zotero === "undefined") {
-            Zotero = Components.classes["@zotero.org/Zotero;1"].getService(
-                Components.interfaces.nsISupports,
+            Zotero = Cc["@zotero.org/Zotero;1"].getService(
+                Ci.nsISupports,
             ).wrappedJSObject;
         }
         await Zotero.ZoteroCitation?.hooks?.onShutdown?.();
@@ -193,7 +193,7 @@ async function shutdown({ id, version, resourceURI, rootURI }, reason) {
         Zotero?.logError?.("Error during ZoteroCitation shutdown: " + error);
     }
     try {
-        Cc["@mozilla.org/intl/stringbundle;1"].getService(Components.interfaces.nsIStringBundleService).flushBundles();
+        Cc["@mozilla.org/intl/stringbundle;1"].getService(Ci.nsIStringBundleService).flushBundles();
     } catch (error) {
         Zotero?.logError?.("Failed to flush ZoteroCitation bundles: " + error);
     }

@@ -4,18 +4,25 @@ import {
   LEGACY_UPSTREAM_TEMP_COLLECTION_MARKER,
   TEMP_COLLECTION_KEYS_PREF,
   TEMP_SEARCH_KEYS_PREF
-} from "./constants.mjs";
+} from "./constants.ts";
 
 // ============================================================================
 // Temporary Collection Lifecycle, Renaming & Stale Cleanup
 // ============================================================================
+
+type Collection = Omit<Zotero.Collection, "libraryID"> & {libraryID:number;_isCiteFlowCollection?:boolean};
+type Search = {key:string;eraseTx():Promise<void>};
+const timers = globalThis as unknown as {setTimeout(callback:()=>void,ms:number):number;clearTimeout(id:number):void};
+type Session = {collection?:Collection;closing?:boolean;docId?:string;lastName?:string;_renameTask?:Promise<void>|null};
+type Context = CitationCollections & {sessions:Record<string,Session>;_listenerStopped:boolean;_temporaryCollectionKeys:Set<string>;_managedSearchKeys:Set<string>;_docIdBySession:Record<string,string>;_collectionRenameRetryCountBySession:Record<string,number>;_collectionRenameRetryTimerBySession:Record<string,number>;_getDocumentDisplayName(id:string):string;_getPendingCollectionName(id:string):string;_invalidateSessionIndex():void;_saveKeySet(key:string,values:Set<string>):void;logError(message:string,error:unknown):void;debugLog(...args:unknown[]):void};
+declare const addon: {data?:{views?:{repositionCitationCollections?():void}}};
 
 export class CitationCollections {
   /**
    * Purges orphan temporary collections and legacy searches without modifying user collections.
    * @returns {Promise<void>}
    */
-  async clearStaleArtifacts() {
+  async clearStaleArtifacts(this: Context) {
     const libraryID = Zotero.Libraries.userLibraryID;
     await this._clearStaleTemporaryCollections(libraryID);
     await this._clearStaleManagedSearches(libraryID);
@@ -27,14 +34,14 @@ export class CitationCollections {
    * @returns {Promise<void>}
    * @private
    */
-  async _clearStaleTemporaryCollections(libraryID) {
-    const collections = Zotero.Collections.getByLibrary(libraryID, true, true) || [];
+  async _clearStaleTemporaryCollections(this: Context, libraryID: number) {
+    const collections = (Zotero.Collections.getByLibrary as unknown as (id:number, recursive:boolean, includeTrashed:boolean)=>Zotero.Collection[])(libraryID, true, true) || [];
     const collectionsByKey = new Map(collections.map(c => [c.key, c]));
     const activeKeys = new Set(
-      Object.values(this.sessions || {}).filter(s => s && !s.closing && s.collection?.key).map(s => s.collection.key)
+      Object.values(this.sessions || {}).filter(s => s && !s.closing && s.collection?.key).map(s => s.collection!.key)
     );
-    const removedKeys = new Set();
-    const remainingKeys = new Set();
+    const removedKeys = new Set<string>();
+    const remainingKeys = new Set<string>();
 
     for (const key of this._temporaryCollectionKeys || []) {
       if (activeKeys.has(key)) {
@@ -75,9 +82,9 @@ export class CitationCollections {
    * @returns {Promise<void>}
    * @private
    */
-  async _clearStaleManagedSearches(libraryID) {
+  async _clearStaleManagedSearches(this: Context, libraryID: number) {
     if (!this._managedSearchKeys?.size) return;
-    const searchesByKey = new Map((Zotero.Searches.getByLibrary(libraryID) || []).map(s => [s.key, s]));
+    const searchesByKey = new Map(((Zotero.Searches as unknown as {getByLibrary(id:number):Search[]}).getByLibrary(libraryID) || []).map(s => [s.key, s]));
     for (const key of [...this._managedSearchKeys]) {
       const search = searchesByKey.get(key);
       if (!search) {
@@ -100,10 +107,10 @@ export class CitationCollections {
    * @param {object} [session] - Internal session object
    * @returns {Promise<void>}
    */
-  async initCollection(sessionID, session = this.sessions[sessionID]) {
+  async initCollection(this: Context, sessionID: string, session: Session = this.sessions[sessionID]) {
     if (!session || this._listenerStopped) return;
     if (Zotero.Prefs.get("extensions.zotero.zoterocitation.collections.enable", true) === false) return;
-    const collection = new Zotero.Collection();
+    const collection = new Zotero.Collection() as unknown as Collection;
     collection._isCiteFlowCollection = true;
     collection.libraryID = Zotero.Libraries.userLibraryID;
     const knownDocId = session.docId || this._docIdBySession?.[sessionID];
@@ -141,13 +148,13 @@ export class CitationCollections {
    * @param {number[]} targetIDs - Target item IDs
    * @returns {Promise<void>}
    */
-  async syncCollectionItems(session, targetIDs) {
+  async syncCollectionItems(this: Context, session: Session, targetIDs: number[]) {
     const collection = session?.collection;
     if (this._listenerStopped || session?.closing || !collection?.id) return;
     if (Zotero.Prefs.get("extensions.zotero.zoterocitation.collections.enable", true) === false) return;
 
     const normalizedTargetIDs = [...new Set(targetIDs.map(Number).filter(id => Number.isSafeInteger(id) && id > 0))];
-    const currentIDs = collection.getChildItems(true)
+    const currentIDs = (collection.getChildItems(true) as Array<number | {id:number}>)
       .map(itemOrID => typeof itemOrID === "number" ? itemOrID : itemOrID?.id)
       .filter(id => Number.isSafeInteger(id) && id > 0);
 
@@ -175,7 +182,7 @@ export class CitationCollections {
    * @param {string} docId - Document path or URI
    * @private
    */
-  _rememberSessionDocument(sessionID, docId) {
+  _rememberSessionDocument(this: Context, sessionID: string, docId: string) {
     if (typeof sessionID !== "string" || !sessionID || !docId) return;
     if (this._docIdBySession[sessionID] && this._docIdBySession[sessionID] !== docId) {
       this._clearCollectionRenameRetry(sessionID);
@@ -190,10 +197,10 @@ export class CitationCollections {
    * @param {string} sessionID - Session identifier
    * @private
    */
-  _clearCollectionRenameRetry(sessionID) {
+  _clearCollectionRenameRetry(this: Context, sessionID: string) {
     const timer = this._collectionRenameRetryTimerBySession?.[sessionID];
     if (timer) {
-      globalThis.clearTimeout(timer);
+      timers.clearTimeout(timer);
       delete this._collectionRenameRetryTimerBySession[sessionID];
     }
     if (this._collectionRenameRetryCountBySession) {
@@ -208,7 +215,7 @@ export class CitationCollections {
    * @param {string} [docId] - Expected document identifier
    * @private
    */
-  _scheduleCollectionRenameRetry(sessionID, targetName, docId = this._docIdBySession?.[sessionID]) {
+  _scheduleCollectionRenameRetry(this: Context, sessionID: string, targetName: string, docId = this._docIdBySession?.[sessionID]) {
     if (this._listenerStopped || !sessionID || !targetName || this._collectionRenameRetryTimerBySession?.[sessionID]) return;
     const attempt = (this._collectionRenameRetryCountBySession[sessionID] || 0) + 1;
     if (attempt > 4) {
@@ -216,7 +223,7 @@ export class CitationCollections {
       return;
     }
     this._collectionRenameRetryCountBySession[sessionID] = attempt;
-    this._collectionRenameRetryTimerBySession[sessionID] = globalThis.setTimeout(() => {
+    this._collectionRenameRetryTimerBySession[sessionID] = timers.setTimeout(() => {
       delete this._collectionRenameRetryTimerBySession[sessionID];
       const session = this.sessions?.[sessionID];
       if (this._listenerStopped || !session?.collection || (docId && this._docIdBySession?.[sessionID] !== docId)) return;
@@ -235,7 +242,7 @@ export class CitationCollections {
    * @returns {Promise<void>}
    * @private
    */
-  async _renameCollection(sessionID, targetName, docId) {
+  async _renameCollection(this: Context, sessionID: string, targetName: string, docId?: string) {
     const session = this.sessions?.[sessionID];
     if (!session) return;
     const task = (session._renameTask || Promise.resolve()).catch(() => {}).then(async () => {

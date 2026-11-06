@@ -1,8 +1,14 @@
-import { getString } from "../locale.mjs";
+import { getString } from "../locale.ts";
 
 // ============================================================================
 // Document Name Sanitization & Formatting
 // ============================================================================
+
+type DocumentDescriptor = {docId?:unknown;documentPath?:unknown;documentName?:unknown;fullName?:unknown;filePath?:unknown;path?:unknown;url?:unknown;uri?:unknown;filename?:unknown;title?:unknown;name?:unknown};
+type NativeSession = DocumentDescriptor & {_doc?:DocumentDescriptor | string;doc?:DocumentDescriptor | string};
+type NamingContext = CitationDocumentNaming & {sessions:Record<string,{closing?:boolean;docId?:string}>;_docIdBySession:Record<string,string>;_pendingCollectionNames:Map<string,number>;_pendingCollectionNumber:number;activeSessionID:string|null};
+declare const addon: {data?: {lastDroppedWordWindow?:{title:string;at:number};probeWordWindowTitles?:()=>{foregroundTitle?:string;visibleTitles?:string[]}}};
+type NamingHost = {ZoteroCitation?:{api?:{sessions?:unknown;sessionRevision?:number;activeSessionID?:string|null}}};
 
 export class CitationDocumentNaming {
   /**
@@ -11,7 +17,7 @@ export class CitationDocumentNaming {
    * @returns {string} Sanitized folder name
    * @private
    */
-  _sanitizeFolderName(rawName) {
+  _sanitizeFolderName(this: NamingContext, rawName: unknown) {
     const fallback = "Untitled Document";
     const raw = typeof rawName === "string" ? rawName : String(rawName || "");
     const noControlChars = raw.replace(/[\u0000-\u001F\u007F\u200B-\u200F\u202A-\u202E\uFEFF]/g, " ");
@@ -26,7 +32,7 @@ export class CitationDocumentNaming {
    * @returns {string} Extracted document name or empty string
    * @private
    */
-  _parseWordWindowTitle(rawTitle) {
+  _parseWordWindowTitle(this: NamingContext, rawTitle: unknown) {
     if (typeof rawTitle !== "string") return "";
     let cleaned = rawTitle.replace(/[\u0000-\u001F\u007F\u200B-\u200F\u202A-\u202E\uFEFF]/g, " ").replace(/\s+/g, " ").trim();
     if (!cleaned) return "";
@@ -67,7 +73,7 @@ export class CitationDocumentNaming {
    * @returns {string} Normalized document display name or empty string
    * @private
    */
-  _getDocumentDisplayName(docId) {
+  _getDocumentDisplayName(this: NamingContext, docId: unknown) {
     let raw = typeof docId === "string" ? docId.trim() : String(docId || "").trim();
     if (!raw || raw === "__doc__") return "";
     raw = raw.replace(/^(["'])(.*)\1$/, "$2").trim();
@@ -118,12 +124,13 @@ export class CitationDocumentNaming {
    * @returns {string} Validated document identifier or empty string
    * @private
    */
-  _extractSessionDocumentId(nativeSession, docObj) {
+  _extractSessionDocumentId(this: NamingContext, nativeSession?: NativeSession, docObj?: DocumentDescriptor | string) {
     const doc = docObj ?? nativeSession?._doc ?? nativeSession?.doc;
+    const descriptor = typeof doc === "object" && doc !== null ? doc : undefined;
     const candidates = [
       typeof doc === "string" ? doc : null,
-      doc?.docId, doc?.documentPath, doc?.documentName, doc?.fullName,
-      doc?.filePath, doc?.path, doc?.url, doc?.uri, doc?.filename, doc?.title, doc?.name,
+      descriptor?.docId, descriptor?.documentPath, descriptor?.documentName, descriptor?.fullName,
+      descriptor?.filePath, descriptor?.path, descriptor?.url, descriptor?.uri, descriptor?.filename, descriptor?.title, descriptor?.name,
       nativeSession?.docId, nativeSession?.documentPath, nativeSession?.documentName,
       nativeSession?.filePath, nativeSession?.path, nativeSession?.title, nativeSession?.name
     ];
@@ -144,7 +151,7 @@ export class CitationDocumentNaming {
    * @returns {string} Resolved document identifier or empty string
    * @private
    */
-  _resolveFallbackDocumentId(sessionID, nativeSession, docObj, allowForeground = false) {
+  _resolveFallbackDocumentId(this: NamingContext, sessionID: string, nativeSession?: NativeSession, docObj?: DocumentDescriptor | string, allowForeground = false) {
     const fromSession = this._extractSessionDocumentId(nativeSession, docObj);
     if (fromSession) return fromSession;
 
@@ -197,7 +204,7 @@ export class CitationDocumentNaming {
    * @returns {boolean}
    * @private
    */
-  _isPendingCollectionName(name, sessionID) {
+  _isPendingCollectionName(this: NamingContext, name: string, sessionID?: string) {
     if (!name || typeof name !== "string") return true;
     const prefix = getString("collection-pending");
     if (sessionID && this._pendingCollectionNames?.has(sessionID)) {
@@ -212,7 +219,7 @@ export class CitationDocumentNaming {
    * @returns {string} Sequenced pending name
    * @private
    */
-  _getPendingCollectionName(sessionID) {
+  _getPendingCollectionName(this: NamingContext, sessionID: string) {
     this._pendingCollectionNames ??= new Map();
     if (!this._pendingCollectionNames.has(sessionID)) {
       this._pendingCollectionNumber = (this._pendingCollectionNumber || 0) + 1;
@@ -225,8 +232,8 @@ export class CitationDocumentNaming {
    * Increments the session revision index to invalidate cached view mappings.
    * @private
    */
-  _invalidateSessionIndex() {
-    const api = Zotero.ZoteroCitation?.api;
+  _invalidateSessionIndex(this: NamingContext) {
+    const api = (Zotero as unknown as NamingHost).ZoteroCitation?.api;
     if (api?.sessions === this.sessions) api.sessionRevision = (api.sessionRevision || 0) + 1;
   }
 
@@ -235,11 +242,11 @@ export class CitationDocumentNaming {
    * @param {string|null} sessionID - Active session identifier
    * @private
    */
-  _setActiveSessionID(sessionID) {
+  _setActiveSessionID(this: NamingContext, sessionID: string | null) {
     const normalized = typeof sessionID === "string" && sessionID ? sessionID : null;
     this.activeSessionID = normalized;
     try {
-      if (Zotero.ZoteroCitation?.api) Zotero.ZoteroCitation.api.activeSessionID = normalized;
+      if ((Zotero as unknown as NamingHost).ZoteroCitation?.api) (Zotero as unknown as NamingHost).ZoteroCitation!.api!.activeSessionID = normalized;
     } catch {}
   }
 }

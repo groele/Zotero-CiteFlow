@@ -1,0 +1,20 @@
+{
+  "extends": "zotero-types/entries/sandbox/tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "strict": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+    "composite": false,
+    "incremental": false,
+    "allowImportingTsExtensions": true
+  },
+  "include": [
+    "src",
+    "typings"
+  ]
+}

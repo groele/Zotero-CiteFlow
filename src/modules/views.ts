@@ -1,25 +1,48 @@
-import { config } from "../config.mjs";
-import { getString } from "./locale.mjs";
-import { ViewsSessionIndex } from "./views/session-index.mjs";
-import { ViewsColumnManager } from "./views/column-manager.mjs";
-import { ViewsWindowPrep } from "./views/window-prep.mjs";
-import { ViewsDragCite } from "./views/drag-cite.mjs";
-import { ViewsIconPatch } from "./views/icon-patch.mjs";
+import { config } from "../config.ts";
+import { getString } from "./locale.ts";
+import { ViewsSessionIndex } from "./views/session-index.ts";
+import { ViewsColumnManager } from "./views/column-manager.ts";
+import { ViewsWindowPrep } from "./views/window-prep.ts";
+import { ViewsDragCite } from "./views/drag-cite.ts";
+import { ViewsIconPatch } from "./views/icon-patch.ts";
+import { composeDomains } from "./domain-composition.ts";
 
-var VIEWS_DOMAIN_MODULES = [
-  typeof ViewsSessionIndex !== "undefined" && ViewsSessionIndex,
-  typeof ViewsColumnManager !== "undefined" && ViewsColumnManager,
-  typeof ViewsWindowPrep !== "undefined" && ViewsWindowPrep,
-  typeof ViewsDragCite !== "undefined" && ViewsDragCite,
-  typeof ViewsIconPatch !== "undefined" && ViewsIconPatch
-].filter(Boolean);
+import type { SessionContext, SessionIndex } from "./views/session-index.ts";
+import type { ColumnContext } from "./views/column-manager.ts";
+import type { WindowPrepContext } from "./views/window-prep.ts";
+import type { DragContext, CiteItem } from "./views/drag-cite.ts";
+type ViewPane = NonNullable<SessionContext["pane"]> & ColumnContext["pane"] & DragContext["pane"] & NonNullable<WindowPrepContext["pane"]>;
+type ViewWindow = Window & { ZoteroPane?: ViewPane };
+interface IconState { backgroundImage: string; hadSearch: boolean; hadCollection: boolean; hadPublications: boolean }
+interface ViewGlobals { ZoteroPane?: ViewPane; document?: Document; window?: ViewWindow }
+declare const addon: { data: { alive: boolean } };
+declare const runtime: { log(error: unknown): void };
+const globals = globalThis as unknown as ViewGlobals;
 
-var Views = class {
+const VIEWS_DOMAIN_MODULES = [ViewsSessionIndex, ViewsColumnManager, ViewsWindowPrep, ViewsDragCite, ViewsIconPatch];
+
+interface Views extends ViewsSessionIndex, ViewsColumnManager, ViewsWindowPrep, ViewsDragCite {
+  _restoreIconNode(node: HTMLElement, state: IconState): void;
+  patchIcon(): Promise<void>;
+}
+class Views {
+  _window: ViewWindow | null;
+  _patchDisposers: Array<() => void>;
+  _disposed: boolean;
+  _dragItems: CiteItem[] | null;
+  _dragEndHandler: ((event: DragEvent) => void) | null;
+  _dragDocument: Document | null = null;
+  _lastUnknownDropNotice: number;
+  _registeredColumnKeys: Set<string>;
+  _iconNodeStates: Map<HTMLElement, IconState>;
+  _index: SessionIndex | null = null;
+  _columnCleanup?: Promise<void>;
+
   /**
    * Initializes view coordinator for a Zotero window.
    * @param {Window|null} [win=null] - Optional specific window instance
    */
-  constructor(win = null) {
+  constructor(win: ViewWindow | null = null) {
     this._window = win;
     this._patchDisposers = [];
     this._disposed = false;
@@ -34,24 +57,24 @@ var Views = class {
    * Resolves the active ZoteroPane instance.
    * @type {object}
    */
-  get pane() {
-    return this._window?.ZoteroPane ?? Zotero.getActiveZoteroPane?.() ?? globalThis.ZoteroPane;
+  get pane(): ViewPane {
+    return (this._window?.ZoteroPane ?? Zotero.getActiveZoteroPane?.() ?? globals.ZoteroPane) as unknown as ViewPane;
   }
 
   /**
    * Resolves the active document instance.
    * @type {Document}
    */
-  get document() {
-    return this._window?.document ?? Zotero.getMainWindow?.()?.document ?? globalThis.document;
+  get document(): Document {
+    return this._window?.document ?? Zotero.getMainWindow?.()?.document ?? globals.document as Document;
   }
 
   /**
    * Resolves the active window instance.
    * @type {Window}
    */
-  get window() {
-    return this._window ?? Zotero.getMainWindow?.() ?? globalThis.window;
+  get window(): ViewWindow {
+    return (this._window ?? Zotero.getMainWindow?.() ?? globals.window) as unknown as ViewWindow;
   }
 
   /**
@@ -69,7 +92,7 @@ var Views = class {
       zoteroPersist: ["width", "hidden", "sortDirection"],
       dataProvider: item => this.getCitationText(item.id),
       renderCell: (index, data, column, isFirstColumn, doc = this.document) => {
-        const span = doc.createElementNS("http://www.w3.org/1999/xhtml", "span");
+        const span = doc.createElementNS("http://www.w3.org/1999/xhtml", "span") as HTMLSpanElement;
         span.style.pointerEvents = "auto";
         if (!column) {
           return span;
@@ -113,7 +136,7 @@ var Views = class {
         if (typeof manager.unregisterColumns === "function") await manager.unregisterColumns(keys);
         else if (typeof manager.unregisterColumn === "function") await Promise.all(keys.map(key => manager.unregisterColumn(key)));
       } catch (error) {
-        Zotero.logError(error);
+        Zotero.logError(error as Error);
       }
     })();
     return this._columnCleanup;
@@ -126,10 +149,10 @@ var Views = class {
   dispose() {
     this._disposed = true;
     this._dragItems = null;
-    const cleanup = action => {
-      try { action(); } catch (error) { (Zotero?.logError || runtime?.log || console.error)(error); }
+    const cleanup = (action: () => void): void => {
+      try { action(); } catch (error) { (Zotero?.logError || runtime?.log || console.error)(error as Error); }
     };
-    if (this._dragEndHandler) cleanup(() => (this._dragDocument || this.document)?.removeEventListener("dragend", this._dragEndHandler, true));
+    if (this._dragEndHandler) cleanup(() => (this._dragDocument || this.document)?.removeEventListener("dragend", this._dragEndHandler!, true));
     this._dragDocument = null;
     this._dragEndHandler = null;
     for (const [iconNode, state] of this._iconNodeStates || []) {
@@ -143,12 +166,8 @@ var Views = class {
     this._window = null;
     return pending;
   }
-};
-
-for (const DomainClass of VIEWS_DOMAIN_MODULES) {
-  const descriptors = Object.getOwnPropertyDescriptors(DomainClass.prototype);
-  delete descriptors.constructor;
-  Object.defineProperties(Views.prototype, descriptors);
 }
+
+composeDomains(Views.prototype, VIEWS_DOMAIN_MODULES);
 
 export default Views;

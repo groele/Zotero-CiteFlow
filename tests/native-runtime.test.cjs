@@ -5,13 +5,11 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 test('repeated disposal waits for the same outstanding native column cleanup', async () => {
-  const source = fs.readFileSync(path.join(__dirname, '../src/modules/views.mjs'), 'utf8')
-    .replace(/^import .*;\r?\n/gm, '').replace('export default Views;', 'globalThis.Views = Views;');
   let release, calls = 0, finished = false;
   const context = vm.createContext({ Zotero: { logError() {}, ItemTreeManager: {
     unregisterColumns: () => { calls++; return new Promise(resolve => { release = resolve; }); }
   } } });
-  vm.runInContext(source, context);
+  context.Views = require("./helpers/domain-bundle.cjs").loadDomains(context).Views;
   const view = new context.Views();
   view._registeredColumnKeys.add('citation');
   const first = view.dispose();
@@ -22,8 +20,6 @@ test('repeated disposal waits for the same outstanding native column cleanup', a
 });
 
 test('late column registration waits for its shutdown cleanup before completing', async () => {
-  const source = fs.readFileSync(path.join(__dirname, '../src/modules/views.mjs'), 'utf8')
-    .replace(/^import .*;\r?\n/gm, '').replace('export default Views;', 'globalThis.Views = Views;');
   let register, unregister;
   let removed = false, finished = false;
   const context = vm.createContext({ config: { addonID: 'test' }, getString: () => 'Citation',
@@ -31,7 +27,7 @@ test('late column registration waits for its shutdown cleanup before completing'
       registerColumns: () => new Promise(resolve => { register = resolve; }),
       unregisterColumns: async () => { await new Promise(resolve => { unregister = resolve; }); removed = true; }
     } } });
-  vm.runInContext(source, context);
+  context.Views = require("./helpers/domain-bundle.cjs").loadDomains(context).Views;
   const view = new context.Views();
   const pending = view.createCitationColumn().then(() => { finished = true; });
   await view.dispose();
@@ -46,14 +42,12 @@ test('late column registration waits for its shutdown cleanup before completing'
 });
 
 test('view disposal still releases patches and columns when a DOM cleanup throws', async () => {
-  const source = fs.readFileSync(path.join(__dirname, '../src/modules/views.mjs'), 'utf8')
-    .replace(/^import .*;\r?\n/gm, '').replace('export default Views;', 'globalThis.Views = Views;');
   const calls = [], errors = [];
   const context = vm.createContext({ config: { addonID: 'test' },
     Zotero: { logError: error => errors.push(error.message), ItemTreeManager: {
       async unregisterColumns(keys) { calls.push('columns:' + keys.join(',')); }
     } } });
-  vm.runInContext(source, context);
+  context.Views = require("./helpers/domain-bundle.cjs").loadDomains(context).Views;
   const view = new context.Views({ document: { removeEventListener() { throw new Error('closed window'); } } });
   view._dragEndHandler = () => {};
   view._iconNodeStates.set({}, {});
@@ -77,7 +71,7 @@ test('production runtime contains no unused toolkit, debug bridges, or inline ev
 });
 
 test('retained host wrappers become transparent after cleanup and preserve receiver and arguments', async () => {
-  const { NativeRuntime } = await import('../src/runtime.mjs');
+  const { NativeRuntime } = await import('../src/runtime.ts');
   const runtime = new NativeRuntime();
   const receiver = { calls: 0, run(a, b) { this.calls++; return a + b; } };
   const original = receiver.run;
@@ -94,10 +88,28 @@ test('retained host wrappers become transparent after cleanup and preserve recei
   assert.equal(receiver.run(3, 4), 7);
 });
 
+test('nested patches restore the exact original even when disposed out of order', async () => {
+  const { NativeRuntime } = await import('../src/runtime.ts');
+  for (const mode of ['shutdown', 'out-of-order', 'reverse-order']) {
+    const runtime = new NativeRuntime();
+    const owner = { run(value) { return value + 1; } };
+    const original = owner.run;
+    const disposeFirst = runtime.patch(owner, 'run', 'first', next => function(value) { return next.call(this, value) * 2; });
+    const disposeSecond = runtime.patch(owner, 'run', 'second', next => function(value) { return next.call(this, value) + 3; });
+    assert.equal(owner.run(2), 9);
+    if (mode === 'shutdown') runtime.unregisterAll();
+    if (mode === 'out-of-order') { disposeFirst(); disposeSecond(); }
+    if (mode === 'reverse-order') { disposeSecond(); disposeFirst(); }
+    assert.equal(owner.run, original, mode);
+    assert.equal(owner.run(2), 3);
+    assert.equal(runtime.pendingPatchCount, 0);
+  }
+});
+
 test('shutdown awaits resources and continues after independent cleanup failures', async () => {
   const code = fs.readFileSync(path.join(__dirname, '../chrome/content/scripts/index.js'), 'utf8');
-  const start = code.indexOf('  // src/hooks.mjs');
-  const end = code.indexOf('  // src/runtime.mjs', start);
+  const start = code.indexOf('  // src/hooks.ts');
+  const end = code.indexOf('  // src/runtime.ts', start);
   assert.ok(start > 0 && end > start);
   const calls = [];
   const addon = { data: { alive: true,

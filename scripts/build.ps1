@@ -30,7 +30,7 @@ $runtimeFiles = @(
 
 Push-Location -LiteralPath $projectRoot
 try {
-    & node scripts/build-source.mjs
+    & npm run build
     if ($LASTEXITCODE -ne 0) { throw 'source build failed; run npm ci to restore pinned build dependencies' }
     & node --check bootstrap.js
     if ($LASTEXITCODE -ne 0) { throw 'bootstrap.js syntax check failed' }
@@ -116,7 +116,7 @@ try {
     $previousFeed = $env:CITEFLOW_UPDATE_MANIFEST
     try {
         $env:CITEFLOW_UPDATE_MANIFEST = Join-Path $outputPath 'update.json'
-        & node --test tests/*.test.*
+        & node --experimental-strip-types --test tests/*.test.*
         if ($LASTEXITCODE -ne 0) { throw 'tests failed' }
     } finally {
         $env:CITEFLOW_UPDATE_MANIFEST = $previousFeed

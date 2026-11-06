@@ -5,12 +5,8 @@ const vm = require('node:vm');
 const path = require('node:path');
 const source = fs.readFileSync(path.join(__dirname, '../chrome/content/scripts/index.js'), 'utf8');
 const prefix = 'extensions.zotero.zoterocitation.';
-function extractClass(context, name, endMarker) {
-  const start = source.indexOf(`  var ${name} = class {`);
-  const end = source.indexOf(endMarker, start);
-  assert.ok(start >= 0 && end > start);
-  vm.runInContext(source.slice(start, end + 5) + `;globalThis.TestClass = ${name};`, context);
-  return context.TestClass;
+function extractClass(context, name) {
+  return require('./helpers/domain-bundle.cjs').loadDomains(context)[name];
 }
 
 test('main window no longer intercepts apostrophes or registers a quick-cite handler', async () => {
@@ -23,7 +19,7 @@ test('main window no longer intercepts apostrophes or registers a quick-cite han
     views_default: class { async patchIcon() {} async dragCite() {} dispose() {} },
     citeItems: async () => { calls++; }, Zotero: { Prefs: { get: () => true }, logError() {} }
   });
-  const start = source.indexOf('  // src/hooks.mjs'); const end = source.indexOf('  // src/runtime.mjs', start);
+  const start = source.indexOf('  // src/hooks.ts'); const end = source.indexOf('  // src/runtime.ts', start);
   vm.runInContext(source.slice(start, end) + ';globalThis.testHooks = hooks_default;', context);
   await context.testHooks.onMainWindowLoad(win);
   assert.equal(handlers.size, 0);
@@ -32,7 +28,7 @@ test('main window no longer intercepts apostrophes or registers a quick-cite han
 });
 
 test('drag citation applies live independently of column visibility, without duplicate wrappers', async () => {
-  const { NativeRuntime } = await import('../src/runtime.mjs'); const runtime = new NativeRuntime();
+  const { NativeRuntime } = await import('../src/runtime.ts'); const runtime = new NativeRuntime();
   const prefs = new Map([[prefix + 'dragCite.enable', false]]); const handlers = new Map(); let nativeStarts = 0, cites = 0;
   const column = { dataKey: 'citation', hidden: false };
   const items = [{ id: 7, isRegularItem: () => true, isTopLevelItem: () => true }];
@@ -80,7 +76,7 @@ test('drag citation applies live independently of column visibility, without dup
 });
 
 test('window preparation waits for collection context and safely refreshes an empty library', async () => {
-  const { NativeRuntime } = await import('../src/runtime.mjs'); const runtime = new NativeRuntime();
+  const { NativeRuntime } = await import('../src/runtime.ts'); const runtime = new NativeRuntime();
   const events = []; let waits = 0;
   const tree = { collectionTreeRows: [], waitForLoad: async () => events.push('mount'),
     _ensureSortContextReady: async () => events.push('sort-ready'), _refreshPromise: Promise.resolve(),
@@ -104,7 +100,7 @@ test('all four numeric settings change actual scheduling, health windows, and sl
     setTimeout: (callback, delay) => { const id = ++serial; timers.set(id, { callback, delay }); return id; }, clearTimeout: id => timers.delete(id),
     Zotero: { Prefs: { get: key => prefs.get(key) }, getMainWindows: () => [{ ZoteroPane: pane }], logError() {} }, runtime: { log() {} }
   });
-  const Citation = extractClass(context, 'Citation', '\n  };\n\n  // src/modules/drop-target.mjs');
+  const Citation = extractClass(context, 'Citation', '\n  };\n\n  // src/modules/drop-target.ts');
   const c = Object.create(Citation.prototype);
   Object.assign(c, { _listenerStopped: false, _sessionCitedIDs: {}, _tagSyncTimerBySession: {}, _lastTagSyncSig: {},
     _pendingTagSyncIDsBySession: {}, _tagSyncInFlightBySession: {}, _debugCounters: {},

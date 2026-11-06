@@ -1,7 +1,12 @@
-import { config } from "../config.mjs";
+import { config } from "../config.ts";
 
+interface Setting { id: string; key: string; defaultValue: boolean | string | number; maxLength?: number; min?: number; max?: number }
+interface StatusMessage { id: string; args?: { min: number; max: number } }
+interface PreferencePanel { sync(setting: Setting): void; dispose(): void; updateStatus(): void }
+type PreferencesWindow = Window & { document: Document & { l10n: { setAttributes(element: Element | null, id: string, args?: StatusMessage["args"]): void } } };
+type PreferenceValue = boolean | string | number;
 const prefix = "extensions.zotero.zoterocitation.";
-export const settings = [
+export const settings: Setting[] = [
   { id: "enable", key: "enable", defaultValue: true },
   { id: "dragCite", key: "dragCite.enable", defaultValue: true },
   { id: "collections", key: "collections.enable", defaultValue: true },
@@ -14,7 +19,7 @@ export const settings = [
   { id: "perfSlowThresholdMs", key: "perfSlowThresholdMs", defaultValue: 50, min: 5, max: 5000 }
 ];
 
-export function readSetting(setting) {
+export function readSetting(setting: Setting): PreferenceValue {
   const value = Zotero.Prefs.get(prefix + setting.key, true);
   if (setting.maxLength !== undefined) {
     return typeof value === "string" && value.trim() && value.trim().length <= setting.maxLength && !/[\x00-\x1f\x7f]/.test(value)
@@ -24,11 +29,21 @@ export function readSetting(setting) {
   if ((typeof value !== "number" && typeof value !== "string") || (typeof value === "string" && !value.trim())) return setting.defaultValue;
   const number = Number(value);
   return Number.isFinite(number)
-    ? Math.max(setting.min, Math.min(setting.max, Math.trunc(number))) : setting.defaultValue;
+    ? Math.max(setting.min, Math.min(setting.max!, Math.trunc(number))) : setting.defaultValue;
 }
 
 export class Preferences {
-  constructor(apply) {
+  private readonly _apply: () => Promise<{ complete?: boolean } | undefined>;
+  private readonly _panels: Map<Element, PreferencePanel>;
+  private _observers: Array<ReturnType<typeof Zotero.Prefs.registerObserver>>;
+  private _disposed: boolean;
+  private _applyQueue: Promise<void>;
+  private _revision: number;
+  private _applyFailed: boolean;
+  private _startedEnabled: PreferenceValue;
+  private _paneID?: string;
+
+  constructor(apply: () => Promise<{ complete?: boolean } | undefined>) {
     this._apply = apply;
     this._panels = new Map();
     this._observers = [];
@@ -74,7 +89,7 @@ export class Preferences {
         if (this._disposed || revision !== this._revision) return;
         this._applyFailed = result?.complete === false;
       } catch (error) {
-        Zotero.logError(error);
+        Zotero.logError(error as Error);
         if (this._disposed || revision !== this._revision) return;
         this._applyFailed = true;
       }
@@ -84,15 +99,17 @@ export class Preferences {
 
   get settled() { return this._applyQueue; }
 
-  init(win) {
+  init(win: PreferencesWindow): void {
     const root = win.document.getElementById("zoterocitation-settings");
     if (!root || this._disposed || this._panels.has(root)) return;
-    const listeners = [];
-    const invalid = new Map();
+    // Create the signal in the owning window's realm for its native DOM nodes.
+    const AbortControllerForWindow = (win as unknown as { AbortController: typeof AbortController }).AbortController;
+    const controller = new AbortControllerForWindow();
+    const invalid = new Map<string, StatusMessage>();
     const status = root.querySelector("#zoterocitation-settings-status");
     const updateStatus = () => {
       if (invalid.size) {
-        const message = invalid.values().next().value;
+        const message = invalid.values().next().value!;
         win.document.l10n.setAttributes(status, message.id, message.args);
         return;
       }
@@ -100,35 +117,34 @@ export class Preferences {
         : readSetting(settings[0]) !== this._startedEnabled ? "zoterocitation-settings-restart" : "zoterocitation-settings-saved");
     };
     const updateDependencies = () => {
-      const tagsEnabled = root.querySelector("#zoterocitation-setting-citationTags")?.checked;
-      const tagTextInput = root.querySelector("#zoterocitation-setting-citationTagText");
+      const tagsEnabled = root.querySelector<HTMLInputElement>("#zoterocitation-setting-citationTags")?.checked;
+      const tagTextInput = root.querySelector<HTMLInputElement>("#zoterocitation-setting-citationTagText");
       if (tagTextInput) tagTextInput.disabled = !tagsEnabled;
       const tagTextRow = typeof tagTextInput?.closest === "function" ? tagTextInput.closest(".zoterocitation-number-row") : null;
       if (tagTextRow?.classList) tagTextRow.classList.toggle("is-disabled", !tagsEnabled);
     };
-    const on = (node, type, handler) => {
-      node.addEventListener(type, handler);
-      listeners.push(() => node.removeEventListener(type, handler));
+    const on = (node: EventTarget, type: string, handler: EventListener) => {
+      node.addEventListener(type, handler, { signal: controller.signal });
     };
-    const sync = setting => {
-      const input = root.querySelector(`#zoterocitation-setting-${setting.id}`);
+    const sync = (setting: Setting): void => {
+      const input = root.querySelector<HTMLInputElement>(`#zoterocitation-setting-${setting.id}`)!;
       invalid.delete(setting.id);
-      if (typeof setting.defaultValue === "boolean") input.checked = readSetting(setting);
+      if (typeof setting.defaultValue === "boolean") input.checked = readSetting(setting) as boolean;
       else { input.value = String(readSetting(setting)); input.setCustomValidity(""); }
       updateStatus();
       updateDependencies();
     };
     const dispose = () => {
-      for (const remove of listeners) remove();
+      controller.abort();
       this._panels.delete(root);
     };
     this._panels.set(root, { sync, dispose, updateStatus });
-    const save = values => {
+    const save = (values: Array<[Setting, PreferenceValue]>): void => {
       try {
         for (const [setting, value] of values) Zotero.Prefs.set(prefix + setting.key, value, true);
         updateStatus();
       } catch (error) {
-        Zotero.logError(error);
+        Zotero.logError(error as Error);
         for (const setting of settings) sync(setting);
         // Cancel stale status updates; queued successful writes still apply.
         this._applyQueue = this._applyQueue.then(() => {
@@ -138,7 +154,7 @@ export class Preferences {
       }
     };
     for (const setting of settings) {
-      const input = root.querySelector(`#zoterocitation-setting-${setting.id}`);
+      const input = root.querySelector<HTMLInputElement>(`#zoterocitation-setting-${setting.id}`)!;
       sync(setting);
       if (typeof setting.defaultValue !== "boolean") on(input, "input", () => {
         input.setCustomValidity("");
@@ -146,10 +162,10 @@ export class Preferences {
         updateStatus();
       });
       on(input, "change", () => {
-        let value = input.checked;
+        let value: PreferenceValue = input.checked;
         if (setting.maxLength !== undefined) {
           value = input.value.trim();
-          if (!value || value.length > setting.maxLength || /[\x00-\x1f\x7f]/.test(input.value)) {
+          if (!value || (value as string).length > setting.maxLength || /[\x00-\x1f\x7f]/.test(input.value)) {
             invalid.set(setting.id, { id: "zoterocitation-settings-invalid-tag" });
             updateStatus();
             input.reportValidity();
@@ -158,9 +174,9 @@ export class Preferences {
         }
         if (setting.min !== undefined) {
           value = Number(input.value);
-          if (!input.value.trim() || !Number.isInteger(value) || value < setting.min || value > setting.max) {
+          if (!input.value.trim() || !Number.isInteger(value) || value < setting.min || value > setting.max!) {
             input.reportValidity();
-            invalid.set(setting.id, { id: "zoterocitation-settings-invalid", args: { min: setting.min, max: setting.max } });
+            invalid.set(setting.id, { id: "zoterocitation-settings-invalid", args: { min: setting.min, max: setting.max! } });
             updateStatus();
             return;
           }
@@ -169,7 +185,7 @@ export class Preferences {
         updateDependencies();
       });
     }
-    on(root.querySelector("#zoterocitation-settings-reset"), "click", () => {
+    on(root.querySelector("#zoterocitation-settings-reset")!, "click", () => {
       save(settings.map(setting => [setting, setting.defaultValue]));
       for (const setting of settings) sync(setting);
       updateDependencies();
@@ -181,7 +197,7 @@ export class Preferences {
     this._disposed = true;
     for (const panel of [...this._panels.values()]) panel.dispose();
     for (const symbol of this._observers) {
-      try { Zotero.Prefs.unregisterObserver(symbol); } catch (error) { Zotero.logError(error); }
+      try { Zotero.Prefs.unregisterObserver(symbol); } catch (error) { Zotero.logError(error as Error); }
     }
     this._observers = [];
     if (this._paneID) Zotero.PreferencePanes.unregister(this._paneID);
