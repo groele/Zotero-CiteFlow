@@ -1,0 +1,34 @@
+{
+  "policy": "freeze-and-shrink",
+  "maxSourceLines": 360,
+  "capturedAt": "2026-11-06",
+  "debtCleared": true,
+  "note": "Known §5.9 debt. Listed files may stay at or below the recorded line count, but must never grow; any other source file above 360 lines fails the guard. Remove an entry only after splitting that module below 360 lines. Every entry must still exist and must still exceed the ceiling - stale entries are rejected by the baseline integrity test.",
+  "lastReleasedVersion": "13.2.4",
+  "splitHistory": [
+    {
+      "version": "13.2.4",
+      "date": "2026-11-06",
+      "resolved": [
+        "Automated 13-point architecture guard (scripts/architecture-guard.mjs)",
+        "Freeze-and-shrink baseline with 0 oversized modules (scripts/architecture-baseline.json)",
+        "Strict pre-bundle guard and typecheck verification in package.json build pipeline",
+        "100% compliance across all 34 TypeScript modules (all <= 360 lines)"
+      ]
+    },
+    {
+      "version": "13.2.3",
+      "date": "2026-11-06",
+      "resolved": [
+        "src/modules/citation/formatting.ts (328 lines <= 360 ceiling)",
+        "src/modules/views/icon-patch.ts (326 lines <= 360 ceiling)",
+        "src/modules/citation/word-integration.ts (322 lines <= 360 ceiling)",
+        "src/modules/citation/tag-governance.ts (310 lines <= 360 ceiling)",
+        "src/modules/citation/collections.ts (252 lines <= 360 ceiling)",
+        "src/modules/cite.ts (210 lines, fully typed with CitationHost/CiteItem boundary)",
+        "all 34 source files in src/ verified <= 360 lines; debtCleared = true with 0 oversized modules"
+      ]
+    }
+  ],
+  "oversized": {}
+}

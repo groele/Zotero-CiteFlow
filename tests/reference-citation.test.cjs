@@ -51,7 +51,8 @@ test('citation insertion preserves the validated native Word field behavior apar
     .replace('    let fieldIndexPromise: Promise<number>, citationsByItemIDPromise: Promise<Record<string, unknown>>;', '    let fieldIndexPromise, citationsByItemIDPromise;')
     .replace('(field as NativeField)._field', 'field._field').replace('var fields: NativeField[] | undefined =', 'var fields =')
     .replaceAll('(citation2.fieldIndex ?? citation2._fieldIndex)!', 'citation2.fieldIndex ?? citation2._fieldIndex')
-    .replace('(citation2.field ?? citation2._field)!', 'citation2.field ?? citation2._field').replace('isAlive() && sessionID', 'addon.data.alive !== false && sessionID');
+    .replace('(citation2.field ?? citation2._field)!', 'citation2.field ?? citation2._field').replace('isAlive() && sessionID', 'addon.data.alive !== false && sessionID')
+    .replace('    committed = true;\n\n    // Refresh', '    committed = true;\n    \n    // Refresh');
   assert.ok(current.includes(MULTI_WINDOW_TRASH_GUARD), 'cite.ts must include multi-window and trash/deleted item guards');
   current = current.replace(MULTI_WINDOW_TRASH_GUARD, REFERENCE_SELECTION_BLOCK);
   const adapterStart = current.indexOf('  // Zotero 10\'s WinWord adapter');

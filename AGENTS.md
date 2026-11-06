@@ -17,10 +17,13 @@ Package assets are defined in `scripts/build.ps1` and `package.json`.
 ## Commands
 
 ```bash
-# Build bundled runtime script
-npm run build              # tsc --noEmit, then node scripts/build-source.mjs
+# Run architecture & compliance guard (enforces 360-line ceiling, Fluent symmetry, etc.)
+npm run guard              # node scripts/architecture-guard.mjs
 
-# Run full test suite (builds first, then executes node test runner)
+# Build bundled runtime script (typecheck + guard + esbuild)
+npm run build              # tsc --noEmit && npm run guard && node scripts/build-source.mjs
+
+# Run full test suite (builds first, then executes node test runner across 73 tests)
 npm test                   # npm run build && node --test tests/*.test.*
 
 # Package production XPI
@@ -29,6 +32,20 @@ npm run package            # pwsh -NoProfile -File scripts/build.ps1
 # Self-test SemVer release tag validation
 python scripts/release-tags.py --self-test
 ```
+
+## Architecture & Compliance Guards
+
+CiteFlow aligns with MetaFlow and MindFlow as an architectural benchmark, enforcing 13 automated rules in `scripts/architecture-guard.mjs` against `scripts/architecture-baseline.json`:
+- **§5.9 360-Line Ceiling**: Every source file in `src/` must remain <= 360 lines. Baseline declares `debtCleared: true` and 0 oversized modules.
+- **§5.2 TypeScript Purity & Strict Compiler**: 100% of files in `src/` are `.ts`/`.tsx`. Strict compiler enabled (`strict`, `noEmit`, `isolatedModules`, `verbatimModuleSyntax`). Zero `@ts-nocheck` exemptions.
+- **§5.2 Typed Composition over Regex Class Slicing**: Modules compose via typed property descriptors (`composeDomains`).
+- **§3 Fluent Symmetry & Zero Hardcoded UI Text**: `en-US` and `zh-CN` catalogues are 100% symmetric with zero duplicates; `preferences.xhtml` is 100% `data-l10n-id` driven.
+- **§3 Naming Governance**: No version-prefixed filenames (`v40`, `V12_`, `temp-`).
+- **§4.1 Full Preference Coverage**: Every preference in `prefs.js` is mapped in `preferences.ts` and mounted in `preferences.xhtml`.
+- **§4.2 Layout Grid Standard**: `preferences.css` strictly enforces the 16px/24px/40px three-level hierarchy.
+- **§5.3 Deprecated API Ban**: Zero `Cu.import`, `Components.classes`, or legacy boolean `setAttribute` calls.
+- **§6 Version Parity**: `manifest.json`, `package.json`, `package-lock.json`, `docs/brand/product.json`, and `update.json` are byte-aligned.
+- **§9 Update Feed Integrity**: `update.json` validated with HTTPS links and SHA-512 hashes.
 
 ## Architecture & Module Structure
 
