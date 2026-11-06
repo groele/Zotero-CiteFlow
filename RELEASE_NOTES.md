@@ -1,9 +1,9 @@
-# Zotero CiteFlow 13.2.4
+# Zotero CiteFlow 16.0.0
 
 **发布日期**：2026-11-06
 **适用版本**：Zotero `10.0` - `12.*`
 
-## 架构守护与工程标杆对齐（v13.2.4）
+## 架构守护与工程标杆对齐（v16.0.0）
 
 - **全自动 13 项架构守卫与 360 行红线卡点（`scripts/architecture-guard.mjs`）**：
   - 建立对标 MetaFlow 与 MindFlow 的第一梯队工程守卫，涵盖 §5.9 单文件 360 行上限、§5.2 TS 纯度与零正则切片、§5.2 编译器严格模式、§3 Fluent 本地化双语对称与 preferences.xhtml 100% data-l10n-id 驱动、§3 文件名治理、§4.1 设置项覆盖、§4.2 16px/24px/40px 网格规范、§5.3 废弃 Gecko API 拦截、§6 与 §9 版本及 SHA-512 更新源校验；

@@ -4,8 +4,17 @@
   "capturedAt": "2026-11-06",
   "debtCleared": true,
   "note": "Known §5.9 debt. Listed files may stay at or below the recorded line count, but must never grow; any other source file above 360 lines fails the guard. Remove an entry only after splitting that module below 360 lines. Every entry must still exist and must still exceed the ceiling - stale entries are rejected by the baseline integrity test.",
-  "lastReleasedVersion": "13.2.4",
+  "lastReleasedVersion": "16.0.0",
   "splitHistory": [
+    {
+      "version": "16.0.0",
+      "date": "2026-11-06",
+      "resolved": [
+        "Unified Major Release v16.0.0 across Zotero Flow suite",
+        "Maintained 100% compliance across all 34 TypeScript modules (all <= 360 lines)",
+        "Zero debt baseline (debtCleared = true) preserved"
+      ]
+    },
     {
       "version": "13.2.4",
       "date": "2026-11-06",
