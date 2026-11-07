@@ -10,7 +10,7 @@
 
 [![当前版本](https://img.shields.io/badge/version-16.0.0-245ac7?style=flat-square)](https://github.com/groele/Zotero-CiteFlow/releases/tag/v16.0.0) · [下载 XPI](https://github.com/groele/Zotero-CiteFlow/releases/download/v16.0.0/zotero-citeflow-16.0.0.xpi) · [问题反馈](https://github.com/groele/Zotero-CiteFlow/issues)
 
-[产品定位](#overview) · [安装与更新](#installation) · [快速开始](#quick-start) · [核心功能](#features) · [设置与使用](#settings) · [数据、同步与外部服务](#data) · [兼容性与验证范围](#compatibility) · [常见问题](#troubleshooting) · [开发与详细文档](#development) · [系列产品](#series) · [项目来源与许可](#license)
+[产品定位](#overview) · [安装与更新](#installation) · [快速开始](#quick-start) · [核心功能](#features) · [CSL 引用格式参考案例](#csl-example) · [设置与使用](#settings) · [数据、同步与外部服务](#data) · [兼容性与验证范围](#compatibility) · [常见问题](#troubleshooting) · [开发与详细文档](#development) · [系列产品](#series) · [项目来源与许可](#license)
 
 <a id="overview"></a>
 
@@ -37,7 +37,7 @@
 ## 快速开始
 
 1. 打开包含 Zotero 引文的 Word 文档，并通过原生 Word 集成操作一次。
-2. 回到 Zotero 检查引用列、已识别的文档状态和标签。
+2. 回到 Zotero 检查引用列、已识别的文档状态和标签（**前置提示**：若未显示引用列，请在 Zotero 文献列表表头任意空白处点击鼠标右键，勾选开启 **「引用」(Citation)** 列）。
 3. 需要插入时将文献拖入目标 Word 文档，核对实际插入位置。
 
 <a id="features"></a>
@@ -52,6 +52,45 @@
 | 分层治理架构 | 彻底清理堆砌代码，对全量函数划分 11 大职责领域分门别类治理，消灭死代码，提升可维护性与运行稳定性。 | 各领域职责清晰、边界严格，对外接口保持完全向前兼容。 |
 | 三级 40px 黄金对齐基准设置面板 | 遵循 Zotero Flow 统一设置面板规范，16px 边距、二级文字与三级从属项严格对齐于 40px 垂直基准线，支持 Fluent 100% 国际化与键盘无障碍访问。 | 面板完全基于现代 Web/XUL 盒模型构建，无缝适配深色/浅色与高对比度主题。 |
 | 可审计设置与自愈诊断 | 在设置页调整同步延迟、刷新延迟、性能阈值与调试日志，具备内存安全与健康状态检测。 | 诊断用于观察与自愈，不替代 Word/Zotero 的原生故障诊断。 |
+
+
+<a id="csl-example"></a>
+
+## CSL 引用样式参考案例：紧凑期刊引文格式 (Compact Journal Reference)
+
+为满足科研人员在投递顶级期刊和国际顶级会议手稿（如 IEEE Transactions、ACM 系列、Nature 子刊、CVPR、ICCV 等）时对**严格篇幅限制（Page Limit）**的要求，CiteFlow 仓库收录并推荐了由 **Shikunhou** 专门定制的极简紧凑引文样式（CSL）：
+
+📁 **样式文件入口**：[`csl/compact-journal-reference.csl`](csl/compact-journal-reference.csl)
+
+### 🌟 样式核心特色与设计规范
+
+| 设计维度 | 标准传统格式 (如 APA / IEEE 完整版) | Compact Journal Reference 紧凑格式 |
+|---|---|---|
+| **正文引用标记** | 括号作者年 `(Vaswani et al., 2017)` 或带空隙的 `[ 1 ]` | 极简顺序数字标引 `[1]`、`[1, 2]`、`[1-4]`（自动合并连续标号） |
+| **期刊与容器名称** | 全称长文本（易换行占用 2 行） | 规范斜体缩写 (`form="short"`，如 *NeurIPS,*、*IEEE Trans. PAMI,*) |
+| **发表年份呈现** | 括号尾缀 `(2017)` 或普通字重 | **粗体醒目标注**（如 **2017**），视觉焦点分明 |
+| **卷期与页码** | 冗余文字标识 `Vol. 30, no. 2, pp. 5998-6008` | 极简并置 `30(2), 5998-6008`（彻底省去冗余标记） |
+| **文末排版间隙** | 宽段间距，带未对齐悬挂 | 悬挂齐平对齐 (`second-field-align="flush"`)，段间距设为 `0` |
+
+### 📊 参考文献排版渲染直观对比
+
+- **传统标准排版（耗费 3~4 行版面）**：
+  > `[1] Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., Kaiser, Ł., & Polosukhin, I. (2017). Attention is all you need. In Advances in Neural Information Processing Systems (Vol. 30, pp. 5998–6008). Currans Associates, Inc.`
+- **Compact Journal Reference 紧凑排版（仅占用 1 行，节约 60%+ 版面空间）**：
+  > `[1] Attention Is All You Need. NeurIPS, 2017, 30, 5998-6008.`
+
+### 🚀 安装与在 Word / WPS 中使用指南
+
+1. **获取样式文件**：
+   直接从本仓库克隆或下载 [`csl/compact-journal-reference.csl`](csl/compact-journal-reference.csl)；
+2. **导入 Zotero 样式库**：
+   - 打开 Zotero 桌面端，进入菜单 **编辑 (Edit) ➔ 设置 (Settings)**（macOS 为 **Zotero ➔ 设置**）；
+   - 点击左侧 **引用 (Cite)**，切换至 **样式 (Styles)** 选项卡；
+   - 点击样式列表下方的 **「+」号按钮**，选择下载的 `compact-journal-reference.csl` 导入（或直接将该文件拖拽至 Zotero 窗口）；
+3. **在 Word / WPS 手稿中切换**：
+   - 在 Word 或 WPS 的 Zotero 工具栏中点击 **Document Preferences (文档首选项)**；
+   - 在样式列表中选择 **Compact Journal Reference** 并点击确定；
+   - 配合 CiteFlow 的**实时引用列监控**与**拖拽引文**能力，全篇文献引用与文末排版瞬间完成紧凑规范化！
 
 <a id="settings"></a>
 

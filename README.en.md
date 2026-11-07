@@ -10,7 +10,7 @@ Track Word citations and connect them to Zotero items.
 
 [![Release](https://img.shields.io/badge/version-16.0.0-245ac7?style=flat-square)](https://github.com/groele/Zotero-CiteFlow/releases/tag/v16.0.0) · [Download XPI](https://github.com/groele/Zotero-CiteFlow/releases/download/v16.0.0/zotero-citeflow-16.0.0.xpi) · [Report an issue](https://github.com/groele/Zotero-CiteFlow/issues)
 
-[Overview](#overview) · [Installation and updates](#installation) · [Quick start](#quick-start) · [Key features](#features) · [Settings](#settings) · [Data, sync, and services](#data) · [Compatibility and validation](#compatibility) · [Troubleshooting](#troubleshooting) · [Development and documentation](#development) · [The Flow series](#series) · [Origin and license](#license)
+[Overview](#overview) · [Installation and updates](#installation) · [Quick start](#quick-start) · [Key features](#features) · [CSL Style Reference Case](#csl-example) · [Settings](#settings) · [Data, sync, and services](#data) · [Compatibility and validation](#compatibility) · [Troubleshooting](#troubleshooting) · [Development and documentation](#development) · [The Flow series](#series) · [Origin and license](#license)
 
 <a id="overview"></a>
 
@@ -52,6 +52,43 @@ Update feed: [update.json](https://github.com/groele/Zotero-CiteFlow/blob/main/u
 | Layered Architecture & Function Governance | Thoroughly cleans up monolithic code into 11 strict architectural domain sections, eliminates dead code, and maximizes maintainability and stability. | Strictly defined boundaries with complete forward compatibility. |
 | Three-level 40px golden baseline settings panel | Adheres to Zotero Flow 2026-11-02 design standards: 16px container padding, Level-2 labels and Level-3 subordinate elements strictly aligned at the 40px vertical line, 100% Fluent localized and keyboard accessible. | Built with modern Gecko box models; seamlessly adapts to Dark, Light, and High-Contrast system themes. |
 | Inspectable settings and diagnostics | Exposes sync delay, refresh delay, performance thresholds, and debug logging with self-healing health check monitors. | Diagnostics aid observation; they do not replace Word or Zotero’s native troubleshooting. |
+
+
+<a id="csl-example"></a>
+
+## CSL Style Reference Case: Compact Journal Reference
+
+To meet strict page limit requirements for top-tier journals and conference submissions (e.g., IEEE Transactions, ACM conferences, Nature sub-journals, CVPR, ICCV), CiteFlow bundles and recommends the customized ultra-compact citation style authored by **Shikunhou**:
+
+📁 **Style File**: [`csl/compact-journal-reference.csl`](csl/compact-journal-reference.csl)
+
+### 🌟 Core Style Features and Design Specifications
+
+| Dimension | Standard Format (e.g., APA / Full IEEE) | Compact Journal Reference Style |
+|---|---|---|
+| **In-text Citation** | Author-year `(Vaswani et al., 2017)` or loose brackets | Compact numeric `[1]`, `[1, 2]`, `[1-4]` (auto-collapsed) |
+| **Journal Title** | Full length (often wrapping to 2 lines) | Standard short italic (`form="short"`, e.g., *NeurIPS,*, *IEEE Trans. PAMI,*) |
+| **Publication Year** | Enclosed in parentheses `(2017)` | **Bold font** (e.g., **2017**) for rapid visual scanning |
+| **Volume & Pages** | Redundant prefixes `Vol. 30, no. 2, pp. 5998-6008` | Condensed syntax `30(2), 5998-6008` without boilerplate tokens |
+| **Entry Spacing** | Loose line spacing | Flush alignment (`second-field-align="flush"`), zero entry spacing |
+
+### 📊 Rendering Comparison
+
+- **Traditional Format (Takes 3-4 lines)**:
+  > `[1] Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., Kaiser, Ł., & Polosukhin, I. (2017). Attention is all you need. In Advances in Neural Information Processing Systems (Vol. 30, pp. 5998–6008). Currans Associates, Inc.`
+- **Compact Journal Reference (Condensed into a single line, saving >60% vertical space)**:
+  > `[1] Attention Is All You Need. NeurIPS, 2017, 30, 5998-6008.`
+
+### 🚀 How to Install and Use in Word / WPS
+
+1. **Obtain the CSL File**: Download [`csl/compact-journal-reference.csl`](csl/compact-journal-reference.csl) from this repository.
+2. **Import into Zotero**:
+   - In Zotero, navigate to **Edit → Settings / Preferences → Cite → Styles** (on macOS: **Zotero → Settings**).
+   - Click the **"+" button** below the style list and select `compact-journal-reference.csl` (or drag and drop the file directly into Zotero).
+3. **Activate in Word / WPS**:
+   - In Word or WPS, click **Zotero → Document Preferences**.
+   - Select **Compact Journal Reference** from the list and confirm.
+   - Combined with CiteFlow's real-time citation tracking and drag-and-drop citation workflow, bibliography formatting becomes ultra-dense, elegant, and conference-ready!
 
 <a id="settings"></a>
 
