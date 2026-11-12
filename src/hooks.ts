@@ -3,10 +3,10 @@ import { initLocale } from "./modules/locale.ts";
 import { Citation } from "./modules/citation.ts";
 import Views from "./modules/views.ts";
 import { Preferences } from "./modules/preferences.ts";
-import { closeDropTargetCtypes, probeWordWindowTitles } from "./modules/drop-target.ts";
+import { closeDropTargetCtypes, probeForegroundWordTitle, probeWordWindowTitles } from "./modules/drop-target.ts";
 type HostWindow = NonNullable<ConstructorParameters<typeof Views>[0]> & { Zotero_Tabs?: unknown };
 interface CitationRuntime { listener(interval: number): Promise<void>; applyPreferences(): Promise<{ complete?: boolean } | undefined>; clear(): Promise<void> }
-interface AddonRuntime { data: { alive: boolean; citation?: CitationRuntime; views?: Views; preferences?: Preferences; locale?: unknown; probeWordWindowTitles?: typeof probeWordWindowTitles; lastDroppedWordWindow?: unknown }; api: { initPreferences?: (win: HostWindow) => void } }
+interface AddonRuntime { data: { alive: boolean; citation?: CitationRuntime; views?: Views; preferences?: Preferences; locale?: unknown; probeWordWindowTitles?: typeof probeWordWindowTitles; probeForegroundWordTitle?: typeof probeForegroundWordTitle; lastDroppedWordWindow?: unknown }; api: { initPreferences?: (win: HostWindow) => void } }
 interface Binding { views: Views; closed: boolean; readyPromise: Promise<void> | null }
 interface HookGlobals { window?: HostWindow; document?: Document; ZoteroPane?: HostWindow["ZoteroPane"]; Zotero_Tabs?: unknown }
 declare const addon: AddonRuntime;
@@ -40,6 +40,7 @@ async function onStartup(): Promise<void> {
       return;
     }
     addon.data.probeWordWindowTitles = probeWordWindowTitles;
+    addon.data.probeForegroundWordTitle = probeForegroundWordTitle;
     const citation = new Citation() as unknown as CitationRuntime;
     addon.data.citation = citation;
     await citation.listener(1e3);
@@ -165,6 +166,7 @@ async function onShutdown(): Promise<void> {
   await runShutdownStep("clear citation state", () => addon.data.citation?.clear?.());
   await runShutdownStep("close drop-target native libraries", () => {
     delete addon.data.probeWordWindowTitles;
+    delete addon.data.probeForegroundWordTitle;
     delete addon.data.lastDroppedWordWindow;
     if (typeof closeDropTargetCtypes === "function") closeDropTargetCtypes();
   });

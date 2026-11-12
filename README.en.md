@@ -8,7 +8,7 @@ Track Word citations and connect them to Zotero items.
 
 [简体中文](README.md) · [English](README.en.md)
 
-[![Release](https://img.shields.io/badge/version-16.1.0-245ac7?style=flat-square)](https://github.com/groele/Zotero-CiteFlow/releases/tag/v16.1.0) · [Download XPI](https://github.com/groele/Zotero-CiteFlow/releases/download/v16.1.0/zotero-citeflow-16.1.0.xpi) · [Report an issue](https://github.com/groele/Zotero-CiteFlow/issues)
+[![Release](https://img.shields.io/badge/version-16.2.0-245ac7?style=flat-square)](https://github.com/groele/Zotero-CiteFlow/releases/tag/v16.2.0) · [Download XPI](https://github.com/groele/Zotero-CiteFlow/releases/download/v16.2.0/zotero-citeflow-16.2.0.xpi) · [Report an issue](https://github.com/groele/Zotero-CiteFlow/issues)
 
 [Overview](#overview) · [Installation and updates](#installation) · [Quick start](#quick-start) · [Key features](#features) · [CSL Style Reference Case](#csl-example) · [Settings](#settings) · [Data, sync, and services](#data) · [Compatibility and validation](#compatibility) · [Troubleshooting](#troubleshooting) · [Development and documentation](#development) · [The Flow series](#series) · [Origin and license](#license)
 
@@ -24,7 +24,7 @@ Install this add-on independently and combine it with other Flow products as nee
 
 ## Installation and updates
 
-1. Download [zotero-citeflow-16.1.0.xpi](https://github.com/groele/Zotero-CiteFlow/releases/download/v16.1.0/zotero-citeflow-16.1.0.xpi) (add-on version **16.1.0**), not the Source code ZIP.
+1. Download [zotero-citeflow-16.2.0.xpi](https://github.com/groele/Zotero-CiteFlow/releases/download/v16.2.0/zotero-citeflow-16.2.0.xpi) (add-on version **16.2.0**), not the Source code ZIP.
 2. In Zotero, open **Tools → Plugins/Add-ons**, then choose **Install Add-on From File** from the gear menu.
 3. Select the XPI, complete installation, and restart if requested.
 
@@ -88,7 +88,7 @@ To meet strict page limit requirements for top-tier journals and conference subm
 3. **Activate in Word / WPS**:
    - In Word or WPS, click **Zotero → Document Preferences**.
    - Select **Compact Journal Reference** from the list and confirm.
-   - Combined with CiteFlow's real-time citation tracking and drag-and-drop citation workflow, bibliography formatting becomes ultra-dense, elegant, and conference-ready!
+   - Combined with CiteFlow's real-time citation tracking and drag-and-drop citation workflow, bibliography formatting becomes ultra-dense, elegant, and conference-ready! (Note: CiteFlow's real-time citation tracking, temporary collections, and Windows drag-to-cite support Microsoft Word only, not WPS Writer.)
 
 <a id="settings"></a>
 
@@ -111,9 +111,9 @@ Restart Zotero after changing citation tracking. Configure dragging, temporary c
 
 | Item | Scope |
 |---|---|
-| Current add-on version | 16.1.0 |
+| Current add-on version | 16.2.0 |
 | Declared Zotero range | `10.0` through `12.*` |
-| Evidence boundary | 16.1.0 preserves §5.9 360-line zero-debt modularity and adds native Zotero 10+ drag payload preservation, non-Windows Quick Copy protection, modern `enabledTreeIDs` column registration, resilient startup/window recovery, complete WinWord wrapper restoration, startup orphan managed-tag cleanup, exact `isCollection` own-descriptor restoration on sorted rows, mid-flight cancellation & post-close timer guards for async session sync/formatting, hardened `ensureSession` re-initialization, compile-time version injection, CSL 1.0.2 template fixes, syntax validation, and deterministic ZIP/update-feed integrity checks. |
+| Evidence boundary | 16.2.0 preserves §5.9 360-line zero-debt modularity across all 36 TypeScript source modules and adds read-only foreground Win32 Word `activeSessionID` sync (P1-B), multiset duplicate window-title disambiguation and parent-directory qualifiers for identically named files (`_getUniqueCollectionDisplayName`), 3s background window-probe cooldown and adaptive idle listener backoff with overlap compensation, snapshot input dirty-checking (`buildRefreshInputFingerprint`) with ItemTree row-level invalidation and safe full fallback, throttled concurrent drag busy notices (`Addon.api.citeItems`) keeping locked core `cite.ts` SHA-256 unchanged, `tests/enhancement-stability.test.mjs`, and explicit Word/personal-library documentation boundaries. |
 
 Add-on and Zotero versions are separate. Declared compatibility does not establish testing on every host, operating system or service. This patch validates the targeted behaviors listed above, not all plugin workflows or main-profile installation.
 
@@ -140,6 +140,7 @@ npm run package
 - [技术与维护指南 / Technical guide](CORE-TECHNICAL-MAINTENANCE.md)
 - [第三方声明 / Third-party notices](THIRD_PARTY.md)
 - [版本说明 / Release notes](RELEASE_NOTES.md)
+- [v16.2.0 阶段说明 / Milestone notes](docs/releases/v16.2.0.md)
 - [v16.1.0 阶段说明 / Milestone notes](docs/releases/v16.1.0.md)
 - [v16.0.0 阶段说明 / Milestone notes](docs/releases/v16.0.0.md)
 - [v13.0.9 阶段说明 / Milestone notes](docs/releases/v13.0.9.md)

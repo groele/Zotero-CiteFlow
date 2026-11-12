@@ -101,19 +101,28 @@ export function closeDropTargetCtypes(): void {
   try { user32?.close(); } catch { }
 }
 
+function readForegroundWordTitle(api: ReturnType<typeof getDropTargetCtypes>): string {
+  const fg = api.getForegroundWindow();
+  if (!fg || fg.isNull()) return "";
+  const rootFg = api.getAncestor(fg, 2);
+  const targetFg = rootFg && !rootFg.isNull() ? rootFg : fg;
+  return isWinWordWindow(api, targetFg) ? readWindowTitle(api, targetFg) : "";
+}
+
+export function probeForegroundWordTitle(): string {
+  if (typeof Zotero === "undefined" || !Zotero.isWin) return "";
+  try {
+    return readForegroundWordTitle(getDropTargetCtypes());
+  } catch {
+    return "";
+  }
+}
+
 export function probeWordWindowTitles(): { foregroundTitle: string; visibleTitles: string[] } {
   if (typeof Zotero === "undefined" || !Zotero.isWin) return { foregroundTitle: "", visibleTitles: [] };
   try {
     const api = getDropTargetCtypes();
-    let foregroundTitle = "";
-    const fg = api.getForegroundWindow();
-    if (fg && !fg.isNull()) {
-      const rootFg = api.getAncestor(fg, 2);
-      const targetFg = rootFg && !rootFg.isNull() ? rootFg : fg;
-      if (isWinWordWindow(api, targetFg)) {
-        foregroundTitle = readWindowTitle(api, targetFg);
-      }
-    }
+    const foregroundTitle = readForegroundWordTitle(api);
     const visibleTitles: string[] = [];
     let current: NativePointer | null = null;
     for (let i = 0; i < 32; i++) {

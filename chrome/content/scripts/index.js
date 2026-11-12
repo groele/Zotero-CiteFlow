@@ -13,15 +13,17 @@
     if (addon.data.locale) return;
     const Localization = runtime.getGlobal("Localization") ?? ChromeUtils.importESModule("resource://gre/modules/Localization.sys.mjs").Localization;
     const l10n = new Localization([`${config.addonRef}-addon.ftl`]);
-    const [value, pending, unknownDrop] = await Promise.all([
+    const [value, pending, unknownDrop, citeBusy] = await Promise.all([
       l10n.formatValue(`${config.addonRef}-column-citation`),
       l10n.formatValue(`${config.addonRef}-collection-pending`),
-      l10n.formatValue(`${config.addonRef}-drag-target-unknown`)
+      l10n.formatValue(`${config.addonRef}-drag-target-unknown`),
+      l10n.formatValue(`${config.addonRef}-cite-in-flight`)
     ]);
     if (addon.data.alive) addon.data.locale = {
       "column-citation": value || "Citation",
       "collection-pending": pending || "Word document (pending name)",
-      "drag-target-unknown": unknownDrop || "Could not confirm the Word drop target. Drag the item onto a Word document and try again."
+      "drag-target-unknown": unknownDrop || "Could not confirm the Word drop target. Drag the item onto a Word document and try again.",
+      "cite-in-flight": citeBusy || "Previous citation insertion is still in progress. Please try again in a moment."
     };
   }
   function getString(key) {
@@ -60,6 +62,15 @@
       this._sortedCacheBySession = {};
       this._lastRefreshAt = {};
       this._minRefreshInterval = 500;
+      this._lastRefreshFingerprintBySession = /* @__PURE__ */ new WeakMap();
+      this._lastSyncFailedBySession = /* @__PURE__ */ new WeakMap();
+      this._pendingItemsViewRefreshIDs = null;
+      this._listenerBaseInterval = 1e3;
+      this._isListenerBackedOff = false;
+      this._activityEpoch = 0;
+      this._idleTickCount = 0;
+      this._lastBgWindowProbeAt = 0;
+      this._scheduleListenerTick = null;
     }
     /**
      * Initializes diagnostic error buffers and performance metric trackers.
@@ -796,35 +807,100 @@
           if (droppedName) return `window-title:${droppedName}`;
         }
       }
-      if (typeof addonData?.probeWordWindowTitles === "function") {
+      const bgState = this;
+      const allowWindowProbe = allowForeground || bgState._allowBgWindowProbe !== false;
+      if (allowWindowProbe && typeof addonData?.probeWordWindowTitles === "function") {
+        if (bgState._allowBgWindowProbe !== void 0) {
+          bgState._lastBgWindowProbeAt = Date.now();
+        }
         const probed = addonData.probeWordWindowTitles();
         const claimedByOthers = /* @__PURE__ */ new Set();
+        const claimedNamesList = [];
+        const claimedWindowIds = /* @__PURE__ */ new Set();
         let otherUnidentifiedCount = 0;
         for (const otherID of Object.keys(this.sessions || {})) {
           if (otherID === sessionID || this.sessions[otherID]?.closing) continue;
           const otherDocId = this._docIdBySession?.[otherID] || this.sessions[otherID]?.docId;
           const otherName = otherDocId ? this._getDocumentDisplayName(otherDocId) : "";
-          if (otherName) claimedByOthers.add(otherName);
-          else otherUnidentifiedCount++;
+          if (otherName) {
+            claimedByOthers.add(otherName);
+            claimedNamesList.push(otherName);
+            if (typeof otherDocId === "string" && otherDocId.startsWith("window-title:")) {
+              claimedWindowIds.add(otherDocId);
+            }
+          } else {
+            otherUnidentifiedCount++;
+          }
         }
         if (allowForeground && probed?.foregroundTitle) {
           const fgName = this._parseWordWindowTitle(probed.foregroundTitle);
           if (fgName && !claimedByOthers.has(fgName)) return `window-title:${fgName}`;
         }
-        const visibleNames = [...new Set(
-          (probed?.visibleTitles || []).map((t) => this._parseWordWindowTitle(t)).filter(Boolean)
-        )];
-        if (visibleNames.length > 0) {
-          const unclaimed = visibleNames.filter((name) => !claimedByOthers.has(name));
-          if (visibleNames.length === 1 && otherUnidentifiedCount === 0 && !claimedByOthers.has(visibleNames[0])) {
-            return `window-title:${visibleNames[0]}`;
+        const parsedVisible = (probed?.visibleTitles || []).map((t) => this._parseWordWindowTitle(t)).filter((name) => !!name);
+        if (parsedVisible.length > 0 && otherUnidentifiedCount === 0) {
+          const remainingVisible = [...parsedVisible];
+          for (const claimedName of claimedNamesList) {
+            const idx = remainingVisible.indexOf(claimedName);
+            if (idx !== -1) remainingVisible.splice(idx, 1);
           }
-          if (unclaimed.length === 1 && otherUnidentifiedCount === 0) {
-            return `window-title:${unclaimed[0]}`;
+          const uniqueRemaining = [...new Set(remainingVisible)];
+          const counts = /* @__PURE__ */ new Map();
+          for (const name of remainingVisible) counts.set(name, (counts.get(name) || 0) + 1);
+          if (uniqueRemaining.length === 1 && counts.get(uniqueRemaining[0]) === 1) {
+            const candidateId = `window-title:${uniqueRemaining[0]}`;
+            if (!claimedWindowIds.has(candidateId)) return candidateId;
           }
         }
       }
       return this._docIdBySession?.[sessionID] || this.sessions?.[sessionID]?.docId || "";
+    }
+    _extractDocumentParentQualifier(docId, depth = 1) {
+      if (typeof docId !== "string") return "";
+      const trimmed = docId.trim();
+      if (!trimmed || trimmed.startsWith("window-title:")) return "";
+      if (/^https?:\/\//i.test(trimmed)) {
+        try {
+          const url = new URL(trimmed);
+          const parts2 = url.pathname.split("/").filter(Boolean);
+          const folders = parts2.slice(0, -1).map((p) => {
+            try {
+              return decodeURIComponent(p);
+            } catch {
+              return p;
+            }
+          }).filter(Boolean);
+          return folders.length ? folders.slice(-depth).join("/") : url.hostname || "";
+        } catch {
+          return "";
+        }
+      }
+      const clean = trimmed.replace(/[?#].*$/, "");
+      const parts = clean.split(/[\\/]+/).filter(Boolean);
+      const parentParts = parts.slice(0, -1).filter((p) => !/^[A-Za-z]:$/.test(p));
+      return parentParts.length ? parentParts.slice(-depth).join("/") : "";
+    }
+    _getUniqueCollectionDisplayName(sessionID, docId) {
+      const base = this._getDocumentDisplayName(docId);
+      if (!base) return "";
+      const peers = [];
+      for (const [sid, session] of Object.entries(this.sessions || {})) {
+        if (sid === sessionID || session?.closing) continue;
+        const peerDocId = this._docIdBySession?.[sid] || session?.docId || "";
+        if (peerDocId && this._getDocumentDisplayName(peerDocId) === base) {
+          peers.push(peerDocId);
+        }
+      }
+      if (peers.length === 0) return base;
+      const currentDocId = typeof docId === "string" ? docId : "";
+      for (const depth of [1, 2, 3]) {
+        const ownLabel = this._extractDocumentParentQualifier(currentDocId, depth);
+        if (!ownLabel) break;
+        const peerLabels = peers.map((peerId) => this._extractDocumentParentQualifier(peerId, depth));
+        if (peerLabels.every((label) => label !== ownLabel)) {
+          return `${base} (${ownLabel})`;
+        }
+      }
+      return base;
     }
     /**
      * Checks whether a collection name is still an unidentified pending placeholder.
@@ -982,7 +1058,7 @@
       collection._isCiteFlowCollection = true;
       collection.libraryID = Zotero.Libraries.userLibraryID;
       const knownDocId = session.docId || this._docIdBySession?.[sessionID];
-      const knownName = knownDocId ? this._getDocumentDisplayName(knownDocId) : "";
+      const knownName = knownDocId ? this._getUniqueCollectionDisplayName?.(sessionID, knownDocId) || this._getDocumentDisplayName(knownDocId) : "";
       collection.name = knownName || this._getPendingCollectionName(sessionID);
       session.lastName = collection.name;
       try {
@@ -1005,6 +1081,8 @@
         return;
       }
       session.collection = collection;
+      this._lastRefreshFingerprintBySession?.delete(session);
+      this._lastSyncFailedBySession?.delete(session);
       this._invalidateSessionIndex();
       addon?.data?.views?.repositionCitationCollections?.();
     }
@@ -1012,27 +1090,29 @@
      * Transactionally synchronizes item members in the session's temporary collection.
      * @param {object} session - Session object
      * @param {number[]} targetIDs - Target item IDs
-     * @returns {Promise<void>}
+     * @returns {Promise<boolean>}
      */
     async syncCollectionItems(session, targetIDs) {
       const collection = session?.collection;
-      if (this._listenerStopped || session?.closing || !collection?.id) return;
-      if (Zotero.Prefs.get("extensions.zotero.zoterocitation.collections.enable", true) === false) return;
+      if (this._listenerStopped || session?.closing || !collection?.id) return true;
+      if (Zotero.Prefs.get("extensions.zotero.zoterocitation.collections.enable", true) === false) return true;
       const normalizedTargetIDs = [...new Set(targetIDs.map(Number).filter((id) => Number.isSafeInteger(id) && id > 0))];
       const currentIDs = collection.getChildItems(true).map((itemOrID) => typeof itemOrID === "number" ? itemOrID : itemOrID?.id).filter((id) => Number.isSafeInteger(id) && id > 0);
       const targetSet = new Set(normalizedTargetIDs);
       const currentSet = new Set(currentIDs);
       const remove = currentIDs.filter((id) => !targetSet.has(id));
       const add = normalizedTargetIDs.filter((id) => !currentSet.has(id));
-      if (!remove.length && !add.length) return;
+      if (!remove.length && !add.length) return true;
       try {
         await Zotero.DB.executeTransaction(async () => {
           if (this._listenerStopped || session.closing) return;
           if (remove.length) await collection.removeItems(remove);
           if (add.length) await collection.addItems(add);
         });
+        return true;
       } catch (error) {
         this.logError("Failed to synchronize Word citation collection items", error);
+        return false;
       }
     }
     /**
@@ -1129,9 +1209,141 @@
     }
   };
 
-  // src/modules/citation/word-integration.ts
+  // src/modules/citation/session-sync-helpers.ts
+  var WINDOW_PROBE_COOLDOWN_MS = 3e3;
+  var LISTENER_IDLE_BACKOFF_TICKS = 5;
+  var LISTENER_MAX_IDLE_INTERVAL_MS = 3e3;
   var timers2 = globalThis;
+  function computeNextListenerDelay(baseInterval, idleStreak) {
+    if (!Number.isFinite(baseInterval) || baseInterval <= 0) return 1e3;
+    if (baseInterval < 500 || baseInterval >= LISTENER_MAX_IDLE_INTERVAL_MS) return baseInterval;
+    return idleStreak >= LISTENER_IDLE_BACKOFF_TICKS ? LISTENER_MAX_IDLE_INTERVAL_MS : baseInterval;
+  }
+  function collectSessionSwitchRefreshIDs(ctx, previousID, nextID) {
+    if (!previousID || !nextID) return "full";
+    const prevSession = ctx.sessions?.[previousID];
+    const nextSession = ctx.sessions?.[nextID];
+    if (!prevSession || !nextSession) return "full";
+    const ids = /* @__PURE__ */ new Set();
+    for (const data of [prevSession.idData, nextSession.idData]) {
+      if (!data) continue;
+      for (const key of Object.keys(data)) {
+        const id = Number(key);
+        if (Number.isSafeInteger(id) && id > 0) ids.add(id);
+      }
+    }
+    return Array.from(ids);
+  }
+  function syncForegroundActiveSession(ctx) {
+    if (ctx._listenerStopped) return false;
+    const addonData = globalThis.addon?.data;
+    if (typeof addonData?.probeForegroundWordTitle !== "function") return false;
+    const activeEntries = Object.entries(ctx.sessions || {}).filter(([, session]) => session && !session.closing);
+    if (activeEntries.length === 0) return false;
+    if (activeEntries.length === 1 && activeEntries[0][0] === ctx.activeSessionID) return false;
+    const rawTitle = addonData.probeForegroundWordTitle();
+    if (!rawTitle) return false;
+    const fgName = ctx._parseWordWindowTitle?.(rawTitle) || "";
+    if (!fgName) return false;
+    const matches = activeEntries.filter(([sid, session]) => {
+      const docId = ctx._docIdBySession?.[sid] || session.docId || "";
+      return docId ? ctx._getDocumentDisplayName(docId) === fgName : false;
+    });
+    if (matches.length !== 1) return false;
+    const [matchedID] = matches[0];
+    if (matchedID === ctx.activeSessionID) return false;
+    const previousID = ctx.activeSessionID;
+    const refreshTarget = collectSessionSwitchRefreshIDs(ctx, previousID, matchedID);
+    ctx._setActiveSessionID(matchedID);
+    ctx.debugLog?.("Foreground Word window synced active session", { previousID, matchedID, fgName });
+    ctx.scheduleItemsViewRefresh?.(refreshTarget);
+    ctx._noteListenerActivity?.();
+    return true;
+  }
+  function hasPendingTrackedSession(ctx) {
+    for (const [sid, session] of Object.entries(ctx.sessions || {})) {
+      if (!session || session.closing) continue;
+      if (session.pending) return true;
+      const colName = session.collection?.name;
+      if (colName && ctx._isPendingCollectionName(colName, sid)) return true;
+    }
+    return false;
+  }
+  function recordListenerActivity(ctx) {
+    ctx._activityEpoch = (ctx._activityEpoch || 0) + 1;
+    ctx._idleTickCount = 0;
+  }
+  function rescheduleListenerIfBackedOff(ctx, scheduleNextTick) {
+    if (ctx._listenerStopped || !ctx._isListenerBackedOff || !ctx._listenerTimer) return;
+    const baseInterval = typeof ctx._listenerBaseInterval === "number" && ctx._listenerBaseInterval > 0 ? ctx._listenerBaseInterval : 1e3;
+    timers2.clearTimeout(ctx._listenerTimer);
+    ctx._listenerTimer = null;
+    ctx._isListenerBackedOff = false;
+    scheduleNextTick(baseInterval);
+  }
+  function prepareTickProbeWindow(ctx) {
+    const now = Date.now();
+    ctx._allowBgWindowProbe = !ctx._lastBgWindowProbeAt || now - ctx._lastBgWindowProbeAt >= WINDOW_PROBE_COOLDOWN_MS;
+    return ctx._activityEpoch || 0;
+  }
+  function finishListenerTick(ctx, baseInterval, epochBefore) {
+    delete ctx._allowBgWindowProbe;
+    if (ctx._listenerStopped) return;
+    const hadActivity = (ctx._activityEpoch || 0) !== epochBefore || (ctx._execCommandDepth || 0) > 0 || hasPendingTrackedSession(ctx);
+    ctx._idleTickCount = hadActivity ? 0 : (ctx._idleTickCount || 0) + 1;
+    const activeCount = Object.keys(ctx.sessions || {}).length;
+    const nextDelay = activeCount ? computeNextListenerDelay(baseInterval, ctx._idleTickCount) : Math.max(baseInterval, 5e3);
+    ctx._isListenerBackedOff = activeCount > 0 && nextDelay > baseInterval;
+    ctx._scheduleListenerTick?.(nextDelay);
+  }
+  function finalizeExecCommandCycle(ctx, wasAmbiguous) {
+    if (ctx._listenerStopped || (ctx._execCommandDepth || 0) > 0) return;
+    ctx._lastBgWindowProbeAt = 0;
+    recordListenerActivity(ctx);
+    if (wasAmbiguous) {
+      ctx._lastRefreshAt = {};
+      syncForegroundActiveSession(ctx);
+    }
+    if (ctx._scheduleListenerTick) {
+      rescheduleListenerIfBackedOff(ctx, ctx._scheduleListenerTick);
+    }
+  }
+  function resolveAndApplyCommandDocument(ctx, sessionID, nativeSession, bindingDoc, docId, addonData) {
+    const hasExplicitDocId = typeof docId === "string" && docId.trim() !== "";
+    const effectiveDocId = hasExplicitDocId ? docId : ctx._resolveFallbackDocumentId?.(sessionID, nativeSession, bindingDoc, true) || "";
+    const targetName = effectiveDocId ? ctx._getUniqueCollectionDisplayName?.(sessionID, effectiveDocId) || ctx._getDocumentDisplayName(effectiveDocId) : "";
+    if (targetName) {
+      ctx._rememberSessionDocument?.(sessionID, effectiveDocId);
+    } else if (hasExplicitDocId) {
+      ctx._clearCollectionRenameRetry?.(sessionID);
+      if (ctx._docIdBySession) delete ctx._docIdBySession[sessionID];
+      if (ctx.sessions?.[sessionID]) delete ctx.sessions[sessionID].docId;
+      if (addonData) delete addonData.docId;
+    }
+    ctx._setActiveSessionID(sessionID);
+    if (targetName && addonData) addonData.docId = effectiveDocId;
+    return effectiveDocId;
+  }
+  async function applySessionCollectionRename(ctx, sessionID, trackedSession, effectiveDocId) {
+    const targetName = effectiveDocId ? ctx._getUniqueCollectionDisplayName?.(sessionID, effectiveDocId) || ctx._getDocumentDisplayName(effectiveDocId) : "";
+    if (trackedSession.collection && targetName && trackedSession.collection.name !== targetName) {
+      try {
+        await ctx._renameCollection?.(sessionID, targetName, effectiveDocId);
+        recordListenerActivity(ctx);
+      } catch (error) {
+        ctx.logError?.(`Failed to rename Word citation collection for ${sessionID}`, error);
+        ctx._scheduleCollectionRenameRetry?.(sessionID, targetName, effectiveDocId);
+      }
+    }
+    return targetName;
+  }
+
+  // src/modules/citation/word-integration.ts
+  var timers3 = globalThis;
   var CitationWordIntegration = class {
+    _noteListenerActivity() {
+      recordListenerActivity(this);
+    }
     /** Background polling loop that periodically synchronizes active Word sessions. */
     async listener(t) {
       try {
@@ -1143,12 +1355,24 @@
       this._bumpDebugCounter("listenerStarted");
       this.debugLog("[Citation debug] listener started", this._debugCounters);
       if (this._listenerTimer) {
-        timers2.clearTimeout(this._listenerTimer);
+        timers3.clearTimeout(this._listenerTimer);
         this._listenerTimer = null;
       }
+      this._listenerBaseInterval = t;
+      this._idleTickCount = 0;
+      this._isListenerBackedOff = false;
+      this._activityEpoch ??= 0;
+      const scheduleNext = (delay) => {
+        if (this._listenerStopped) return;
+        this._listenerTimer = timers3.setTimeout(() => {
+          this._listenerTickTask = tick();
+        }, delay);
+      };
+      this._scheduleListenerTick = scheduleNext;
       const tick = async () => {
         if (this._listenerStopped || this._isTickRunning) return;
         this._isTickRunning = true;
+        const epochBefore = prepareTickProbeWindow(this);
         try {
           if (!Zotero.ZoteroCitation) {
             void this.clear().catch((error) => this.logError("Failed to clear after plugin instance removal", error));
@@ -1158,21 +1382,17 @@
           const sessions = Zotero.Integration.sessions || {};
           await this._pruneMissingWordSessions(sessions);
           await this._syncActiveWordSessions(sessions);
+          if (!this._listenerStopped && !this._isExecCommandRunning) {
+            syncForegroundActiveSession(this);
+          }
         } catch (e) {
           this.logError("Background citation synchronization failed", e);
         } finally {
           this._isTickRunning = false;
-          if (!this._listenerStopped) {
-            this._listenerTimer = timers2.setTimeout(
-              () => {
-                this._listenerTickTask = tick();
-              },
-              Object.keys(this.sessions).length ? t : Math.max(t, 5e3)
-            );
-          }
+          finishListenerTick(this, t, epochBefore);
         }
       };
-      this._listenerTimer = timers2.setTimeout(tick, t);
+      scheduleNext(t);
       this._installWordIntegrationHooks();
     }
     /** Cleans up tracked sessions absent from (Zotero.Integration as unknown as Integration).sessions for 3 ticks. @private */
@@ -1230,15 +1450,7 @@
         }
       }
       const effectiveDocId = this._docIdBySession?.[sessionID] || trackedSession.docId;
-      const targetName = effectiveDocId ? this._getDocumentDisplayName(effectiveDocId) : "";
-      if (trackedSession.collection && targetName && trackedSession.collection.name !== targetName) {
-        try {
-          await this._renameCollection(sessionID, targetName, effectiveDocId);
-        } catch (error) {
-          this.logError(`Failed to rename Word citation collection for ${sessionID}`, error);
-          this._scheduleCollectionRenameRetry(sessionID, targetName, effectiveDocId);
-        }
-      }
+      await applySessionCollectionRename(this, sessionID, trackedSession, effectiveDocId);
     }
     /**
      * Installs interception wrappers on (Zotero.Integration as unknown as Integration).execCommand and getSession.
@@ -1321,14 +1533,17 @@
         citationModule._execCommandDepth += 1;
         citationModule._isExecCommandRunning = true;
         let result;
+        let succeeded = false;
         try {
           result = await originalExecCommand.apply(this, arguments);
-        } catch (error) {
-          citationModule._execCommandBindings.delete(bindingID);
-          throw error;
+          succeeded = true;
         } finally {
           citationModule._execCommandDepth = Math.max(0, citationModule._execCommandDepth - 1);
           citationModule._isExecCommandRunning = citationModule._execCommandDepth > 0;
+          if (!succeeded) {
+            citationModule._execCommandBindings.delete(bindingID);
+            finalizeExecCommandCycle(citationModule, false);
+          }
         }
         try {
           await citationModule._handlePostExecCommand(binding, boundBefore, originalGetSession, docId);
@@ -1336,6 +1551,7 @@
           citationModule.logError("Post-command citation refresh failed", error);
         } finally {
           citationModule._execCommandBindings.delete(bindingID);
+          finalizeExecCommandCycle(citationModule, binding.ambiguous);
         }
         return result;
       };
@@ -1367,19 +1583,7 @@
         return;
       }
       const nativeSession = integration.sessions?.[sessionID];
-      const hasExplicitDocId = typeof docId === "string" && docId.trim() !== "";
-      const effectiveDocId = hasExplicitDocId ? docId : this._resolveFallbackDocumentId?.(sessionID, nativeSession, binding.doc, true) || "";
-      const targetName = effectiveDocId ? this._getDocumentDisplayName(effectiveDocId) : "";
-      if (targetName) {
-        this._rememberSessionDocument(sessionID, effectiveDocId);
-      } else if (hasExplicitDocId) {
-        this._clearCollectionRenameRetry(sessionID);
-        delete this._docIdBySession[sessionID];
-        if (this.sessions?.[sessionID]) delete this.sessions[sessionID].docId;
-        delete addon.data.docId;
-      }
-      this._setActiveSessionID(sessionID);
-      if (targetName) addon.data.docId = effectiveDocId;
+      const effectiveDocId = resolveAndApplyCommandDocument(this, sessionID, nativeSession, binding.doc, docId, addon?.data);
       const trackedSession = await this.ensureSession(sessionID, nativeSession);
       const colEnabled = Zotero.Prefs?.get?.("extensions.zotero.zoterocitation.collections.enable", true) !== false;
       if (!trackedSession || trackedSession.pending || colEnabled && !trackedSession.collection || this._listenerStopped) return;
@@ -1387,14 +1591,7 @@
         if (this._lastRefreshAt) delete this._lastRefreshAt[sessionID];
         await this.refreshSessionCitations(sessionID, nativeSession);
       }
-      if (trackedSession.collection && targetName && trackedSession.collection.name !== targetName) {
-        try {
-          await this._renameCollection(sessionID, targetName, effectiveDocId);
-        } catch (error) {
-          this.logError(`Failed to rename Word citation collection for ${sessionID}`, error);
-          this._scheduleCollectionRenameRetry(sessionID, targetName, effectiveDocId);
-        }
-      }
+      await applySessionCollectionRename(this, sessionID, trackedSession, effectiveDocId);
     }
     /**
      * Ensures tracking state and temporary collection exist for a given Word session.
@@ -1414,7 +1611,7 @@
       if (initialDocId && !this._docIdBySession[sessionID]) {
         this._rememberSessionDocument(sessionID, initialDocId);
       }
-      const initialName = initialDocId ? this._getDocumentDisplayName(initialDocId) : "";
+      const initialName = initialDocId ? this._getUniqueCollectionDisplayName?.(sessionID, initialDocId) || this._getDocumentDisplayName(initialDocId) : "";
       const session = existing || {
         idData: {},
         lastName: initialName || this._getPendingCollectionName(sessionID),
@@ -1423,6 +1620,10 @@
       };
       session.pending = true;
       this.sessions[sessionID] = session;
+      if (!existing) {
+        this._lastBgWindowProbeAt = 0;
+        this._noteListenerActivity?.();
+      }
       this._invalidateSessionIndex();
       const task = (async () => {
         try {
@@ -1634,7 +1835,7 @@
   };
 
   // src/modules/citation/tag-governance.ts
-  var timers3 = globalThis;
+  var timers4 = globalThis;
   var CitationTagGovernance = class {
     /**
      * Constructs a deterministic signature from an array of item IDs.
@@ -1666,7 +1867,7 @@
       this._lastTagSyncSig[sessionID] = sig;
       this._pendingTagSyncIDsBySession[sessionID] = normalizedIDs;
       if (this._tagSyncTimerBySession[sessionID]) return;
-      this._tagSyncTimerBySession[sessionID] = timers3.setTimeout(() => {
+      this._tagSyncTimerBySession[sessionID] = timers4.setTimeout(() => {
         delete this._tagSyncTimerBySession[sessionID];
         const pendingIDs = this._pendingTagSyncIDsBySession[sessionID];
         if (!pendingIDs || this._tagSyncInFlightBySession[sessionID]) return;
@@ -1934,13 +2135,203 @@
     }
   };
 
+  // src/modules/citation/refresh-helpers.ts
+  var MAX_TARGETED_ROW_INVALIDATIONS = 200;
+  function buildRefreshInputFingerprint(styleClass, sortedItemIDs, citationsByItemID, session, collectionsEnabled) {
+    const col = session?.collection;
+    const colPart = !collectionsEnabled ? "col:off" : col ? `col:${col.key || ""}:${col.libraryID ?? ""}` : "col:none";
+    const hasSessionData = session?.idData && Object.keys(session.idData).length > 0 ? 1 : 0;
+    const parts = [
+      `style:${typeof styleClass === "string" ? styleClass : ""}`,
+      colPart,
+      `count:${sortedItemIDs.length}`,
+      `hasData:${hasSessionData}`
+    ];
+    const orderedSet = new Set(sortedItemIDs);
+    const extraIDs = [];
+    if (citationsByItemID && typeof citationsByItemID === "object") {
+      for (const rawKey of Object.keys(citationsByItemID)) {
+        const parsed = Number(rawKey);
+        if (Number.isSafeInteger(parsed) && parsed > 0 && !orderedSet.has(parsed)) {
+          extraIDs.push(parsed);
+        }
+      }
+      extraIDs.sort((a, b) => a - b);
+    }
+    const itemsApi = typeof Zotero !== "undefined" ? Zotero?.Items : void 0;
+    const appendEntry = (id, prefix2) => {
+      const rawList = citationsByItemID?.[id];
+      const citations = Array.isArray(rawList) ? rawList.map((entry) => {
+        const text = entry?.properties?.plainCitation;
+        return typeof text === "string" ? text : "";
+      }).join("") : "";
+      const item = typeof itemsApi?.get === "function" ? itemsApi.get(id) : null;
+      const meta = item ? `${item.libraryID ?? ""}:${item.deleted === true ? 1 : 0}:${item.inTrash === true ? 1 : 0}` : "missing";
+      parts.push(`${prefix2}${id}${meta}${citations}`);
+    };
+    for (const id of sortedItemIDs) appendEntry(id, "");
+    for (const id of extraIDs) appendEntry(id, "+");
+    return parts.join("");
+  }
+  function collectChangedCitationItemIDs(oldData, newData) {
+    const prev = oldData || {};
+    const next = newData || {};
+    const keys = /* @__PURE__ */ new Set([...Object.keys(prev), ...Object.keys(next)]);
+    const changed = [];
+    for (const key of keys) {
+      if (prev[key]?.plainCitation === next[key]?.plainCitation) continue;
+      const id = Number(key);
+      if (!Number.isSafeInteger(id) || id <= 0) return "full";
+      changed.push(id);
+    }
+    return changed;
+  }
+  function isCitationColumnSorted(itemsView) {
+    let sortFields = null;
+    try {
+      if (typeof itemsView.getSortFields === "function") {
+        const fields = itemsView.getSortFields();
+        sortFields = Array.isArray(fields) ? fields : null;
+      } else if (typeof itemsView.getSortField === "function") {
+        sortFields = [itemsView.getSortField()];
+      }
+    } catch {
+      return true;
+    }
+    if (!sortFields) return true;
+    const views = globalThis.addon?.data?.views;
+    const ownedKeys = /* @__PURE__ */ new Set([
+      "citation",
+      `${config.addonID}-citation`,
+      "zoterocitation@polygon.org-citation"
+    ]);
+    const info = views?.getColumnInfo?.("citation");
+    if (typeof info?.dataKey === "string" && info.dataKey) ownedKeys.add(info.dataKey);
+    if (views?._registeredColumnKeys) {
+      for (const key of views._registeredColumnKeys) ownedKeys.add(key);
+    }
+    return sortFields.some((field) => {
+      if (typeof field !== "string" || !field) return false;
+      return ownedKeys.has(field) || field.endsWith("-citation");
+    });
+  }
+  async function refreshItemsViewTargeted(itemsView, target) {
+    if (!target || target === "full" || !(target instanceof Set) || target.size === 0 || target.size > MAX_TARGETED_ROW_INVALIDATIONS) {
+      if (target instanceof Set && target.size === 0) return;
+      await itemsView.refreshAndMaintainSelection();
+      return;
+    }
+    if (typeof itemsView.invalidateRowCache !== "function" || typeof itemsView.getRowIndexByID !== "function" || typeof itemsView.tree?.invalidateRow !== "function" || isCitationColumnSorted(itemsView)) {
+      await itemsView.refreshAndMaintainSelection();
+      return;
+    }
+    const changedIDs = Array.from(target);
+    const visibleRowIndices = [];
+    for (const id of changedIDs) {
+      const rowIndex = itemsView.getRowIndexByID(id);
+      if (typeof rowIndex === "number" && rowIndex >= 0) {
+        visibleRowIndices.push(rowIndex);
+      }
+    }
+    if (visibleRowIndices.length > MAX_TARGETED_ROW_INVALIDATIONS) {
+      await itemsView.refreshAndMaintainSelection();
+      return;
+    }
+    itemsView.invalidateRowCache(changedIDs);
+    for (const rowIndex of visibleRowIndices) {
+      itemsView.tree.invalidateRow(rowIndex);
+    }
+  }
+  function mergePendingRefreshTarget(current, incoming) {
+    if (!Array.isArray(incoming)) return "full";
+    if (current === "full") return "full";
+    const next = current instanceof Set ? current : /* @__PURE__ */ new Set();
+    for (const id of incoming) {
+      if (Number.isSafeInteger(id) && id > 0) next.add(id);
+    }
+    return next.size > 0 ? next : current instanceof Set ? current : null;
+  }
+  async function dispatchItemsViewRefresh(target, onError) {
+    const panes = Zotero.getMainWindows?.().map((win) => win.ZoteroPane) || [globalThis.ZoteroPane];
+    const seenViews = /* @__PURE__ */ new Set();
+    for (const pane of panes) {
+      const itemsView = pane?.itemsView;
+      if (!itemsView || seenViews.has(itemsView)) continue;
+      seenViews.add(itemsView);
+      try {
+        await refreshItemsViewTargeted(itemsView, target);
+      } catch (error) {
+        try {
+          await itemsView.refreshAndMaintainSelection();
+        } catch (fallbackError) {
+          onError("Cannot refresh the citation column", fallbackError || error);
+        }
+      }
+    }
+  }
+  function invalidateRefreshFingerprint(ctx, session) {
+    if (!session) return;
+    ctx._lastRefreshFingerprintBySession?.delete(session);
+    ctx._lastSyncFailedBySession?.delete(session);
+  }
+  async function updateSessionCitationsIfDirty(ctx, sessionID, targetSession, sortedItemIDs, citationsByItemID) {
+    const session = ctx.sessions?.[sessionID];
+    if (!session || ctx._listenerStopped) return;
+    const payload = sortedItemIDs.length ? citationsByItemID : {};
+    const collectionsEnabled = ctx._collectionsEnabled !== false;
+    const fingerprint = buildRefreshInputFingerprint(
+      targetSession.styleClass,
+      sortedItemIDs,
+      payload,
+      session,
+      collectionsEnabled
+    );
+    ctx._lastRefreshFingerprintBySession ??= /* @__PURE__ */ new WeakMap();
+    ctx._lastSyncFailedBySession ??= /* @__PURE__ */ new WeakMap();
+    if (ctx._lastRefreshFingerprintBySession.get(session) === fingerprint && ctx._lastSyncFailedBySession.get(session) !== true) {
+      return;
+    }
+    const revBefore = ctx._sessionUpdateRevision?.[sessionID] || 0;
+    ctx._lastSyncFailedBySession.set(session, false);
+    ctx.scheduleCitationTagSync(sessionID, sortedItemIDs);
+    await ctx.updateCitations(sessionID, payload, sortedItemIDs, targetSession.styleClass);
+    if (ctx._listenerStopped || session.closing || ctx.sessions?.[sessionID] !== session) return;
+    const revAfter = ctx._sessionUpdateRevision?.[sessionID] || 0;
+    if (ctx._lastSyncFailedBySession.get(session) === true) return;
+    if (revAfter !== revBefore && (ctx._sessionUpdateRevision?.[sessionID] || 0) !== revAfter) return;
+    ctx._lastRefreshFingerprintBySession.set(
+      session,
+      buildRefreshInputFingerprint(targetSession.styleClass, sortedItemIDs, payload, session, collectionsEnabled)
+    );
+  }
+  async function commitAppliedSessionCitations(ctx, sessionID, citationSession, targetIDs, targetData, hasChanges, revision) {
+    if (ctx._sessionUpdateRevision[sessionID] !== revision) return;
+    const syncResult = await ctx.syncCollectionItems(citationSession, targetIDs);
+    ctx._lastSyncFailedBySession ??= /* @__PURE__ */ new WeakMap();
+    const syncFailed = syncResult === false;
+    ctx._lastSyncFailedBySession.set(citationSession, syncFailed);
+    if (syncFailed) {
+      ctx._lastRefreshFingerprintBySession?.delete(citationSession);
+    }
+    if (ctx._listenerStopped || citationSession.closing || ctx._sessionUpdateRevision[sessionID] !== revision || ctx.sessions?.[sessionID] !== citationSession) {
+      return;
+    }
+    if (hasChanges) {
+      const changedIDs = collectChangedCitationItemIDs(citationSession.idData, targetData);
+      citationSession.idData = targetData;
+      ctx._invalidateSessionIndex();
+      ctx._noteListenerActivity?.();
+      ctx.scheduleItemsViewRefresh(changedIDs);
+    }
+  }
+
   // src/modules/citation/formatting.ts
-  var timers4 = globalThis;
+  var timers5 = globalThis;
   var CitationFormatting = class {
     /** Schedules a debounced session refresh after retry delay. @private */
     _scheduleSessionRefresh(sessionID, targetSession, delayMs = 180) {
       if (this._listenerStopped || !this.sessions?.[sessionID] || this.sessions[sessionID].closing || this._refreshRetryTimerBySession[sessionID]) return;
-      this._refreshRetryTimerBySession[sessionID] = timers4.setTimeout(() => {
+      this._refreshRetryTimerBySession[sessionID] = timers5.setTimeout(() => {
         delete this._refreshRetryTimerBySession[sessionID];
         if (this._listenerStopped || !this.sessions?.[sessionID] || this.sessions[sessionID].closing) return;
         void this.refreshSessionCitations(sessionID, targetSession).catch((error) => this.logError("Failed to retry citation refresh", error));
@@ -1950,11 +2341,14 @@
     async clearSession(sessionID, skipTagCleanup = false) {
       const session = this.sessions?.[sessionID];
       if (!session) return;
+      const wasActive = this.activeSessionID === sessionID;
+      const removedIDs = wasActive ? "full" : collectChangedCitationItemIDs(session.idData, void 0);
+      invalidateRefreshFingerprint(this, session);
       session.closing = true;
       this._sessionUpdateRevision[sessionID] = (this._sessionUpdateRevision[sessionID] || 0) + 1;
       await Promise.allSettled([this._initializationTasks?.get?.(sessionID), session._renameTask, this._sessionUpdateQueue[sessionID]].filter(Boolean));
       if (this._tagSyncTimerBySession[sessionID]) {
-        timers4.clearTimeout(this._tagSyncTimerBySession[sessionID]);
+        timers5.clearTimeout(this._tagSyncTimerBySession[sessionID]);
         delete this._tagSyncTimerBySession[sessionID];
       }
       delete this._pendingTagSyncIDsBySession[sessionID];
@@ -1969,6 +2363,10 @@
         }
       }
       this.cleanupSessionState(sessionID, true);
+      this._noteListenerActivity?.();
+      if (!this._listenerStopped && (removedIDs === "full" || Array.isArray(removedIDs) && removedIDs.length > 0)) {
+        this.scheduleItemsViewRefresh(removedIDs);
+      }
       const collection = session.collection;
       if (!collection?.id) return;
       try {
@@ -2051,6 +2449,8 @@
       if (this._sortedCacheBySession && typeof this._getSortedCacheKey === "function") {
         delete this._sortedCacheBySession[this._getSortedCacheKey(sessionID)];
       }
+      invalidateRefreshFingerprint(this, this.sessions?.[sessionID]);
+      this._noteListenerActivity?.();
       this.scheduleCitationTagSync(sessionID, [], true);
       await this.updateCitations(sessionID, {}, [], targetSession.styleClass);
     }
@@ -2102,8 +2502,7 @@
         const sortedItemIDs = this.getSortedItemIDs(citationsByIndex, sessionID);
         if (this._listenerStopped || !this.sessions?.[sessionID]) return;
         if (!Array.isArray(sortedItemIDs) || sortedItemIDs.length === 0 && !this._hasOnlyTrashedCitationItems?.(citationsByIndex)) return;
-        this.scheduleCitationTagSync(sessionID, sortedItemIDs);
-        await this.updateCitations(sessionID, sortedItemIDs.length ? citationsByItemID : {}, sortedItemIDs, targetSession.styleClass);
+        await updateSessionCitationsIfDirty(this, sessionID, targetSession, sortedItemIDs, citationsByItemID);
       } catch (e) {
         this.logError("Citation snapshot refresh failed", e);
       } finally {
@@ -2118,23 +2517,18 @@
     /**
      * Schedules a debounced refresh of the citation column in all open Zotero windows.
      */
-    scheduleItemsViewRefresh() {
-      if (this._itemsViewRefreshTimer || this._listenerStopped) return;
-      this._itemsViewRefreshTimer = timers4.setTimeout(async () => {
+    scheduleItemsViewRefresh(changedItemIDs) {
+      if (this._listenerStopped) return;
+      const merged = mergePendingRefreshTarget(this._pendingItemsViewRefreshIDs, changedItemIDs);
+      if (!merged) return;
+      this._pendingItemsViewRefreshIDs = merged;
+      if (this._itemsViewRefreshTimer) return;
+      this._itemsViewRefreshTimer = timers5.setTimeout(async () => {
         this._itemsViewRefreshTimer = null;
+        const target = this._pendingItemsViewRefreshIDs ?? "full";
+        this._pendingItemsViewRefreshIDs = null;
         if (this._listenerStopped) return;
-        const panes = Zotero.getMainWindows?.().map((win) => win.ZoteroPane) || [globalThis.ZoteroPane];
-        const seenViews = /* @__PURE__ */ new Set();
-        for (const pane of panes) {
-          const itemsView = pane?.itemsView;
-          if (!itemsView || seenViews.has(itemsView)) continue;
-          seenViews.add(itemsView);
-          try {
-            await itemsView.refreshAndMaintainSelection();
-          } catch (error) {
-            this.logError("Cannot refresh the citation column", error);
-          }
-        }
+        await dispatchItemsViewRefresh(target, (message, error) => this.logError(message, error));
       }, this._itemsViewRefreshDebounceMs);
     }
     /**
@@ -2244,16 +2638,7 @@
         if (!item || item.libraryID !== collectionLibraryID || item.deleted === true || item.inTrash === true) return false;
         return typeof item.isTopLevelItem !== "function" || item.isTopLevelItem();
       });
-      if (this._sessionUpdateRevision[sessionID] !== revision) return;
-      await this.syncCollectionItems(citationSession, targetIDs);
-      if (this._listenerStopped || citationSession.closing || this._sessionUpdateRevision[sessionID] !== revision || this.sessions?.[sessionID] !== citationSession) {
-        return;
-      }
-      if (hasChanges) {
-        citationSession.idData = targetData;
-        this._invalidateSessionIndex();
-        this.scheduleItemsViewRefresh();
-      }
+      await commitAppliedSessionCitations(this, sessionID, citationSession, targetIDs, targetData, hasChanges, revision);
     }
   };
 
@@ -2322,6 +2707,14 @@
           clearTimeout(this._refreshRetryTimerBySession[sessionID]);
         }
         this._refreshRetryTimerBySession = {};
+        this._lastRefreshFingerprintBySession = /* @__PURE__ */ new WeakMap();
+        this._lastSyncFailedBySession = /* @__PURE__ */ new WeakMap();
+        this._pendingItemsViewRefreshIDs = null;
+        this._isListenerBackedOff = false;
+        this._activityEpoch = 0;
+        this._idleTickCount = 0;
+        this._lastBgWindowProbeAt = 0;
+        this._scheduleListenerTick = null;
       } catch {
       }
     }
@@ -2719,19 +3112,26 @@
     } catch {
     }
   }
+  function readForegroundWordTitle(api) {
+    const fg = api.getForegroundWindow();
+    if (!fg || fg.isNull()) return "";
+    const rootFg = api.getAncestor(fg, 2);
+    const targetFg = rootFg && !rootFg.isNull() ? rootFg : fg;
+    return isWinWordWindow(api, targetFg) ? readWindowTitle(api, targetFg) : "";
+  }
+  function probeForegroundWordTitle() {
+    if (typeof Zotero === "undefined" || !Zotero.isWin) return "";
+    try {
+      return readForegroundWordTitle(getDropTargetCtypes());
+    } catch {
+      return "";
+    }
+  }
   function probeWordWindowTitles() {
     if (typeof Zotero === "undefined" || !Zotero.isWin) return { foregroundTitle: "", visibleTitles: [] };
     try {
       const api = getDropTargetCtypes();
-      let foregroundTitle = "";
-      const fg = api.getForegroundWindow();
-      if (fg && !fg.isNull()) {
-        const rootFg = api.getAncestor(fg, 2);
-        const targetFg = rootFg && !rootFg.isNull() ? rootFg : fg;
-        if (isWinWordWindow(api, targetFg)) {
-          foregroundTitle = readWindowTitle(api, targetFg);
-        }
-      }
+      const foregroundTitle = readForegroundWordTitle(api);
       const visibleTitles = [];
       let current = null;
       for (let i = 0; i < 32; i++) {
@@ -3349,7 +3749,7 @@
   var views_default = Views;
 
   // src/modules/preferences.ts
-  var buildVersion = true ? "16.1.0" : "";
+  var buildVersion = true ? "16.2.0" : "";
   var buildDate = true ? "2026-11-12" : "";
   var prefix = "extensions.zotero.zoterocitation.";
   var settings = [
@@ -3606,6 +4006,7 @@
         return;
       }
       addon.data.probeWordWindowTitles = probeWordWindowTitles;
+      addon.data.probeForegroundWordTitle = probeForegroundWordTitle;
       const citation = new Citation();
       addon.data.citation = citation;
       await citation.listener(1e3);
@@ -3741,6 +4142,7 @@
       await runShutdownStep("clear citation state", () => addon.data.citation?.clear?.());
       await runShutdownStep("close drop-target native libraries", () => {
         delete addon.data.probeWordWindowTitles;
+        delete addon.data.probeForegroundWordTitle;
         delete addon.data.lastDroppedWordWindow;
         if (typeof closeDropTargetCtypes === "function") closeDropTargetCtypes();
       });
@@ -4002,7 +4404,39 @@
   var Addon = class {
     data = { alive: true, runtime: new NativeRuntime() };
     hooks = hooks_default2;
-    api = { citeItems };
+    _citeInFlight = false;
+    _lastCiteBusyNoticeAt = 0;
+    _notifyCiteInFlight() {
+      const now = Date.now();
+      if (now - this._lastCiteBusyNoticeAt < 2e3) return;
+      this._lastCiteBusyNoticeAt = now;
+      try {
+        const ProgressWindow = Zotero?.ProgressWindow;
+        if (typeof ProgressWindow !== "function") return;
+        const notice = new ProgressWindow({ closeOnClick: true });
+        notice.changeHeadline?.(
+          this.data.locale?.["cite-in-flight"] || "Previous citation insertion is still in progress. Please try again in a moment."
+        );
+        notice.show?.();
+        notice.startCloseTimer?.(2500);
+      } catch {
+      }
+    }
+    api = {
+      citeItems: async (requestedItems = null) => {
+        if (this.data.alive === false) return;
+        if (this._citeInFlight) {
+          this._notifyCiteInFlight();
+          return;
+        }
+        this._citeInFlight = true;
+        try {
+          return await citeItems(requestedItems);
+        } finally {
+          this._citeInFlight = false;
+        }
+      }
+    };
   };
 
   // src/index.ts

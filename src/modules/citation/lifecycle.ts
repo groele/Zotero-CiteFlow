@@ -16,6 +16,10 @@ interface LifecycleContext extends CitationSharedState {
   _collectionRenameRetryCountBySession: Record<string, number>; _refreshRetryTimerBySession: Record<string, number>;
   _listenerTickTask?: Promise<unknown>; _initializationTasks?: Map<unknown, Promise<unknown>>;
   _activeRefreshTasks?: Set<Promise<unknown>>; _tagSyncQueue?: Promise<unknown>;
+  _lastRefreshFingerprintBySession?: WeakMap<object, string>; _lastSyncFailedBySession?: WeakMap<object, boolean>;
+  _pendingItemsViewRefreshIDs?: Set<number> | "full" | null; _isListenerBackedOff?: boolean;
+  _activityEpoch?: number; _idleTickCount?: number; _lastBgWindowProbeAt?: number;
+  _scheduleListenerTick?: ((delay: number) => void) | null;
   _performClear(): Promise<void>; _restoreWordIntegrationHooks(): void; _resetInternalTrackingMaps(): void;
   _setActiveSessionID(id: string | null): void; _bumpDebugCounter(name: string): void;
   _clearCollectionRenameRetry(id: string): void; syncCitationTags(id: string, items: number[]): Promise<unknown>;
@@ -94,6 +98,14 @@ export class CitationLifecycle {
         clearTimeout(this._refreshRetryTimerBySession[sessionID]);
       }
       this._refreshRetryTimerBySession = {};
+      this._lastRefreshFingerprintBySession = new WeakMap();
+      this._lastSyncFailedBySession = new WeakMap();
+      this._pendingItemsViewRefreshIDs = null;
+      this._isListenerBackedOff = false;
+      this._activityEpoch = 0;
+      this._idleTickCount = 0;
+      this._lastBgWindowProbeAt = 0;
+      this._scheduleListenerTick = null;
     } catch {}
   }
 

@@ -1,11 +1,11 @@
 # Zotero CiteFlow 核心技术与维护手册
 
-> 本文是当前实现和验证状态的维护入口，适用于仓库 `groele/Zotero-CiteFlow`。代码是最终事实来源；本文记录的实机结果只适用于所列软件版本。当前源码版本为 **16.1.0**。更新实现后，请同步更新此文档和对应测试，不要把历史记录误当作当前验收。
+> 本文是当前实现和验证状态的维护入口，适用于仓库 `groele/Zotero-CiteFlow`。代码是最终事实来源；本文记录的实机结果只适用于所列软件版本。当前源码版本为 **16.2.0**。更新实现后，请同步更新此文档和对应测试，不要把历史记录误当作当前验收。
 
 ## 1. 当前状态与结论
 
 - 插件显示名称与作者：`Zotero CiteFlow`；插件 ID：`citeflow@groele`；Chrome resource：`zoterocitation`；偏好命名空间：`extensions.zotero.zoterocitation.*`。ID 与偏好命名空间刻意不同，升级时不要随意重命名，否则会造成偏好和兼容性迁移问题。
-- 当前版本：`16.1.0`（对应提交与带注释标签 `v16.1.0`）。`manifest.json` 与 `update.json` 统一声明 Zotero `10.0` 至 `12.*`，但声明范围不等于全版本实机认证。
+- 当前版本：`16.2.0`（对应提交与带注释标签 `v16.2.0`）。`manifest.json` 与 `update.json` 统一声明 Zotero `10.0` 至 `12.*`，但声明范围不等于全版本实机认证。
 - 实机参考基线：Word 真机物理拖拽插入基线记录来自 Windows + Zotero `10.0.6` + Microsoft Word `16.0.20430`（插入 Zotero 原生可刷新 `ADDIN ZOTERO_ITEM CSL_CITATION` 域）；桌面启动、设置面板与本地化/拖拽探测需按版本在本地 Zotero 10 独立配置中复测。
 - 自动化基线：`npm test` 涵盖 `tsc --noEmit` 类型守卫、`scripts/architecture-guard.mjs`（含 360 行零债务、FTL 零硬编码版本、废弃 API 扫描与版本哈希一致校验）及全部 `tests/*.test.*` 回归；Node 模拟测试不替代 Windows/Word 真实桌面端集成验证。
 - 已知边界见“已知问题与风险”，每次发布前须如实记录实跑命令与通过范围。
@@ -16,10 +16,10 @@
 | --- | --- |
 | `bootstrap.js` | Zotero 插件启动入口；等待 Zotero 可用、停用历史插件 ID、注册 Chrome 资源、载入生产 bundle；卸载时撤销资源并转交清理。 |
 | `src/config.ts` | 插件显示名、插件 ID、内部 resource ID、Zotero 全局实例键。 |
-| `src/index.ts`、`src/addon.ts`、`src/runtime.ts`、`src/preferences.ts` | 创建 addon API、运行时 patch 注册/恢复、设置入口与全局 bundle 初始化。 |
-| `src/hooks.ts` | 启动/关闭顺序、单窗口容错挂载与设置应用；缺失初始主窗口或单窗口准备失败时保留设置面板与监听服务。 |
+| `src/index.ts`、`src/addon.ts`、`src/runtime.ts`、`src/preferences.ts` | 创建 addon API（含 `addon.api.citeItems` 并发拖拽占线提示）、运行时 patch 注册/恢复、设置入口与全局 bundle 初始化。 |
+| `src/hooks.ts` | 启动/关闭顺序、单窗口容错挂载、`probeForegroundWordTitle`/`probeWordWindowTitles` 注册与设置应用；缺失初始主窗口或单窗口准备失败时保留设置面板与监听服务。 |
 | `src/modules/cite.ts` | 将 Zotero 已选条目通过 Zotero 原生 Integration Session 写入 Word；追踪全部临时适配的 WinWord `application` 实例并在 `finally` 中恢复 `getActiveDocument`。 |
-| `src/modules/citation.ts`、`src/modules/citation/*.ts` | 文档/会话扫描、引用快照与缓存、引用集合、标签同步与孤立托管标签启动清理、失败恢复及诊断。 |
+| `src/modules/citation.ts`、`src/modules/citation/*.ts` | 文档/会话扫描、前台 Word 唯一窗口同步 `activeSessionID`、同名文档路径区分、引用快照指纹脏检查与树视图行级增量失效（`refresh-helpers.ts`/`session-sync-helpers.ts`）、引用集合、标签同步与孤立托管标签启动清理、失败恢复及诊断。 |
 | `src/modules/views.ts`、`src/modules/views/*.ts` | Zotero 条目表格中的引用状态列（`enabledTreeIDs: ["main"]`）、集合图标与拖拽引用生命周期。 |
 | `src/modules/drop-target.ts` | Windows 原生光标下窗口与进程识别；通过 `supportsNativeDropTarget()` 仅在 Windows 启用，非 Windows 保留 Zotero 原生拖拽。 |
 | `src/modules/preferences.ts` | 偏好默认值/校验、编译期版本/日期宏注入、十项设置面板绑定、主从联动与清理。 |
@@ -52,7 +52,7 @@
 
 ### 4.2 Zotero 原生 Word Integration
 
-`src/modules/cite.ts` 不自行构造普通文本引用，而是临时适配 Zotero 的 `Integration.getApplication` 和 `Integration.Session.prototype.cite`，让 Word Integration 以当前所选条目构造原生 CSL citation，在 `finally` 路径通过 `restorePatchedApplications()` 恢复所有已包装 `application` 实例上的 `getActiveDocument` 与原生方法。Zotero 10 WinWord 路径可能以 `null` 调用 `getDocument()`，插件将这个特定参数适配为空字符串，并用调用队列防止并发串文档。
+`src/modules/cite.ts` 不自行构造普通文本引用，而是临时适配 Zotero 的 `Integration.getApplication` 和 `Integration.Session.prototype.cite`，让 Word Integration 以当前所选条目构造原生 CSL citation，在 `finally` 路径通过 `restorePatchedApplications()` 恢复所有已包装 `application` 实例上的 `getActiveDocument` 与原生方法。Zotero 10 WinWord 路径可能以 `null` 调用 `getDocument()`，插件将这个特定参数适配为空字符串，并用调用队列防止并发串文档；`src/addon.ts` 中的 `addon.api.citeItems` 入口对进行中的并发插入显示节流非阻塞占线提示（`zoterocitation-cite-in-flight`），同时保持 `cite.ts` 核心原生写入体与 SHA-256 基线完全不变。
 
 验收必须检查 Word 的 Zotero 域/字段及 Zotero 刷新能力，不能仅凭屏幕上出现作者标题文本判断成功。脚注样式下应检查脚注故事区；正文故事区字段数为零本身并不代表失败。
 
@@ -61,6 +61,7 @@
 - `Citation` 通过 Zotero Word Integration 会话获得文档标识与引用快照，维护“文档 ↔ 条目”关联、引用顺序和状态缓存。
 - 插件主动发起的 WinWord 命令在 Zotero 10.0.6 中可能只给出随机 session ID、没有可靠文档路径。此时临时文集显示 `Word 文档（待识别） N`，`N` 为当前进程中的稳定会话序号；以后获得可信路径时原地改名，不把随机 ID 或猜测的文件名显示给用户。
 - 插件管理的引用集合/标签必须保留所有权记录。只有可以证明由插件创建/管理的 tag 才能清理；同名手动标签不得误删。
+- 后台轮询与多文档收敛规则：`listener` 在多文档场景下通过只读 `probeForegroundWordTitle()` 仅在前台 Word 窗口唯一匹配单个活动会话时同步 `activeSessionID`；窗口标题识别保留多重计数（禁止用 `Set` 折叠两个同名 Word 窗口），对不同路径同名文档通过 `_getUniqueCollectionDisplayName` 附加父目录标识消除文集名歧义；未变化文档快照通过 `buildRefreshInputFingerprint` 跳过重复格式化与集合同步，并在视图未按引用列排序时通过 `invalidateRowCache` + `tree.invalidateRow` 执行行级增量重绘（超过阈值、按引用列排序或接口缺失时自动回退至 `refreshAndMaintainSelection()`）；后台窗口标题全量枚举限制为 `3000ms` 冷却周期，空闲轮询在连续 5 次无活动后平滑退避至 `3000ms`（在 `execCommand` 完成含并发 `ambiguous` 结束、会话增删或快照变化时立即复位）。
 - 自定义标签名称变化必须把旧名迁移到新名；失败时保留最后一次有效所有权/状态，并允许后续重试。关闭自动标签应清除插件拥有的标记，不得删除用户手动添加的同名内容。
 - 多个文档共享条目时，集合/标签体现文档并集；删除单个会话不能清掉仍被其他会话引用的条目。
 - 群组库、只读库或无写权限条目需要跳过写操作并保留可恢复状态；不可把失败写入误记为已提交。
@@ -76,13 +77,13 @@
 | --- | --- | --- |
 | 引用追踪 (`enable`) | 开 | 需重启；关闭后设置面板仍可用。 |
 | 拖拽引用 (`dragCite.enable`) | 开 | 即时；独立于状态列是否显示；非 Windows 自动禁用该开关并保留原生拖拽。 |
-| 临时引用文集 (`collections.enable`) | 开 | 即时；开启时维护文档关联的临时文集。 |
+| 临时引用文集 (`collections.enable`) | 开 | 即时；开启时在个人文库维护文档关联的临时文集。 |
 | 自动引用标签 (`citationTags.enable`) | 开 | 即时；关闭时清理插件拥有的标签。 |
 | 引用标签文本 (`citationTags.text`) | `/Citations` | 即时；去除首尾空格，1–200 字符，不允许控制字符。 |
 | 标签同步延时 (`citationTagDebounceMs`) | 150 ms | 0–2000 ms。 |
-| 条目视图刷新延时 (`itemsViewRefreshMinIntervalMs`) | 120 ms | 0–2000 ms。 |
+| 条目视图刷新延时 (`itemsViewRefreshDebounceMs`) | 120 ms | 0–2000 ms。 |
 | 诊断统计窗口 (`healthWindowMs`) | 300000 ms | 10000–3600000 ms。 |
-| 慢操作阈值 (`slowOperationThresholdMs`) | 50 ms | 5–5000 ms。 |
+| 慢操作阈值 (`perfSlowThresholdMs`) | 50 ms | 5–5000 ms。 |
 | 调试日志 (`debug`) | 关 | 即时。 |
 
 偏好 observer 会同步多个设置窗口；应用队列合并快速连续更新，关闭插件时取消尚未提交的 UI 更新。恢复默认只重置这十项，不重置 Zotero 其他偏好或文档数据。旧版 `quickCite.enable` 用户偏好即使仍存在于 Zotero 配置中，也不再被读取或执行。

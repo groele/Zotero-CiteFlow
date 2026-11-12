@@ -14,7 +14,7 @@ type Collection = Omit<Zotero.Collection, "libraryID"> & {libraryID:number;_isCi
 type Search = {key:string;eraseTx():Promise<void>};
 const timers = globalThis as unknown as {setTimeout(callback:()=>void,ms:number):number;clearTimeout(id:number):void};
 type Session = {collection?:Collection;closing?:boolean;docId?:string;lastName?:string;_renameTask?:Promise<void>|null};
-type Context = CitationCollections & {sessions:Record<string,Session>;_listenerStopped:boolean;_temporaryCollectionKeys:Set<string>;_managedSearchKeys:Set<string>;_managedCitationTagIDs?:Record<string,boolean>;_docIdBySession:Record<string,string>;_collectionRenameRetryCountBySession:Record<string,number>;_collectionRenameRetryTimerBySession:Record<string,number>;_getDocumentDisplayName(id:string):string;_getPendingCollectionName(id:string):string;_invalidateSessionIndex():void;_saveKeySet(key:string,values:Set<string>):void;syncCitationTags?(id:string,items:number[]):Promise<unknown>;logError(message:string,error:unknown):void;debugLog(...args:unknown[]):void};
+type Context = CitationCollections & {sessions:Record<string,Session>;_listenerStopped:boolean;_temporaryCollectionKeys:Set<string>;_managedSearchKeys:Set<string>;_managedCitationTagIDs?:Record<string,boolean>;_docIdBySession:Record<string,string>;_collectionRenameRetryCountBySession:Record<string,number>;_collectionRenameRetryTimerBySession:Record<string,number>;_lastRefreshFingerprintBySession?:WeakMap<object,string>;_lastSyncFailedBySession?:WeakMap<object,boolean>;_getDocumentDisplayName(id:string):string;_getUniqueCollectionDisplayName?(id:string,doc:unknown):string;_getPendingCollectionName(id:string):string;_invalidateSessionIndex():void;_saveKeySet(key:string,values:Set<string>):void;syncCitationTags?(id:string,items:number[]):Promise<unknown>;logError(message:string,error:unknown):void;debugLog(...args:unknown[]):void};
 declare const addon: {data?:{views?:{repositionCitationCollections?():void}}};
 
 export class CitationCollections {
@@ -128,7 +128,9 @@ export class CitationCollections {
     collection._isCiteFlowCollection = true;
     collection.libraryID = Zotero.Libraries.userLibraryID;
     const knownDocId = session.docId || this._docIdBySession?.[sessionID];
-    const knownName = knownDocId ? this._getDocumentDisplayName(knownDocId) : "";
+    const knownName = knownDocId
+      ? (this._getUniqueCollectionDisplayName?.(sessionID, knownDocId) || this._getDocumentDisplayName(knownDocId))
+      : "";
     collection.name = knownName || this._getPendingCollectionName(sessionID);
     session.lastName = collection.name;
     try {
@@ -152,6 +154,8 @@ export class CitationCollections {
       return;
     }
     session.collection = collection;
+    this._lastRefreshFingerprintBySession?.delete(session);
+    this._lastSyncFailedBySession?.delete(session);
     this._invalidateSessionIndex();
     addon?.data?.views?.repositionCitationCollections?.();
   }
@@ -160,12 +164,12 @@ export class CitationCollections {
    * Transactionally synchronizes item members in the session's temporary collection.
    * @param {object} session - Session object
    * @param {number[]} targetIDs - Target item IDs
-   * @returns {Promise<void>}
+   * @returns {Promise<boolean>}
    */
-  async syncCollectionItems(this: Context, session: Session, targetIDs: number[]) {
+  async syncCollectionItems(this: Context, session: Session, targetIDs: number[]): Promise<boolean> {
     const collection = session?.collection;
-    if (this._listenerStopped || session?.closing || !collection?.id) return;
-    if (Zotero.Prefs.get("extensions.zotero.zoterocitation.collections.enable", true) === false) return;
+    if (this._listenerStopped || session?.closing || !collection?.id) return true;
+    if (Zotero.Prefs.get("extensions.zotero.zoterocitation.collections.enable", true) === false) return true;
 
     const normalizedTargetIDs = [...new Set(targetIDs.map(Number).filter(id => Number.isSafeInteger(id) && id > 0))];
     const currentIDs = (collection.getChildItems(true) as Array<number | {id:number}>)
@@ -177,7 +181,7 @@ export class CitationCollections {
     const remove = currentIDs.filter(id => !targetSet.has(id));
     const add = normalizedTargetIDs.filter(id => !currentSet.has(id));
 
-    if (!remove.length && !add.length) return;
+    if (!remove.length && !add.length) return true;
 
     try {
       await Zotero.DB.executeTransaction(async () => {
@@ -185,8 +189,10 @@ export class CitationCollections {
         if (remove.length) await collection.removeItems(remove);
         if (add.length) await collection.addItems(add);
       });
+      return true;
     } catch (error) {
       this.logError("Failed to synchronize Word citation collection items", error);
+      return false;
     }
   }
 

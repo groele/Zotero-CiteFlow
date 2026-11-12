@@ -165,36 +165,101 @@ export class CitationDocumentNaming {
       }
     }
 
-    if (typeof addonData?.probeWordWindowTitles === "function") {
+    const bgState = this as NamingContext & { _allowBgWindowProbe?: boolean; _lastBgWindowProbeAt?: number };
+    const allowWindowProbe = allowForeground || bgState._allowBgWindowProbe !== false;
+    if (allowWindowProbe && typeof addonData?.probeWordWindowTitles === "function") {
+      if (bgState._allowBgWindowProbe !== undefined) {
+        bgState._lastBgWindowProbeAt = Date.now();
+      }
       const probed = addonData.probeWordWindowTitles();
-      const claimedByOthers = new Set();
+      const claimedByOthers = new Set<string>();
+      const claimedNamesList: string[] = [];
+      const claimedWindowIds = new Set<string>();
       let otherUnidentifiedCount = 0;
       for (const otherID of Object.keys(this.sessions || {})) {
         if (otherID === sessionID || this.sessions[otherID]?.closing) continue;
         const otherDocId = this._docIdBySession?.[otherID] || this.sessions[otherID]?.docId;
         const otherName = otherDocId ? this._getDocumentDisplayName(otherDocId) : "";
-        if (otherName) claimedByOthers.add(otherName);
-        else otherUnidentifiedCount++;
+        if (otherName) {
+          claimedByOthers.add(otherName);
+          claimedNamesList.push(otherName);
+          if (typeof otherDocId === "string" && otherDocId.startsWith("window-title:")) {
+            claimedWindowIds.add(otherDocId);
+          }
+        } else {
+          otherUnidentifiedCount++;
+        }
       }
       if (allowForeground && probed?.foregroundTitle) {
         const fgName = this._parseWordWindowTitle(probed.foregroundTitle);
         if (fgName && !claimedByOthers.has(fgName)) return `window-title:${fgName}`;
       }
-      const visibleNames = [...new Set(
-        (probed?.visibleTitles || []).map(t => this._parseWordWindowTitle(t)).filter(Boolean)
-      )];
-      if (visibleNames.length > 0) {
-        const unclaimed = visibleNames.filter(name => !claimedByOthers.has(name));
-        if (visibleNames.length === 1 && otherUnidentifiedCount === 0 && !claimedByOthers.has(visibleNames[0])) {
-          return `window-title:${visibleNames[0]}`;
+      const parsedVisible = (probed?.visibleTitles || [])
+        .map(t => this._parseWordWindowTitle(t))
+        .filter((name): name is string => !!name);
+      if (parsedVisible.length > 0 && otherUnidentifiedCount === 0) {
+        const remainingVisible = [...parsedVisible];
+        for (const claimedName of claimedNamesList) {
+          const idx = remainingVisible.indexOf(claimedName);
+          if (idx !== -1) remainingVisible.splice(idx, 1);
         }
-        if (unclaimed.length === 1 && otherUnidentifiedCount === 0) {
-          return `window-title:${unclaimed[0]}`;
+        const uniqueRemaining = [...new Set(remainingVisible)];
+        const counts = new Map<string, number>();
+        for (const name of remainingVisible) counts.set(name, (counts.get(name) || 0) + 1);
+        if (uniqueRemaining.length === 1 && counts.get(uniqueRemaining[0]) === 1) {
+          const candidateId = `window-title:${uniqueRemaining[0]}`;
+          if (!claimedWindowIds.has(candidateId)) return candidateId;
         }
       }
     }
 
     return this._docIdBySession?.[sessionID] || this.sessions?.[sessionID]?.docId || "";
+  }
+
+  _extractDocumentParentQualifier(docId: unknown, depth = 1): string {
+    if (typeof docId !== "string") return "";
+    const trimmed = docId.trim();
+    if (!trimmed || trimmed.startsWith("window-title:")) return "";
+    if (/^https?:\/\//i.test(trimmed)) {
+      try {
+        const url = new URL(trimmed);
+        const parts = url.pathname.split("/").filter(Boolean);
+        const folders = parts.slice(0, -1).map(p => {
+          try { return decodeURIComponent(p); } catch { return p; }
+        }).filter(Boolean);
+        return folders.length ? folders.slice(-depth).join("/") : (url.hostname || "");
+      } catch {
+        return "";
+      }
+    }
+    const clean = trimmed.replace(/[?#].*$/, "");
+    const parts = clean.split(/[\\/]+/).filter(Boolean);
+    const parentParts = parts.slice(0, -1).filter(p => !/^[A-Za-z]:$/.test(p));
+    return parentParts.length ? parentParts.slice(-depth).join("/") : "";
+  }
+
+  _getUniqueCollectionDisplayName(this: NamingContext, sessionID: string, docId: unknown): string {
+    const base = this._getDocumentDisplayName(docId);
+    if (!base) return "";
+    const peers: string[] = [];
+    for (const [sid, session] of Object.entries(this.sessions || {})) {
+      if (sid === sessionID || session?.closing) continue;
+      const peerDocId = this._docIdBySession?.[sid] || session?.docId || "";
+      if (peerDocId && this._getDocumentDisplayName(peerDocId) === base) {
+        peers.push(peerDocId);
+      }
+    }
+    if (peers.length === 0) return base;
+    const currentDocId = typeof docId === "string" ? docId : "";
+    for (const depth of [1, 2, 3]) {
+      const ownLabel = this._extractDocumentParentQualifier(currentDocId, depth);
+      if (!ownLabel) break;
+      const peerLabels = peers.map(peerId => this._extractDocumentParentQualifier(peerId, depth));
+      if (peerLabels.every(label => label !== ownLabel)) {
+        return `${base} (${ownLabel})`;
+      }
+    }
+    return base;
   }
 
   /**

@@ -1,4 +1,5 @@
 import type {NativeSession,TrackedSession,HostMethod,Binding,Integration,WordContext} from "./word-contract.ts";
+import {applySessionCollectionRename,finalizeExecCommandCycle,finishListenerTick,prepareTickProbeWindow,recordListenerActivity,resolveAndApplyCommandDocument,syncForegroundActiveSession} from "./session-sync-helpers.ts";
 const timers = globalThis as unknown as {setTimeout(callback:()=>void|Promise<void>,ms:number):number;clearTimeout(id:number):void};
 declare const addon: {data:{docId?:string}};
 // ============================================================================
@@ -6,6 +7,10 @@ declare const addon: {data:{docId?:string}};
 // ============================================================================
 
 export class CitationWordIntegration {
+  _noteListenerActivity(this: WordContext) {
+    recordListenerActivity(this);
+  }
+
   /** Background polling loop that periodically synchronizes active Word sessions. */
   async listener(this: WordContext, t: number) {
     try {
@@ -21,10 +26,21 @@ export class CitationWordIntegration {
       timers.clearTimeout(this._listenerTimer);
       this._listenerTimer = null;
     }
+    this._listenerBaseInterval = t;
+    this._idleTickCount = 0;
+    this._isListenerBackedOff = false;
+    this._activityEpoch ??= 0;
+
+    const scheduleNext = (delay: number) => {
+      if (this._listenerStopped) return;
+      this._listenerTimer = timers.setTimeout(() => { this._listenerTickTask = tick(); }, delay);
+    };
+    this._scheduleListenerTick = scheduleNext;
 
     const tick = async () => {
       if (this._listenerStopped || this._isTickRunning) return;
       this._isTickRunning = true;
+      const epochBefore = prepareTickProbeWindow(this);
       try {
         if (!(Zotero as unknown as {ZoteroCitation?:unknown}).ZoteroCitation) {
           void this.clear().catch(error => this.logError("Failed to clear after plugin instance removal", error));
@@ -35,20 +51,18 @@ export class CitationWordIntegration {
         const sessions = (Zotero.Integration as unknown as Integration).sessions || {};
         await this._pruneMissingWordSessions(sessions);
         await this._syncActiveWordSessions(sessions);
+        if (!this._listenerStopped && !this._isExecCommandRunning) {
+          syncForegroundActiveSession(this);
+        }
       } catch (e) {
         this.logError("Background citation synchronization failed", e);
       } finally {
         this._isTickRunning = false;
-        if (!this._listenerStopped) {
-          this._listenerTimer = timers.setTimeout(
-            () => { this._listenerTickTask = tick(); },
-            Object.keys(this.sessions).length ? t : Math.max(t, 5000)
-          );
-        }
+        finishListenerTick(this, t, epochBefore);
       }
     };
 
-    this._listenerTimer = timers.setTimeout(tick, t);
+    scheduleNext(t);
     this._installWordIntegrationHooks();
   }
 
@@ -111,15 +125,7 @@ export class CitationWordIntegration {
     }
 
     const effectiveDocId = this._docIdBySession?.[sessionID] || trackedSession.docId;
-    const targetName = effectiveDocId ? this._getDocumentDisplayName(effectiveDocId) : "";
-    if (trackedSession.collection && targetName && trackedSession.collection.name !== targetName) {
-      try {
-        await this._renameCollection(sessionID, targetName, effectiveDocId);
-      } catch (error) {
-        this.logError(`Failed to rename Word citation collection for ${sessionID}`, error);
-        this._scheduleCollectionRenameRetry(sessionID, targetName, effectiveDocId);
-      }
-    }
+    await applySessionCollectionRename(this, sessionID, trackedSession, effectiveDocId);
   }
 
   /**
@@ -214,14 +220,17 @@ export class CitationWordIntegration {
       citationModule._isExecCommandRunning = true;
 
       let result;
+      let succeeded = false;
       try {
         result = await originalExecCommand.apply(this, arguments as unknown as unknown[]);
-      } catch (error) {
-        citationModule._execCommandBindings.delete(bindingID);
-        throw error;
+        succeeded = true;
       } finally {
         citationModule._execCommandDepth = Math.max(0, citationModule._execCommandDepth - 1);
         citationModule._isExecCommandRunning = citationModule._execCommandDepth > 0;
+        if (!succeeded) {
+          citationModule._execCommandBindings.delete(bindingID);
+          finalizeExecCommandCycle(citationModule, false);
+        }
       }
 
       try {
@@ -230,6 +239,7 @@ export class CitationWordIntegration {
         citationModule.logError("Post-command citation refresh failed", error);
       } finally {
         citationModule._execCommandBindings.delete(bindingID);
+        finalizeExecCommandCycle(citationModule, binding.ambiguous);
       }
       return result;
     };
@@ -266,21 +276,7 @@ export class CitationWordIntegration {
     }
 
     const nativeSession = integration.sessions?.[sessionID];
-    const hasExplicitDocId = typeof docId === "string" && docId.trim() !== "";
-    const effectiveDocId = hasExplicitDocId
-      ? docId
-      : (this._resolveFallbackDocumentId?.(sessionID, nativeSession, binding.doc, true) || "");
-    const targetName = effectiveDocId ? this._getDocumentDisplayName(effectiveDocId) : "";
-    if (targetName) {
-      this._rememberSessionDocument(sessionID, effectiveDocId);
-    } else if (hasExplicitDocId) {
-      this._clearCollectionRenameRetry(sessionID);
-      delete this._docIdBySession[sessionID];
-      if (this.sessions?.[sessionID]) delete this.sessions[sessionID].docId;
-      delete addon.data.docId;
-    }
-    this._setActiveSessionID(sessionID);
-    if (targetName) addon.data.docId = effectiveDocId;
+    const effectiveDocId = resolveAndApplyCommandDocument(this, sessionID, nativeSession, binding.doc, docId, addon?.data);
 
     const trackedSession = await this.ensureSession(sessionID, nativeSession);
     const colEnabled = Zotero.Prefs?.get?.("extensions.zotero.zoterocitation.collections.enable", true) !== false;
@@ -290,14 +286,7 @@ export class CitationWordIntegration {
       await this.refreshSessionCitations(sessionID, nativeSession);
     }
 
-    if (trackedSession.collection && targetName && trackedSession.collection.name !== targetName) {
-      try {
-        await this._renameCollection(sessionID, targetName, effectiveDocId);
-      } catch (error) {
-        this.logError(`Failed to rename Word citation collection for ${sessionID}`, error);
-        this._scheduleCollectionRenameRetry(sessionID, targetName, effectiveDocId);
-      }
-    }
+    await applySessionCollectionRename(this, sessionID, trackedSession, effectiveDocId);
   }
 
   /**
@@ -319,7 +308,9 @@ export class CitationWordIntegration {
     if (initialDocId && !this._docIdBySession[sessionID]) {
       this._rememberSessionDocument(sessionID, initialDocId);
     }
-    const initialName = initialDocId ? this._getDocumentDisplayName(initialDocId) : "";
+    const initialName = initialDocId
+      ? (this._getUniqueCollectionDisplayName?.(sessionID, initialDocId) || this._getDocumentDisplayName(initialDocId))
+      : "";
     const session = existing || {
       idData: {},
       lastName: initialName || this._getPendingCollectionName(sessionID),
@@ -328,6 +319,10 @@ export class CitationWordIntegration {
     };
     session.pending = true;
     this.sessions[sessionID] = session;
+    if (!existing) {
+      this._lastBgWindowProbeAt = 0;
+      this._noteListenerActivity?.();
+    }
     this._invalidateSessionIndex();
 
     const task = (async () => {

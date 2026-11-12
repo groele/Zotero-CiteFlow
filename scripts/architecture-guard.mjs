@@ -145,6 +145,7 @@ test('§3 Fluent catalogues are symmetric and free of duplicate keys', (t) => {
     'zoterocitation-column-citation',
     'zoterocitation-collection-pending',
     'zoterocitation-drag-target-unknown',
+    'zoterocitation-cite-in-flight',
     'zoterocitation-settings-invalid-tag',
     'zoterocitation-settings-save-failed',
     'zoterocitation-settings-apply-failed',

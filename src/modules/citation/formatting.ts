@@ -1,4 +1,12 @@
 import type {FormatContext, NativeSession, CitationMap, IndexMap, IdData} from "./formatting-contract.ts";
+import {
+  collectChangedCitationItemIDs,
+  commitAppliedSessionCitations,
+  dispatchItemsViewRefresh,
+  invalidateRefreshFingerprint,
+  mergePendingRefreshTarget,
+  updateSessionCitationsIfDirty
+} from "./refresh-helpers.ts";
 const timers = globalThis as unknown as {setTimeout(callback:()=>void|Promise<void>,ms:number):number;clearTimeout(id:number):void};
 import { TEMP_COLLECTION_KEYS_PREF } from "./constants.ts";
 
@@ -21,6 +29,9 @@ export class CitationFormatting {
   async clearSession(this: FormatContext, sessionID: string, skipTagCleanup = false) {
     const session = this.sessions?.[sessionID];
     if (!session) return;
+    const wasActive = this.activeSessionID === sessionID;
+    const removedIDs = wasActive ? "full" as const : collectChangedCitationItemIDs(session.idData, undefined);
+    invalidateRefreshFingerprint(this, session);
     session.closing = true;
     this._sessionUpdateRevision[sessionID] = (this._sessionUpdateRevision[sessionID] || 0) + 1;
     await Promise.allSettled([this._initializationTasks?.get?.(sessionID), session._renameTask, this._sessionUpdateQueue[sessionID]].filter(Boolean));
@@ -42,6 +53,10 @@ export class CitationFormatting {
       }
     }
     this.cleanupSessionState(sessionID, true);
+    this._noteListenerActivity?.();
+    if (!this._listenerStopped && (removedIDs === "full" || (Array.isArray(removedIDs) && removedIDs.length > 0))) {
+      this.scheduleItemsViewRefresh(removedIDs);
+    }
     const collection = session.collection;
     if (!collection?.id) return;
     try {
@@ -129,6 +144,8 @@ export class CitationFormatting {
     if (this._sortedCacheBySession && typeof this._getSortedCacheKey === "function") {
       delete this._sortedCacheBySession[this._getSortedCacheKey(sessionID)];
     }
+    invalidateRefreshFingerprint(this, this.sessions?.[sessionID]);
+    this._noteListenerActivity?.();
     this.scheduleCitationTagSync(sessionID, [], true);
     await this.updateCitations(sessionID, {}, [], targetSession.styleClass);
   }
@@ -186,8 +203,7 @@ export class CitationFormatting {
       if (this._listenerStopped || !this.sessions?.[sessionID]) return;
       if (!Array.isArray(sortedItemIDs) || (sortedItemIDs.length === 0 && !this._hasOnlyTrashedCitationItems?.(citationsByIndex))) return;
 
-      this.scheduleCitationTagSync(sessionID, sortedItemIDs);
-      await this.updateCitations(sessionID, sortedItemIDs.length ? citationsByItemID : {}, sortedItemIDs, targetSession.styleClass);
+      await updateSessionCitationsIfDirty(this, sessionID, targetSession, sortedItemIDs, citationsByItemID);
     } catch (e) {
       this.logError("Citation snapshot refresh failed", e);
     } finally {
@@ -203,23 +219,18 @@ export class CitationFormatting {
   /**
    * Schedules a debounced refresh of the citation column in all open Zotero windows.
    */
-  scheduleItemsViewRefresh(this: FormatContext) {
-    if (this._itemsViewRefreshTimer || this._listenerStopped) return;
+  scheduleItemsViewRefresh(this: FormatContext, changedItemIDs?: number[] | "full") {
+    if (this._listenerStopped) return;
+    const merged = mergePendingRefreshTarget(this._pendingItemsViewRefreshIDs, changedItemIDs);
+    if (!merged) return;
+    this._pendingItemsViewRefreshIDs = merged;
+    if (this._itemsViewRefreshTimer) return;
     this._itemsViewRefreshTimer = timers.setTimeout(async () => {
       this._itemsViewRefreshTimer = null;
+      const target = this._pendingItemsViewRefreshIDs ?? "full";
+      this._pendingItemsViewRefreshIDs = null;
       if (this._listenerStopped) return;
-      const panes = Zotero.getMainWindows?.().map(win => win.ZoteroPane) || [(globalThis as unknown as {ZoteroPane?: {itemsView?: {refreshAndMaintainSelection():Promise<void>}}}).ZoteroPane];
-      const seenViews = new Set();
-      for (const pane of panes) {
-        const itemsView = pane?.itemsView;
-        if (!itemsView || seenViews.has(itemsView)) continue;
-        seenViews.add(itemsView);
-        try {
-          await itemsView.refreshAndMaintainSelection();
-        } catch (error) {
-          this.logError("Cannot refresh the citation column", error);
-        }
-      }
+      await dispatchItemsViewRefresh(target, (message, error) => this.logError(message, error));
     }, this._itemsViewRefreshDebounceMs);
   }
 
@@ -337,18 +348,6 @@ export class CitationFormatting {
       return typeof item.isTopLevelItem !== "function" || item.isTopLevelItem();
     });
 
-    if (this._sessionUpdateRevision[sessionID] !== revision) return;
-    await this.syncCollectionItems(citationSession, targetIDs);
-
-    if (this._listenerStopped || citationSession.closing
-      || this._sessionUpdateRevision[sessionID] !== revision || this.sessions?.[sessionID] !== citationSession) {
-      return;
-    }
-
-    if (hasChanges) {
-      citationSession.idData = targetData;
-      this._invalidateSessionIndex();
-      this.scheduleItemsViewRefresh();
-    }
+    await commitAppliedSessionCitations(this, sessionID, citationSession, targetIDs, targetData, hasChanges, revision);
   }
 }

@@ -168,7 +168,7 @@ test('startup tolerates missing main window and failing window attachment while 
   const bundle = esbuild.buildSync({
     entryPoints: [path.join(__dirname, '../src/hooks.ts')],
     bundle: true, format: 'iife', globalName: '__hooks', write: false, target: 'firefox140',
-    define: { __buildVersion__: '"16.1.0"', __buildDate__: '"2026-11-12"' }
+    define: { __buildVersion__: '"16.2.0"', __buildDate__: '"2026-11-12"' }
   }).outputFiles[0].text;
 
   for (const mode of ['no-window', 'bad-window']) {

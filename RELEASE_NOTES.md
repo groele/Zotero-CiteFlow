@@ -1,3 +1,25 @@
+# Zotero CiteFlow 16.2.0
+
+**发布日期**：2026-11-12
+**适用版本**：Zotero `10.0` - `12.*`
+
+## 多文档焦点同步、行级增量重绘与并发稳定性增强（v16.2.0）
+
+- **轻量前景 Win32 Word 探测与 P1-B 会话同步（`drop-target.ts` / `hooks.ts` / `session-sync-helpers.ts` / `word-integration.ts`）**：
+  - 抽取只读前景标题探测 `probeForegroundWordTitle()`，在多文档并行打开时仅当前台 `WINWORD.EXE` 窗口唯一匹配单个活跃会话时自动切换 `activeSessionID` 并定向刷新列表；当焦点留在 Zotero 主窗口或存在标题歧义时保持原状态不变。
+- **重复窗口标题多重集消歧与同名不同路径集合父目录限定（`document-naming.ts` / `collections.ts`）**：
+  - `_resolveFallbackDocumentId()` 采用多重集差集避免两个重名 Word 窗口在 `Set` 中被错误折叠；为不同磁盘路径下的同名文档通过 `_getUniqueCollectionDisplayName()` 自动附加父目录限定名以区分临时集合。
+- **3 秒探测冷却、自适应空闲退避与重叠重入补偿（`session-sync-helpers.ts` / `initializers.ts` / `lifecycle.ts`）**：
+  - 后台窗口全量探测引入 `3000ms` 冷却开关，连续 `5` 次无活动后监听步进平滑退避至 `3000ms`；一旦发生 `execCommand` 并发重入结束、会话变化或标题解析推进，立即重调度恢复实时响应。
+- **快照输入脏检查与 ItemTree 行级局部失效（`refresh-helpers.ts` / `formatting.ts` / `collections.ts`）**：
+  - 引入 `buildRefreshInputFingerprint()` 跳过输入未变化的重复计算与同步，且仅在视图安全未按引用列排序且变更可控时通过 `invalidateRowCache` + `tree.invalidateRow` 执行行级重绘，任何异常自动回退全量刷新；集合重建或同步失败时同步失效缓存确保自愈。
+- **并发拖拽占线非阻塞提示（`addon.ts` / `locale.ts` / `.ftl` / `architecture-guard.mjs`）**：
+  - 在 `Addon.api.citeItems` 外层对重叠触发的拖拽引用显示 ≥ `2000ms` 节流非阻塞 `Zotero.ProgressWindow` 提示（`zoterocitation-cite-in-flight`），完整保留核心 `src/modules/cite.ts` 锁定的 SHA-256 基线。
+- **文档边界纠偏与稳定性单测覆盖（`README.md` / `README.en.md` / `CORE-TECHNICAL-MAINTENANCE.md` / `tests/enhancement-stability.test.mjs`）**：
+  - 明确仅支持 Microsoft Word（不支持 WPS Writer）及临时集合仅作用个人文库的边界；新增 `tests/enhancement-stability.test.mjs` 6 项测试，全仓 `36` 个源码模块保持 `<= 360` 行零债务。
+
+---
+
 # Zotero CiteFlow 16.1.0
 
 **发布日期**：2026-11-12

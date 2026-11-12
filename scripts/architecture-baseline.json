@@ -4,8 +4,20 @@
   "capturedAt": "2026-11-12",
   "debtCleared": true,
   "note": "Known §5.9 debt. Listed files may stay at or below the recorded line count, but must never grow; any other source file above 360 lines fails the guard. Remove an entry only after splitting that module below 360 lines. Every entry must still exist and must still exceed the ceiling - stale entries are rejected by the baseline integrity test.",
-  "lastReleasedVersion": "16.1.0",
+  "lastReleasedVersion": "16.2.0",
   "splitHistory": [
+    {
+      "version": "16.2.0",
+      "date": "2026-11-12",
+      "resolved": [
+        "Added lightweight foreground Win32 Word title probe (probeForegroundWordTitle in drop-target.ts) and unique foreground session activeSessionID synchronization (P1-B)",
+        "Fixed duplicate Word window-title collapse via multiset subtraction, added parent directory disambiguation for same-filename paths (_getUniqueCollectionDisplayName), and enforced 3000ms background probe cooldown",
+        "Extracted typed helper modules session-sync-helpers.ts (253 lines <= 360) and refresh-helpers.ts (323 lines <= 360) preserving 10-domain Citation composition and zero debt across all 36 TypeScript source files",
+        "Added adaptive idle polling backoff up to 3000ms after 5 idle ticks with overlap compensation across execCommand completion",
+        "Added snapshot input dirty-checking via buildRefreshInputFingerprint and targeted ItemTree row-level invalidation with safe full-refresh fallback",
+        "Added throttled non-blocking concurrent drag busy notice in Addon.api.citeItems while keeping locked core cite.ts SHA-256 unchanged"
+      ]
+    },
     {
       "version": "16.1.0",
       "date": "2026-11-12",

@@ -8,7 +8,7 @@
 
 [简体中文](README.md) · [English](README.en.md)
 
-[![当前版本](https://img.shields.io/badge/version-16.1.0-245ac7?style=flat-square)](https://github.com/groele/Zotero-CiteFlow/releases/tag/v16.1.0) · [下载 XPI](https://github.com/groele/Zotero-CiteFlow/releases/download/v16.1.0/zotero-citeflow-16.1.0.xpi) · [问题反馈](https://github.com/groele/Zotero-CiteFlow/issues)
+[![当前版本](https://img.shields.io/badge/version-16.2.0-245ac7?style=flat-square)](https://github.com/groele/Zotero-CiteFlow/releases/tag/v16.2.0) · [下载 XPI](https://github.com/groele/Zotero-CiteFlow/releases/download/v16.2.0/zotero-citeflow-16.2.0.xpi) · [问题反馈](https://github.com/groele/Zotero-CiteFlow/issues)
 
 [产品定位](#overview) · [安装与更新](#installation) · [快速开始](#quick-start) · [核心功能](#features) · [CSL 引用格式参考案例](#csl-example) · [设置与使用](#settings) · [数据、同步与外部服务](#data) · [兼容性与验证范围](#compatibility) · [常见问题](#troubleshooting) · [开发与详细文档](#development) · [系列产品](#series) · [项目来源与许可](#license)
 
@@ -24,7 +24,7 @@
 
 ## 安装与更新
 
-1. 下载 [zotero-citeflow-16.1.0.xpi](https://github.com/groele/Zotero-CiteFlow/releases/download/v16.1.0/zotero-citeflow-16.1.0.xpi)（插件版本 **16.1.0**），不要安装 Source code ZIP.
+1. 下载 [zotero-citeflow-16.2.0.xpi](https://github.com/groele/Zotero-CiteFlow/releases/download/v16.2.0/zotero-citeflow-16.2.0.xpi)（插件版本 **16.2.0**），不要安装 Source code ZIP.
 2. 在 Zotero 打开 **工具 → 插件／附加组件**，从齿轮菜单选择 **从文件安装插件**。
 3. 选择 XPI，完成安装；按提示重启 Zotero。
 
@@ -90,7 +90,7 @@
 3. **在 Word / WPS 手稿中切换**：
    - 在 Word 或 WPS 的 Zotero 工具栏中点击 **Document Preferences (文档首选项)**；
    - 在样式列表中选择 **Compact Journal Reference** 并点击确定；
-   - 配合 CiteFlow 的**实时引用列监控**与**拖拽引文**能力，全篇文献引用与文末排版瞬间完成紧凑规范化！
+   - 配合 CiteFlow 的**实时引用列监控**与**拖拽引文**能力，全篇文献引用与文末排版瞬间完成紧凑规范化！（注：CiteFlow 的实时引用状态跟踪、临时文集与 Windows 拖拽插入仅支持 Microsoft Word，不适配 WPS Writer）
 
 <a id="settings"></a>
 
@@ -113,9 +113,9 @@
 
 | 项目 | 范围 |
 |---|---|
-| 当前插件版本 | 16.1.0 |
+| 当前插件版本 | 16.2.0 |
 | 清单声明的 Zotero 范围 | `10.0` 至 `12.*` |
-| 当前说明 | 16.1.0 在 16.0.0 全仓 360 行零债务与 13 项 architecture-guard 基础上，修复 Zotero 10+ `itemsView` 原生拖拽保留、非 Windows 平台快速复制免误伤、引用列现代 `enabledTreeIDs` 声明、启动容错、WinWord `application` 包装恢复、启动清理孤立托管标签、排序行自有 `isCollection` 描述符恢复、异步设置同步与格式化定时器关闭竞态保护、`ensureSession` 既有会话重初始化状态兜底、动态版本注入、CSL 模板缺陷与确定性 ZIP/语法检查/更新源校验。 |
+| 当前说明 | 16.2.0 在 16.1.0 全仓 360 行零债务与 13 项 architecture-guard 基础上，新增只读前景 Word 窗口唯一匹配 `activeSessionID` 同步（P1-B）、多重集窗口标题消歧与同名不同路径集合父目录限定、3 秒后台探测冷却与连续空闲自适应退避（含并发重入完成补偿）、快照输入指纹脏检查与 ItemTree 行级定点重绘（排序/超阈值安全回退）、并发拖拽占线非阻塞节流提示（保持底层 `cite.ts` 锁定的 SHA-256 基线），并补充 `tests/enhancement-stability.test.mjs` 与 Word/个人文库边界说明。 |
 
 插件版本与 Zotero 版本分别管理。兼容声明不等于已验证所有宿主、系统和外部服务；本轮仅验证上述定向行为，未覆盖所有业务流程或主环境安装。
 
@@ -142,6 +142,7 @@ npm run package
 - [技术与维护指南 / Technical guide](CORE-TECHNICAL-MAINTENANCE.md)
 - [第三方声明 / Third-party notices](THIRD_PARTY.md)
 - [版本说明 / Release notes](RELEASE_NOTES.md)
+- [v16.2.0 阶段说明 / Milestone notes](docs/releases/v16.2.0.md)
 - [v16.1.0 阶段说明 / Milestone notes](docs/releases/v16.1.0.md)
 - [v16.0.0 阶段说明 / Milestone notes](docs/releases/v16.0.0.md)
 - [v13.0.9 阶段说明 / Milestone notes](docs/releases/v13.0.9.md)

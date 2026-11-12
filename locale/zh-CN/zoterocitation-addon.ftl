@@ -1,6 +1,7 @@
 zoterocitation-column-citation = 引用
 zoterocitation-collection-pending = Word 文档（待识别）
 zoterocitation-drag-target-unknown = 无法确认拖拽目标是 Word。请将文献拖放到 Word 文档页面后重试。
+zoterocitation-cite-in-flight = 上一次引用插入尚未完成，请稍后再试。
 zoterocitation-settings-description = 管理 Zotero 与 Word 之间的引用跟踪、拖拽插入与文集标签管理。设置自动保存。
 zoterocitation-settings-section-core = 基础服务与引用追踪
 zoterocitation-settings-section-writing = 写作交互与快捷插入
@@ -10,7 +11,7 @@ zoterocitation-settings-enable-help = 控制 Word 进程监听、会话绑定与
 zoterocitation-settings-drag-cite = 启用拖拽引用
 zoterocitation-settings-drag-help = 在 Windows 上将选中文献直接拖入 Word 页面，可在光标处插入标准 CSL 引用（基于 Windows 原生目标确认；macOS/Linux 保持原生快速复制拖拽行为）。立即生效；引用列隐藏时也可使用。
 zoterocitation-settings-collections = 在文集树中生成 Word 临时分类
-zoterocitation-settings-collections-help = 为当前编辑的 Word 文档生成临时分类，精准固定在「我的出版物」正上方，文献成员随文中引用动态同步。关闭后清理插件生成的分类。
+zoterocitation-settings-collections-help = 为当前编辑的 Word 文档在个人文库（「我的文库」）中生成临时分类，精准固定在「我的出版物」正上方，文献成员随文中引用动态同步。关闭后清理插件生成的分类。
 zoterocitation-settings-citation-tags = 引用后自动维护标签
 zoterocitation-settings-citation-tags-help = 为当前 Word 文档引用的个人库文献自动维护标签。关闭后清理插件添加的标签，保留原先手动添加的同名标签；重新开启后恢复当前文档的引用标签。
 zoterocitation-settings-tag-text = 引用标签文本
