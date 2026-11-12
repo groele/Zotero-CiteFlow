@@ -17,9 +17,12 @@ export interface InitContext extends CitationSharedState {
   _tagSyncInFlightBySession: Record<string, Promise<unknown>>; _pendingTagSyncIDsBySession: Record<string, number[]>;
   _tagSyncTimerBySession: Record<string, number>; _execCommandBindings: Map<unknown, unknown>; _execCommandSerial: number;
   _collectionRenameRetryTimerBySession: Record<string, number>; _collectionRenameRetryCountBySession: Record<string, number>;
-  _lastRefreshFingerprintBySession?: WeakMap<object, string>; _lastSyncFailedBySession?: WeakMap<object, boolean>;
-  _pendingItemsViewRefreshIDs?: Set<number> | "full" | null; _listenerBaseInterval?: number; _isListenerBackedOff?: boolean;
-  _activityEpoch?: number; _idleTickCount?: number; _lastBgWindowProbeAt?: number; _scheduleListenerTick?: ((delay: number) => void) | null;
+  _lastRefreshFingerprintBySession?: WeakMap<object, string>; _pendingRefreshFingerprintBySession?: WeakMap<object, unknown>;
+  _lastSyncFailedBySession?: WeakMap<object, boolean>; _tagSyncFailedBySession?: Record<string, boolean>;
+  _pendingItemsViewRefreshIDs?: Set<number> | "full" | null; _itemsViewRefreshInFlight?: boolean;
+  _viewRefreshFailed?: boolean; _failedItemsViewRefreshTarget?: Set<number> | "full" | null;
+  _listenerBaseInterval?: number; _isListenerBackedOff?: boolean;
+  _activityEpoch?: number; _idleTickCount?: number; _lastBgWindowProbeAt?: number; _pendingStartupTagCleanup?: boolean; _scheduleListenerTick?: ((delay: number) => void) | null;
   _originalExecCommand: PublicMethod | null | undefined; _execCommandWrapper: PublicMethod | null | undefined;
   _isExecCommandHooked: boolean; _isExecCommandRunning: boolean; _execCommandDepth: number;
   _tagSyncDebounceMs: number; _itemsViewRefreshDebounceMs: number; _healthWindowMs: number;
@@ -63,13 +66,19 @@ export class CitationInitializers {
     this._lastRefreshAt = {};
     this._minRefreshInterval = 500;
     this._lastRefreshFingerprintBySession = new WeakMap();
+    this._pendingRefreshFingerprintBySession = new WeakMap();
     this._lastSyncFailedBySession = new WeakMap();
+    this._tagSyncFailedBySession = {};
     this._pendingItemsViewRefreshIDs = null;
+    this._itemsViewRefreshInFlight = false;
+    this._viewRefreshFailed = false;
+    this._failedItemsViewRefreshTarget = null;
     this._listenerBaseInterval = 1000;
     this._isListenerBackedOff = false;
     this._activityEpoch = 0;
     this._idleTickCount = 0;
     this._lastBgWindowProbeAt = 0;
+    this._pendingStartupTagCleanup = false;
     this._scheduleListenerTick = null;
   }
 

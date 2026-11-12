@@ -7,6 +7,7 @@ import {
   mergePendingRefreshTarget,
   updateSessionCitationsIfDirty
 } from "./refresh-helpers.ts";
+import { markViewRefreshOutcome } from "./sync-state-helpers.ts";
 const timers = globalThis as unknown as {setTimeout(callback:()=>void|Promise<void>,ms:number):number;clearTimeout(id:number):void};
 import { TEMP_COLLECTION_KEYS_PREF } from "./constants.ts";
 
@@ -216,9 +217,7 @@ export class CitationFormatting {
     }
   }
 
-  /**
-   * Schedules a debounced refresh of the citation column in all open Zotero windows.
-   */
+  /** Schedules a debounced refresh of the citation column in all open Zotero windows. */
   scheduleItemsViewRefresh(this: FormatContext, changedItemIDs?: number[] | "full") {
     if (this._listenerStopped) return;
     const merged = mergePendingRefreshTarget(this._pendingItemsViewRefreshIDs, changedItemIDs);
@@ -230,7 +229,14 @@ export class CitationFormatting {
       const target = this._pendingItemsViewRefreshIDs ?? "full";
       this._pendingItemsViewRefreshIDs = null;
       if (this._listenerStopped) return;
-      await dispatchItemsViewRefresh(target, (message, error) => this.logError(message, error));
+      this._itemsViewRefreshInFlight = true;
+      let ok = false;
+      try {
+        ok = await dispatchItemsViewRefresh(target, (message, error) => this.logError(message, error));
+      } finally {
+        this._itemsViewRefreshInFlight = false;
+      }
+      if (!this._listenerStopped) markViewRefreshOutcome(this, target, ok);
     }, this._itemsViewRefreshDebounceMs);
   }
 

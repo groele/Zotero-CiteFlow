@@ -4,6 +4,7 @@
 
 import { config } from "../../config.ts";
 import type { CitationMap, FormatContext, IdData, NativeSession } from "./formatting-contract.ts";
+import { tryCommitSessionFingerprint } from "./sync-state-helpers.ts";
 
 const MAX_TARGETED_ROW_INVALIDATIONS = 200;
 
@@ -209,10 +210,11 @@ export function mergePendingRefreshTarget(
 export async function dispatchItemsViewRefresh(
   target: Set<number> | "full" | null,
   onError: (message: string, error: unknown) => void
-): Promise<void> {
+): Promise<boolean> {
   const panes = Zotero.getMainWindows?.().map(win => win.ZoteroPane)
     || [(globalThis as unknown as { ZoteroPane?: { itemsView?: TargetableItemsView } }).ZoteroPane];
   const seenViews = new Set<unknown>();
+  let allSucceeded = true;
   for (const pane of panes) {
     const itemsView = (pane as unknown as { itemsView?: TargetableItemsView } | undefined)?.itemsView;
     if (!itemsView || seenViews.has(itemsView)) continue;
@@ -223,10 +225,12 @@ export async function dispatchItemsViewRefresh(
       try {
         await itemsView.refreshAndMaintainSelection();
       } catch (fallbackError) {
+        allSucceeded = false;
         onError("Cannot refresh the citation column", fallbackError || error);
       }
     }
   }
+  return allSucceeded;
 }
 
 /**
@@ -235,12 +239,13 @@ export async function dispatchItemsViewRefresh(
 export function invalidateRefreshFingerprint(ctx: Partial<FormatContext>, session: object | undefined): void {
   if (!session) return;
   ctx._lastRefreshFingerprintBySession?.delete(session);
+  ctx._pendingRefreshFingerprintBySession?.delete(session);
   ctx._lastSyncFailedBySession?.delete(session);
 }
 
 /**
  * Skips redundant formatting/collection sync when snapshot inputs match the last
- * clean refresh, or executes and records the fingerprint upon clean completion.
+ * clean refresh, or executes and defers fingerprint commit until tag sync and list invalidation succeed.
  */
 export async function updateSessionCitationsIfDirty(
   ctx: FormatContext,
@@ -263,16 +268,20 @@ export async function updateSessionCitationsIfDirty(
   );
 
   ctx._lastRefreshFingerprintBySession ??= new WeakMap();
+  ctx._pendingRefreshFingerprintBySession ??= new WeakMap();
   ctx._lastSyncFailedBySession ??= new WeakMap();
   if (
     ctx._lastRefreshFingerprintBySession.get(session) === fingerprint
     && ctx._lastSyncFailedBySession.get(session) !== true
+    && !ctx._tagSyncFailedBySession?.[sessionID]
+    && !ctx._viewRefreshFailed
   ) {
     return;
   }
 
   const revBefore = ctx._sessionUpdateRevision?.[sessionID] || 0;
   ctx._lastSyncFailedBySession.set(session, false);
+  ctx._pendingRefreshFingerprintBySession.delete(session);
   ctx.scheduleCitationTagSync(sessionID, sortedItemIDs);
   await ctx.updateCitations(sessionID, payload, sortedItemIDs, targetSession.styleClass);
 
@@ -280,10 +289,13 @@ export async function updateSessionCitationsIfDirty(
   const revAfter = ctx._sessionUpdateRevision?.[sessionID] || 0;
   if (ctx._lastSyncFailedBySession.get(session) === true) return;
   if (revAfter !== revBefore && (ctx._sessionUpdateRevision?.[sessionID] || 0) !== revAfter) return;
-  ctx._lastRefreshFingerprintBySession.set(
-    session,
-    buildRefreshInputFingerprint(targetSession.styleClass, sortedItemIDs, payload, session, collectionsEnabled)
-  );
+  const finalFingerprint = buildRefreshInputFingerprint(targetSession.styleClass, sortedItemIDs, payload, session, collectionsEnabled);
+  ctx._pendingRefreshFingerprintBySession.set(session, {
+    sessionID,
+    fingerprint: finalFingerprint,
+    revision: revAfter
+  });
+  tryCommitSessionFingerprint(ctx, sessionID);
 }
 
 /**
@@ -306,6 +318,7 @@ export async function commitAppliedSessionCitations(
   ctx._lastSyncFailedBySession.set(citationSession, syncFailed);
   if (syncFailed) {
     ctx._lastRefreshFingerprintBySession?.delete(citationSession);
+    ctx._pendingRefreshFingerprintBySession?.delete(citationSession);
   }
 
   if (ctx._listenerStopped || citationSession.closing
@@ -313,11 +326,15 @@ export async function commitAppliedSessionCitations(
     return;
   }
 
-  if (hasChanges) {
-    const changedIDs = collectChangedCitationItemIDs(citationSession.idData, targetData);
-    citationSession.idData = targetData;
-    ctx._invalidateSessionIndex();
-    ctx._noteListenerActivity?.();
+  if (hasChanges || ctx._viewRefreshFailed) {
+    const changedIDs = hasChanges
+      ? collectChangedCitationItemIDs(citationSession.idData, targetData)
+      : (ctx._failedItemsViewRefreshTarget instanceof Set ? [...ctx._failedItemsViewRefreshTarget] : "full");
+    if (hasChanges) {
+      citationSession.idData = targetData;
+      ctx._invalidateSessionIndex();
+      ctx._noteListenerActivity?.();
+    }
     ctx.scheduleItemsViewRefresh(changedIDs);
   }
 }

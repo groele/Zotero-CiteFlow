@@ -14,11 +14,12 @@ export class CitationWordIntegration {
   /** Background polling loop that periodically synchronizes active Word sessions. */
   async listener(this: WordContext, t: number) {
     try {
-      await this.clearStaleArtifacts();
+      await this.clearStaleArtifacts({ deferTagCleanup: true });
     } catch (error) {
       this.logError("Failed to clear stale citation artifacts", error);
     }
     if (this._listenerStopped) return;
+    this._pendingStartupTagCleanup = Object.keys(this._managedCitationTagIDs || {}).length > 0;
     this._bumpDebugCounter("listenerStarted");
     this.debugLog("[Citation debug] listener started", this._debugCounters);
 
@@ -51,6 +52,13 @@ export class CitationWordIntegration {
         const sessions = (Zotero.Integration as unknown as Integration).sessions || {};
         await this._pruneMissingWordSessions(sessions);
         await this._syncActiveWordSessions(sessions);
+        if (this._pendingStartupTagCleanup && !this._listenerStopped && !this._isExecCommandRunning) {
+          if (Object.keys(this.sessions || {}).length > 0 || Object.keys(sessions).length > 0) {
+            this._pendingStartupTagCleanup = false;
+          } else if (await this._clearStaleManagedTags?.()) {
+            this._pendingStartupTagCleanup = false;
+          }
+        }
         if (!this._listenerStopped && !this._isExecCommandRunning) {
           syncForegroundActiveSession(this);
         }

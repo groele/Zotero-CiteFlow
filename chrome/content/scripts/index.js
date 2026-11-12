@@ -63,13 +63,19 @@
       this._lastRefreshAt = {};
       this._minRefreshInterval = 500;
       this._lastRefreshFingerprintBySession = /* @__PURE__ */ new WeakMap();
+      this._pendingRefreshFingerprintBySession = /* @__PURE__ */ new WeakMap();
       this._lastSyncFailedBySession = /* @__PURE__ */ new WeakMap();
+      this._tagSyncFailedBySession = {};
       this._pendingItemsViewRefreshIDs = null;
+      this._itemsViewRefreshInFlight = false;
+      this._viewRefreshFailed = false;
+      this._failedItemsViewRefreshTarget = null;
       this._listenerBaseInterval = 1e3;
       this._isListenerBackedOff = false;
       this._activityEpoch = 0;
       this._idleTickCount = 0;
       this._lastBgWindowProbeAt = 0;
+      this._pendingStartupTagCleanup = false;
       this._scheduleListenerTick = null;
     }
     /**
@@ -961,21 +967,27 @@
      * Purges orphan temporary collections, legacy searches, and stale managed tags from prior sessions.
      * @returns {Promise<void>}
      */
-    async clearStaleArtifacts() {
+    async clearStaleArtifacts(options) {
       const libraryID = Zotero.Libraries.userLibraryID;
       await this._clearStaleTemporaryCollections(libraryID);
       await this._clearStaleManagedSearches(libraryID);
-      await this._clearStaleManagedTags();
+      if (!options?.deferTagCleanup) {
+        await this._clearStaleManagedTags();
+      }
     }
     /**
-     * Clears persisted plugin-managed citation tags at startup when no Word integration sessions are active.
-     * @returns {Promise<void>}
+     * Clears persisted plugin-managed citation tags when no Word integration sessions or open Word windows remain.
+     * @returns {Promise<boolean>} True if tag cleanup ran or no managed tags remain; false if deferred
      * @private
      */
     async _clearStaleManagedTags() {
       const activeSessions = Object.keys(this.sessions || {}).length > 0 || Object.keys(Zotero.Integration?.sessions || {}).length > 0;
-      if (activeSessions || !Object.keys(this._managedCitationTagIDs || {}).length || typeof this.syncCitationTags !== "function") return;
+      const probed = typeof addon !== "undefined" ? addon?.data?.probeWordWindowTitles?.() : void 0;
+      const hasOpenWordWindows = Boolean(probed?.foregroundTitle || probed?.visibleTitles && probed.visibleTitles.length > 0);
+      if (activeSessions || hasOpenWordWindows) return false;
+      if (!Object.keys(this._managedCitationTagIDs || {}).length || typeof this.syncCitationTags !== "function") return true;
       await this.syncCitationTags("__startup__", []);
+      return true;
     }
     /**
      * Purges tracked and relation-marked stale temporary citation collections.
@@ -1347,11 +1359,12 @@
     /** Background polling loop that periodically synchronizes active Word sessions. */
     async listener(t) {
       try {
-        await this.clearStaleArtifacts();
+        await this.clearStaleArtifacts({ deferTagCleanup: true });
       } catch (error) {
         this.logError("Failed to clear stale citation artifacts", error);
       }
       if (this._listenerStopped) return;
+      this._pendingStartupTagCleanup = Object.keys(this._managedCitationTagIDs || {}).length > 0;
       this._bumpDebugCounter("listenerStarted");
       this.debugLog("[Citation debug] listener started", this._debugCounters);
       if (this._listenerTimer) {
@@ -1382,6 +1395,13 @@
           const sessions = Zotero.Integration.sessions || {};
           await this._pruneMissingWordSessions(sessions);
           await this._syncActiveWordSessions(sessions);
+          if (this._pendingStartupTagCleanup && !this._listenerStopped && !this._isExecCommandRunning) {
+            if (Object.keys(this.sessions || {}).length > 0 || Object.keys(sessions).length > 0) {
+              this._pendingStartupTagCleanup = false;
+            } else if (await this._clearStaleManagedTags?.()) {
+              this._pendingStartupTagCleanup = false;
+            }
+          }
           if (!this._listenerStopped && !this._isExecCommandRunning) {
             syncForegroundActiveSession(this);
           }
@@ -1834,6 +1854,85 @@
     }
   };
 
+  // src/modules/citation/sync-state-helpers.ts
+  function markSessionSyncFailed(ctx, session) {
+    if (!session) return;
+    ctx._lastRefreshFingerprintBySession?.delete(session);
+    ctx._pendingRefreshFingerprintBySession?.delete(session);
+    ctx._lastSyncFailedBySession ??= /* @__PURE__ */ new WeakMap();
+    ctx._lastSyncFailedBySession.set(session, true);
+  }
+  function hasPendingOrFailedTagSync(ctx, sessionID) {
+    return Boolean(
+      ctx._tagSyncFailedBySession?.[sessionID] || ctx._tagSyncTimerBySession?.[sessionID] || ctx._pendingTagSyncIDsBySession?.[sessionID] || ctx._tagSyncInFlightBySession?.[sessionID]
+    );
+  }
+  function hasPendingOrFailedViewRefresh(ctx) {
+    return Boolean(
+      ctx._viewRefreshFailed || ctx._itemsViewRefreshTimer || ctx._pendingItemsViewRefreshIDs || ctx._itemsViewRefreshInFlight
+    );
+  }
+  function tryCommitSessionFingerprint(ctx, sessionID) {
+    const session = ctx.sessions?.[sessionID];
+    if (!session || ctx._listenerStopped || session.closing) return false;
+    const pending = ctx._pendingRefreshFingerprintBySession?.get(session);
+    if (!pending || pending.sessionID !== sessionID) return false;
+    if (ctx._lastSyncFailedBySession?.get(session) === true) return false;
+    if (hasPendingOrFailedTagSync(ctx, sessionID) || hasPendingOrFailedViewRefresh(ctx)) return false;
+    if ((ctx._sessionUpdateRevision?.[sessionID] || 0) !== pending.revision) return false;
+    ctx._lastRefreshFingerprintBySession ??= /* @__PURE__ */ new WeakMap();
+    ctx._lastRefreshFingerprintBySession.set(session, pending.fingerprint);
+    ctx._pendingRefreshFingerprintBySession?.delete(session);
+    return true;
+  }
+  function markTagSyncOutcome(ctx, sessionID, succeeded) {
+    if (!succeeded) {
+      ctx._tagSyncFailedBySession ??= {};
+      if (sessionID.startsWith("__")) {
+        for (const [sid, session] of Object.entries(ctx.sessions || {})) {
+          ctx._tagSyncFailedBySession[sid] = true;
+          markSessionSyncFailed(ctx, session);
+        }
+        return;
+      }
+      ctx._tagSyncFailedBySession[sessionID] = true;
+      markSessionSyncFailed(ctx, ctx.sessions?.[sessionID]);
+      return;
+    }
+    if (sessionID.startsWith("__")) {
+      ctx._tagSyncFailedBySession = {};
+      for (const sid of Object.keys(ctx.sessions || {})) {
+        tryCommitSessionFingerprint(ctx, sid);
+      }
+      return;
+    }
+    if (ctx._tagSyncFailedBySession) delete ctx._tagSyncFailedBySession[sessionID];
+    tryCommitSessionFingerprint(ctx, sessionID);
+  }
+  function markViewRefreshOutcome(ctx, target, succeeded) {
+    if (!succeeded) {
+      ctx._viewRefreshFailed = true;
+      if (target === "full" || ctx._failedItemsViewRefreshTarget === "full") {
+        ctx._failedItemsViewRefreshTarget = "full";
+      } else if (target instanceof Set && target.size > 0) {
+        const merged = ctx._failedItemsViewRefreshTarget instanceof Set ? ctx._failedItemsViewRefreshTarget : /* @__PURE__ */ new Set();
+        for (const id of target) merged.add(id);
+        ctx._failedItemsViewRefreshTarget = merged;
+      } else if (!ctx._failedItemsViewRefreshTarget) {
+        ctx._failedItemsViewRefreshTarget = "full";
+      }
+      for (const session of Object.values(ctx.sessions || {})) {
+        markSessionSyncFailed(ctx, session);
+      }
+      return;
+    }
+    ctx._viewRefreshFailed = false;
+    ctx._failedItemsViewRefreshTarget = null;
+    for (const sid of Object.keys(ctx.sessions || {})) {
+      tryCommitSessionFingerprint(ctx, sid);
+    }
+  }
+
   // src/modules/citation/tag-governance.ts
   var timers4 = globalThis;
   var CitationTagGovernance = class {
@@ -1884,6 +1983,8 @@
           if (nextPendingIDs) {
             delete this._pendingTagSyncIDsBySession[sessionID];
             this.scheduleCitationTagSync(sessionID, nextPendingIDs, true);
+          } else {
+            tryCommitSessionFingerprint(this, sessionID);
           }
         });
       }, this._tagSyncDebounceMs);
@@ -2129,6 +2230,7 @@
         }
         if (touchedCount > 0) this._bumpDebugCounter("syncCitationTagsTouched", touchedCount);
         if (hadFailures) delete this._lastTagSyncSig[sessionID];
+        markTagSyncOutcome(this, sessionID, !hadFailures);
         this._recordPerf("syncCitationTags", Date.now() - perfStart);
       }
       return { complete: !hadFailures && !skipped, touchedCount };
@@ -2254,6 +2356,7 @@
   async function dispatchItemsViewRefresh(target, onError) {
     const panes = Zotero.getMainWindows?.().map((win) => win.ZoteroPane) || [globalThis.ZoteroPane];
     const seenViews = /* @__PURE__ */ new Set();
+    let allSucceeded = true;
     for (const pane of panes) {
       const itemsView = pane?.itemsView;
       if (!itemsView || seenViews.has(itemsView)) continue;
@@ -2264,14 +2367,17 @@
         try {
           await itemsView.refreshAndMaintainSelection();
         } catch (fallbackError) {
+          allSucceeded = false;
           onError("Cannot refresh the citation column", fallbackError || error);
         }
       }
     }
+    return allSucceeded;
   }
   function invalidateRefreshFingerprint(ctx, session) {
     if (!session) return;
     ctx._lastRefreshFingerprintBySession?.delete(session);
+    ctx._pendingRefreshFingerprintBySession?.delete(session);
     ctx._lastSyncFailedBySession?.delete(session);
   }
   async function updateSessionCitationsIfDirty(ctx, sessionID, targetSession, sortedItemIDs, citationsByItemID) {
@@ -2287,22 +2393,27 @@
       collectionsEnabled
     );
     ctx._lastRefreshFingerprintBySession ??= /* @__PURE__ */ new WeakMap();
+    ctx._pendingRefreshFingerprintBySession ??= /* @__PURE__ */ new WeakMap();
     ctx._lastSyncFailedBySession ??= /* @__PURE__ */ new WeakMap();
-    if (ctx._lastRefreshFingerprintBySession.get(session) === fingerprint && ctx._lastSyncFailedBySession.get(session) !== true) {
+    if (ctx._lastRefreshFingerprintBySession.get(session) === fingerprint && ctx._lastSyncFailedBySession.get(session) !== true && !ctx._tagSyncFailedBySession?.[sessionID] && !ctx._viewRefreshFailed) {
       return;
     }
     const revBefore = ctx._sessionUpdateRevision?.[sessionID] || 0;
     ctx._lastSyncFailedBySession.set(session, false);
+    ctx._pendingRefreshFingerprintBySession.delete(session);
     ctx.scheduleCitationTagSync(sessionID, sortedItemIDs);
     await ctx.updateCitations(sessionID, payload, sortedItemIDs, targetSession.styleClass);
     if (ctx._listenerStopped || session.closing || ctx.sessions?.[sessionID] !== session) return;
     const revAfter = ctx._sessionUpdateRevision?.[sessionID] || 0;
     if (ctx._lastSyncFailedBySession.get(session) === true) return;
     if (revAfter !== revBefore && (ctx._sessionUpdateRevision?.[sessionID] || 0) !== revAfter) return;
-    ctx._lastRefreshFingerprintBySession.set(
-      session,
-      buildRefreshInputFingerprint(targetSession.styleClass, sortedItemIDs, payload, session, collectionsEnabled)
-    );
+    const finalFingerprint = buildRefreshInputFingerprint(targetSession.styleClass, sortedItemIDs, payload, session, collectionsEnabled);
+    ctx._pendingRefreshFingerprintBySession.set(session, {
+      sessionID,
+      fingerprint: finalFingerprint,
+      revision: revAfter
+    });
+    tryCommitSessionFingerprint(ctx, sessionID);
   }
   async function commitAppliedSessionCitations(ctx, sessionID, citationSession, targetIDs, targetData, hasChanges, revision) {
     if (ctx._sessionUpdateRevision[sessionID] !== revision) return;
@@ -2312,15 +2423,18 @@
     ctx._lastSyncFailedBySession.set(citationSession, syncFailed);
     if (syncFailed) {
       ctx._lastRefreshFingerprintBySession?.delete(citationSession);
+      ctx._pendingRefreshFingerprintBySession?.delete(citationSession);
     }
     if (ctx._listenerStopped || citationSession.closing || ctx._sessionUpdateRevision[sessionID] !== revision || ctx.sessions?.[sessionID] !== citationSession) {
       return;
     }
-    if (hasChanges) {
-      const changedIDs = collectChangedCitationItemIDs(citationSession.idData, targetData);
-      citationSession.idData = targetData;
-      ctx._invalidateSessionIndex();
-      ctx._noteListenerActivity?.();
+    if (hasChanges || ctx._viewRefreshFailed) {
+      const changedIDs = hasChanges ? collectChangedCitationItemIDs(citationSession.idData, targetData) : ctx._failedItemsViewRefreshTarget instanceof Set ? [...ctx._failedItemsViewRefreshTarget] : "full";
+      if (hasChanges) {
+        citationSession.idData = targetData;
+        ctx._invalidateSessionIndex();
+        ctx._noteListenerActivity?.();
+      }
       ctx.scheduleItemsViewRefresh(changedIDs);
     }
   }
@@ -2514,9 +2628,7 @@
         this._recordPerf("refreshSessionCitations", Date.now() - perfStart);
       }
     }
-    /**
-     * Schedules a debounced refresh of the citation column in all open Zotero windows.
-     */
+    /** Schedules a debounced refresh of the citation column in all open Zotero windows. */
     scheduleItemsViewRefresh(changedItemIDs) {
       if (this._listenerStopped) return;
       const merged = mergePendingRefreshTarget(this._pendingItemsViewRefreshIDs, changedItemIDs);
@@ -2528,7 +2640,14 @@
         const target = this._pendingItemsViewRefreshIDs ?? "full";
         this._pendingItemsViewRefreshIDs = null;
         if (this._listenerStopped) return;
-        await dispatchItemsViewRefresh(target, (message, error) => this.logError(message, error));
+        this._itemsViewRefreshInFlight = true;
+        let ok = false;
+        try {
+          ok = await dispatchItemsViewRefresh(target, (message, error) => this.logError(message, error));
+        } finally {
+          this._itemsViewRefreshInFlight = false;
+        }
+        if (!this._listenerStopped) markViewRefreshOutcome(this, target, ok);
       }, this._itemsViewRefreshDebounceMs);
     }
     /**
@@ -2708,12 +2827,18 @@
         }
         this._refreshRetryTimerBySession = {};
         this._lastRefreshFingerprintBySession = /* @__PURE__ */ new WeakMap();
+        this._pendingRefreshFingerprintBySession = /* @__PURE__ */ new WeakMap();
         this._lastSyncFailedBySession = /* @__PURE__ */ new WeakMap();
+        this._tagSyncFailedBySession = {};
         this._pendingItemsViewRefreshIDs = null;
+        this._itemsViewRefreshInFlight = false;
+        this._viewRefreshFailed = false;
+        this._failedItemsViewRefreshTarget = null;
         this._isListenerBackedOff = false;
         this._activityEpoch = 0;
         this._idleTickCount = 0;
         this._lastBgWindowProbeAt = 0;
+        this._pendingStartupTagCleanup = false;
         this._scheduleListenerTick = null;
       } catch {
       }
@@ -3149,6 +3274,39 @@
   function supportsNativeDropTarget() {
     return typeof Zotero === "undefined" || Zotero.isWin !== false;
   }
+  function normalizeWordTitleForMatch(rawTitle) {
+    const cleaned = String(rawTitle || "").replace(/[\u0000-\u001F\u007F\u200B-\u200F\u202A-\u202E\uFEFF]/g, " ").replace(/\s+/g, " ").trim();
+    if (!cleaned) return "";
+    const wordSuffixRe = /\s+[-–—]\s+(?:Microsoft\s+)?Word(?:\s*\([^)]*\))?$/i;
+    if (!wordSuffixRe.test(cleaned)) return cleaned;
+    let body = cleaned.replace(wordSuffixRe, "").trim();
+    const extMatch = body.match(/^(.+?\.(?:docx|docm|doc|dotx|dotm|rtf|odt))(?:\s*\[[^\]]*\]|\s+[-–—]\s+.*)*$/i);
+    if (extMatch) return extMatch[1].trim();
+    const statusRe = /(?:\s*\[(?:兼容模式|Compatibility Mode|只读|Read-Only|受保护的视图|Protected View|自动保存|AutoSave)[^\]]*\]|\s+[-–—]\s+(?:已保存.*|正在保存.*|上次保存.*|只读|兼容模式|受保护的视图|未保存|Saved.*|Saving.*|Last saved.*|Read-Only|Compatibility Mode|Protected View|Unsaved))\s*$/i;
+    let prev = "";
+    while (body && body !== prev) {
+      prev = body;
+      body = body.replace(statusRe, "").trim();
+    }
+    return body || cleaned;
+  }
+  function verifyDroppedWordTarget() {
+    const addonData = typeof addon !== "undefined" ? addon?.data : void 0;
+    const recorded = addonData?.lastDroppedWordWindow;
+    if (!recorded?.title || typeof recorded.at === "number" && Date.now() - recorded.at > 15e3) {
+      return true;
+    }
+    const probed = typeof addonData?.probeWordWindowTitles === "function" ? addonData.probeWordWindowTitles() : probeWordWindowTitles();
+    const fgTitle = probed?.foregroundTitle || (typeof addonData?.probeForegroundWordTitle === "function" ? addonData.probeForegroundWordTitle() : "");
+    const visibleTitles = Array.isArray(probed?.visibleTitles) ? probed.visibleTitles : [];
+    const activeTitle = fgTitle || visibleTitles[0] || "";
+    if (!activeTitle) return true;
+    const matches = normalizeWordTitleForMatch(activeTitle) === normalizeWordTitleForMatch(recorded.title);
+    if (!matches && addonData) {
+      delete addonData.lastDroppedWordWindow;
+    }
+    return matches;
+  }
   function resolveWordDropTarget() {
     if (!Zotero.isWin) return "unknown";
     let processHandle;
@@ -3238,6 +3396,10 @@
         if (!items?.length || !this._dragEnabled() || !event.dataTransfer || event.dataTransfer.mozUserCancelled) return;
         if (startedAt > 0 && Date.now() - startedAt > 6e4) return;
         const target = this._resolveDropTarget();
+        if (target === "word-confirmed" && !verifyDroppedWordTarget()) {
+          this._notifyUnknownDropTarget();
+          return;
+        }
         if (target === "unknown") this._notifyUnknownDropTarget();
         if (target !== "word-confirmed") return;
         const validItems = items.filter((item) => item && item.deleted !== true && item.inTrash !== true && item.isRegularItem?.() && item.isTopLevelItem() && Number.isSafeInteger(Number(item.id)) && Number(item.id) > 0);
@@ -3257,6 +3419,7 @@
             const row = args[1];
             this._dragItems = null;
             this._dragStartedAt = 0;
+            if (typeof addon !== "undefined" && addon?.data) delete addon.data.lastDroppedWordWindow;
             const dragActive = this._dragEnabled();
             const selection = this.pane.itemsView.selection;
             if (dragActive && Number.isInteger(row) && selection && !selection.isSelected(row)) selection.select(row);
@@ -3749,7 +3912,7 @@
   var views_default = Views;
 
   // src/modules/preferences.ts
-  var buildVersion = true ? "16.2.0" : "";
+  var buildVersion = true ? "16.2.1" : "";
   var buildDate = true ? "2026-11-12" : "";
   var prefix = "extensions.zotero.zoterocitation.";
   var settings = [
@@ -4007,6 +4170,7 @@
       }
       addon.data.probeWordWindowTitles = probeWordWindowTitles;
       addon.data.probeForegroundWordTitle = probeForegroundWordTitle;
+      addon.data.verifyDroppedWordTarget = verifyDroppedWordTarget;
       const citation = new Citation();
       addon.data.citation = citation;
       await citation.listener(1e3);
@@ -4143,6 +4307,7 @@
       await runShutdownStep("close drop-target native libraries", () => {
         delete addon.data.probeWordWindowTitles;
         delete addon.data.probeForegroundWordTitle;
+        delete addon.data.verifyDroppedWordTarget;
         delete addon.data.lastDroppedWordWindow;
         if (typeof closeDropTargetCtypes === "function") closeDropTargetCtypes();
       });
@@ -4232,10 +4397,16 @@
       try {
         if (field) {
           field = await host2.Integration.Field.loadExisting(field);
-          if (field.type != 1) {
+          if (field.type == 2) {
             throw new host2.Exception.Alert("integration.error.notInCitation");
           }
-          citation = new host2.Integration.Citation(field, await field.unserialize(), await field.getNoteIndex());
+          if (field.type == 1) {
+            citation = new host2.Integration.Citation(field, await field.unserialize(), await field.getNoteIndex());
+          } else {
+            newField = true;
+            field = new host2.Integration.CitationField(field._field ?? field);
+            citation = new host2.Integration.Citation(field);
+          }
         } else {
           newField = true;
           field = new host2.Integration.CitationField(await this.addField(true));
@@ -4327,6 +4498,9 @@
           2
         );
       } else {
+        if (addon.data.verifyDroppedWordTarget?.() === false) {
+          return;
+        }
         await host2.Integration.execCommand(
           "WinWord",
           "addEditCitation",

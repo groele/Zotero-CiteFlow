@@ -1,10 +1,12 @@
+import { markTagSyncOutcome, tryCommitSessionFingerprint, type SyncCompletionContext } from "./sync-state-helpers.ts";
+
 // ============================================================================
 // Tag Governance & Read-Only Protection
 // ============================================================================
 
 type TaggedItem = {libraryID:number;editable?:boolean;deleted?:boolean;inTrash?:boolean;isEditable?():boolean;hasTag?(name:string):boolean;getTags?():Array<string|{tag:string}>;addTag(name:string):void;removeTag(name:string):void;saveTx():Promise<unknown>};
 type SyncResult = {complete:boolean;touchedCount:number} | undefined;
-type TagContext = CitationTagGovernance & {_listenerStopped:boolean;_sessionCitedIDs:Record<string,number[]>;_lastTagSyncSig:Record<string,string>;_pendingTagSyncIDsBySession:Record<string,number[] | undefined>;_tagSyncTimerBySession:Record<string,number>;_tagSyncInFlightBySession:Record<string,Promise<SyncResult> | undefined>;_tagSyncDebounceMs:number;_managedCitationTagIDs:Record<string,boolean>;_managedCitationTagNames:Record<string,string>;_citationTagName:string;_tagSyncQueue:Promise<SyncResult>|null;_tagOwnershipDirty:boolean;sessions:Record<string,{closing?:boolean}>;_bumpDebugCounter(name:string,delta?:number):void;_recordPerf(name:string,ms:number):void;_saveManagedTagIDs():boolean;logError(message:string,error:unknown):void};
+type TagContext = CitationTagGovernance & SyncCompletionContext & {_listenerStopped:boolean;_sessionCitedIDs:Record<string,number[]>;_lastTagSyncSig:Record<string,string>;_pendingTagSyncIDsBySession:Record<string,number[] | undefined>;_tagSyncTimerBySession:Record<string,number>;_tagSyncInFlightBySession:Record<string,Promise<SyncResult> | undefined>;_tagSyncDebounceMs:number;_managedCitationTagIDs:Record<string,boolean>;_managedCitationTagNames:Record<string,string>;_citationTagName:string;_tagSyncQueue:Promise<SyncResult>|null;_tagOwnershipDirty:boolean;sessions:Record<string,{closing?:boolean}>;_bumpDebugCounter(name:string,delta?:number):void;_recordPerf(name:string,ms:number):void;_saveManagedTagIDs():boolean;logError(message:string,error:unknown):void};
 declare const runtime:{log(...args:unknown[]):void};
 const timers = globalThis as unknown as {setTimeout(callback:()=>void,ms:number):number};
 
@@ -63,6 +65,8 @@ export class CitationTagGovernance {
         if (nextPendingIDs) {
           delete this._pendingTagSyncIDsBySession[sessionID];
           this.scheduleCitationTagSync(sessionID, nextPendingIDs, true);
+        } else {
+          tryCommitSessionFingerprint(this, sessionID);
         }
       });
     }, this._tagSyncDebounceMs);
@@ -329,6 +333,7 @@ export class CitationTagGovernance {
       }
       if (touchedCount > 0) this._bumpDebugCounter("syncCitationTagsTouched", touchedCount);
       if (hadFailures) delete this._lastTagSyncSig[sessionID];
+      markTagSyncOutcome(this, sessionID, !hadFailures);
       this._recordPerf("syncCitationTags", Date.now() - perfStart);
     }
     return { complete: !hadFailures && !skipped, touchedCount };

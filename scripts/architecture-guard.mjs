@@ -165,13 +165,19 @@ test('§3 preferences.xhtml has zero hardcoded UI text (100% Fluent data-l10n-id
   const rawChinese = [...xhtml.matchAll(/>([^<]*[\u4e00-\u9fa5]+[^<]*)</g)].map((m) => m[1].trim());
   assert.deepEqual(rawChinese, [], `raw Chinese text detected in preferences.xhtml: ${rawChinese.join(', ')}`);
 
-  // Ensure key controls have data-l10n-id
+  // Ensure key controls have data-l10n-id and no raw aria-label text
   const elementsMissingL10n = [];
   const summaries = [...xhtml.matchAll(/<html:summary[^>]*>/g)];
   for (const s of summaries) {
     if (!s[0].includes('data-l10n-id=')) elementsMissingL10n.push(s[0]);
   }
-  assert.deepEqual(elementsMissingL10n, [], `summaries missing data-l10n-id: ${elementsMissingL10n.join(', ')}`);
+  const headings = [...xhtml.matchAll(/<html:h1[^>]*>/g)];
+  for (const h of headings) {
+    if (!h[0].includes('data-l10n-id=')) elementsMissingL10n.push(h[0]);
+  }
+  assert.deepEqual(elementsMissingL10n, [], `headings/summaries missing data-l10n-id: ${elementsMissingL10n.join(', ')}`);
+  const rawAriaLabels = [...xhtml.matchAll(/\saria-label="[^"]+"/g)].map((m) => m[0].trim());
+  assert.deepEqual(rawAriaLabels, [], `raw non-Fluent aria-label detected in preferences.xhtml: ${rawAriaLabels.join(', ')}`);
   t.diagnostic('preferences.xhtml confirmed 100% Fluent driven');
 });
 

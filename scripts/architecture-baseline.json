@@ -4,8 +4,20 @@
   "capturedAt": "2026-11-12",
   "debtCleared": true,
   "note": "Known §5.9 debt. Listed files may stay at or below the recorded line count, but must never grow; any other source file above 360 lines fails the guard. Remove an entry only after splitting that module below 360 lines. Every entry must still exist and must still exceed the ceiling - stale entries are rejected by the baseline integrity test.",
-  "lastReleasedVersion": "16.2.0",
+  "lastReleasedVersion": "16.2.1",
   "splitHistory": [
+    {
+      "version": "16.2.1",
+      "date": "2026-11-12",
+      "resolved": [
+        "Deferred session refresh fingerprint commit until both debounced tag sync and ItemTree view invalidation succeed cleanly, with automatic retry on failure (sync-state-helpers.ts)",
+        "Updated Session.cite to reject only bibliography fields (type=2) while promoting and recycling leftover TEMP placeholder fields (type=0) as new citations",
+        "Added verifyDroppedWordTarget() window-title guard before WinWord insertion so drops on background/non-matching Word windows never insert into the wrong active document",
+        "Documented Windows Quick Copy plain/HTML drag suppression side effect in Fluent settings help text (DataTransfer cannot be mutated at dragend)",
+        "Deferred startup orphan managed-tag cleanup until after hooks/first poll confirm no active sessions or open Word windows",
+        "Localized preferences.xhtml brand heading via Fluent and replaced raw aria-label with aria-labelledby while maintaining all 37 src/ TS modules <= 360 lines"
+      ]
+    },
     {
       "version": "16.2.0",
       "date": "2026-11-12",

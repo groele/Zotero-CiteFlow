@@ -35,8 +35,32 @@ const REFERENCE_SELECTION_BLOCK = `  let selectedItems = requestedItems;
   if (!Array.isArray(selectedItems) || !selectedItems.length
     || !selectedItems.every((item) => item?.isRegularItem?.() && item.isTopLevelItem())) return;`;
 
+const TEMP_FIELD_GUARD = `      if (field.type == 2) {
+        throw new host.Exception.Alert("integration.error.notInCitation");
+      }
+      if (field.type == 1) {
+        citation = new host.Integration.Citation(field, await field.unserialize(), await field.getNoteIndex());
+      } else {
+        newField = true;
+        field = new host.Integration.CitationField(field._field ?? field);
+        citation = new host.Integration.Citation(field);
+      }`;
+
+const REFERENCE_FIELD_GUARD = `      if (field.type != 1) {
+        throw new host.Exception.Alert("integration.error.notInCitation");
+      }
+      citation = new host.Integration.Citation(field, await field.unserialize(), await field.getNoteIndex());`;
+
+const WORD_DROP_TARGET_GUARD = `      if (addon.data.verifyDroppedWordTarget?.() === false) {
+        return;
+      }
+`;
+
 test('citation insertion preserves the validated native Word field behavior apart from the null-name adapter', () => {
   let current = fs.readFileSync(path.join(__dirname, '../src/modules/cite.ts'), 'utf8').replace(/\r\n/g, '\n');
+  assert.ok(current.includes(TEMP_FIELD_GUARD), 'cite.ts must reject only bibliography fields and treat TEMP fields as new citations');
+  assert.ok(current.includes(WORD_DROP_TARGET_GUARD), 'cite.ts must verify recorded dropped Word window title before inserting');
+  current = current.replace(TEMP_FIELD_GUARD, REFERENCE_FIELD_GUARD).replace(WORD_DROP_TARGET_GUARD, '');
   // Strip only the typed host boundary and annotations before comparing the native insertion body.
   current = current.slice(current.indexOf('// End typed boundary.') + '// End typed boundary.'.length).trimStart()
     .replace('var citeItems = async (requestedItems: CiteItem[] | null = null): Promise<void> => {', 'var citeItems = async (requestedItems = null) => {')

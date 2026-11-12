@@ -15,31 +15,37 @@ type Search = {key:string;eraseTx():Promise<void>};
 const timers = globalThis as unknown as {setTimeout(callback:()=>void,ms:number):number;clearTimeout(id:number):void};
 type Session = {collection?:Collection;closing?:boolean;docId?:string;lastName?:string;_renameTask?:Promise<void>|null};
 type Context = CitationCollections & {sessions:Record<string,Session>;_listenerStopped:boolean;_temporaryCollectionKeys:Set<string>;_managedSearchKeys:Set<string>;_managedCitationTagIDs?:Record<string,boolean>;_docIdBySession:Record<string,string>;_collectionRenameRetryCountBySession:Record<string,number>;_collectionRenameRetryTimerBySession:Record<string,number>;_lastRefreshFingerprintBySession?:WeakMap<object,string>;_lastSyncFailedBySession?:WeakMap<object,boolean>;_getDocumentDisplayName(id:string):string;_getUniqueCollectionDisplayName?(id:string,doc:unknown):string;_getPendingCollectionName(id:string):string;_invalidateSessionIndex():void;_saveKeySet(key:string,values:Set<string>):void;syncCitationTags?(id:string,items:number[]):Promise<unknown>;logError(message:string,error:unknown):void;debugLog(...args:unknown[]):void};
-declare const addon: {data?:{views?:{repositionCitationCollections?():void}}};
+declare const addon: {data?:{views?:{repositionCitationCollections?():void};probeWordWindowTitles?:()=>{foregroundTitle?:string;visibleTitles?:string[]}}};
 
 export class CitationCollections {
   /**
    * Purges orphan temporary collections, legacy searches, and stale managed tags from prior sessions.
    * @returns {Promise<void>}
    */
-  async clearStaleArtifacts(this: Context) {
+  async clearStaleArtifacts(this: Context, options?: { deferTagCleanup?: boolean }) {
     const libraryID = Zotero.Libraries.userLibraryID;
     await this._clearStaleTemporaryCollections(libraryID);
     await this._clearStaleManagedSearches(libraryID);
-    await this._clearStaleManagedTags();
+    if (!options?.deferTagCleanup) {
+      await this._clearStaleManagedTags();
+    }
   }
 
   /**
-   * Clears persisted plugin-managed citation tags at startup when no Word integration sessions are active.
-   * @returns {Promise<void>}
+   * Clears persisted plugin-managed citation tags when no Word integration sessions or open Word windows remain.
+   * @returns {Promise<boolean>} True if tag cleanup ran or no managed tags remain; false if deferred
    * @private
    */
-  async _clearStaleManagedTags(this: Context) {
+  async _clearStaleManagedTags(this: Context): Promise<boolean> {
     const activeSessions = Object.keys(this.sessions || {}).length > 0
       || Object.keys((Zotero.Integration as unknown as {sessions?:Record<string,unknown>})?.sessions || {}).length > 0;
-    if (activeSessions || !Object.keys(this._managedCitationTagIDs || {}).length
-      || typeof this.syncCitationTags !== "function") return;
+    const probed = typeof addon !== "undefined" ? addon?.data?.probeWordWindowTitles?.() : undefined;
+    const hasOpenWordWindows = Boolean(probed?.foregroundTitle || (probed?.visibleTitles && probed.visibleTitles.length > 0));
+    if (activeSessions || hasOpenWordWindows) return false;
+    if (!Object.keys(this._managedCitationTagIDs || {}).length
+      || typeof this.syncCitationTags !== "function") return true;
     await this.syncCitationTags("__startup__", []);
+    return true;
   }
 
   /**

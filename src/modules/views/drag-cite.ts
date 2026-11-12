@@ -1,6 +1,6 @@
 import { config } from "../../config.ts";
 import { getString } from "../locale.ts";
-import { resolveWordDropTarget, supportsNativeDropTarget } from "../drop-target.ts";
+import { resolveWordDropTarget, supportsNativeDropTarget, verifyDroppedWordTarget } from "../drop-target.ts";
 
 import type { NativeRuntime } from "../../runtime.ts";
 export interface CiteItem { id?: number; deleted?: boolean; inTrash?: boolean; isRegularItem?(): boolean; isTopLevelItem(): boolean }
@@ -13,7 +13,7 @@ export interface DragContext {
   _patchDisposers: Array<() => void>; document: Document; pane: DragPane;
   _dragEnabled(): boolean; _resolveDropTarget(): string; _notifyUnknownDropTarget(): void;
 }
-declare const addon: { data: { alive: boolean }; api: { citeItems(items: CiteItem[]): Promise<void> } };
+declare const addon: { data: { alive: boolean; lastDroppedWordWindow?: unknown }; api: { citeItems(items: CiteItem[]): Promise<void> } };
 declare const runtime: NativeRuntime;
 // ============================================================================
 // Drag Citation & Word Target Interception
@@ -75,6 +75,10 @@ export class ViewsDragCite {
         || (event.dataTransfer as DataTransfer & { mozUserCancelled?: boolean }).mozUserCancelled) return;
       if (startedAt > 0 && Date.now() - startedAt > 60000) return;
       const target = this._resolveDropTarget();
+      if (target === "word-confirmed" && !verifyDroppedWordTarget()) {
+        this._notifyUnknownDropTarget();
+        return;
+      }
       if (target === "unknown") this._notifyUnknownDropTarget();
       if (target !== "word-confirmed") return;
       const validItems = items.filter((item) => item && item.deleted !== true && item.inTrash !== true
@@ -93,6 +97,7 @@ export class ViewsDragCite {
           const row = args[1] as number;
           this._dragItems = null;
           this._dragStartedAt = 0;
+          if (typeof addon !== "undefined" && addon?.data) delete addon.data.lastDroppedWordWindow;
           const dragActive = this._dragEnabled();
           const selection = this.pane.itemsView.selection;
           if (dragActive && Number.isInteger(row) && selection

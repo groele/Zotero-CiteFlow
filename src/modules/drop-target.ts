@@ -22,7 +22,13 @@ interface NativeDropApi {
   isWindowVisible(window: NativePointer): number; getWindowText(window: NativePointer, buffer: NativeBuffer, size: number): number;
   pathBuffer: NativeBuffer; titleBuffer: NativeBuffer;
 }
-declare const addon: { data?: { lastDroppedWordWindow?: { title: string; at: number } } };
+declare const addon: {
+  data?: {
+    lastDroppedWordWindow?: { title: string; at: number };
+    probeWordWindowTitles?: () => { foregroundTitle?: string; visibleTitles?: string[] };
+    probeForegroundWordTitle?: () => string;
+  };
+};
 // Resolve the process directly under the native cursor while dragend is still
 // being dispatched. Gecko's dropEffect is "none" after a successful Word drop
 // with CiteFlow's empty payload, so it cannot identify the target.
@@ -140,6 +146,49 @@ export function probeWordWindowTitles(): { foregroundTitle: string; visibleTitle
 
 export function supportsNativeDropTarget(): boolean {
   return typeof Zotero === "undefined" || Zotero.isWin !== false;
+}
+
+function normalizeWordTitleForMatch(rawTitle: string): string {
+  const cleaned = String(rawTitle || "").replace(/[\u0000-\u001F\u007F\u200B-\u200F\u202A-\u202E\uFEFF]/g, " ")
+    .replace(/\s+/g, " ").trim();
+  if (!cleaned) return "";
+  const wordSuffixRe = /\s+[-–—]\s+(?:Microsoft\s+)?Word(?:\s*\([^)]*\))?$/i;
+  if (!wordSuffixRe.test(cleaned)) return cleaned;
+  let body = cleaned.replace(wordSuffixRe, "").trim();
+  const extMatch = body.match(/^(.+?\.(?:docx|docm|doc|dotx|dotm|rtf|odt))(?:\s*\[[^\]]*\]|\s+[-–—]\s+.*)*$/i);
+  if (extMatch) return extMatch[1].trim();
+  const statusRe = /(?:\s*\[(?:兼容模式|Compatibility Mode|只读|Read-Only|受保护的视图|Protected View|自动保存|AutoSave)[^\]]*\]|\s+[-–—]\s+(?:已保存.*|正在保存.*|上次保存.*|只读|兼容模式|受保护的视图|未保存|Saved.*|Saving.*|Last saved.*|Read-Only|Compatibility Mode|Protected View|Unsaved))\s*$/i;
+  let prev = "";
+  while (body && body !== prev) {
+    prev = body;
+    body = body.replace(statusRe, "").trim();
+  }
+  return body || cleaned;
+}
+
+/**
+ * Verifies that the active/topmost Word window matches the window recorded under
+ * the drop cursor before CiteFlow inserts into Word's active document.
+ */
+export function verifyDroppedWordTarget(): boolean {
+  const addonData = typeof addon !== "undefined" ? addon?.data : undefined;
+  const recorded = addonData?.lastDroppedWordWindow;
+  if (!recorded?.title || (typeof recorded.at === "number" && Date.now() - recorded.at > 15000)) {
+    return true;
+  }
+  const probed = typeof addonData?.probeWordWindowTitles === "function"
+    ? addonData.probeWordWindowTitles()
+    : probeWordWindowTitles();
+  const fgTitle = probed?.foregroundTitle
+    || (typeof addonData?.probeForegroundWordTitle === "function" ? addonData.probeForegroundWordTitle() : "");
+  const visibleTitles = Array.isArray(probed?.visibleTitles) ? probed.visibleTitles : [];
+  const activeTitle = fgTitle || visibleTitles[0] || "";
+  if (!activeTitle) return true;
+  const matches = normalizeWordTitleForMatch(activeTitle) === normalizeWordTitleForMatch(recorded.title);
+  if (!matches && addonData) {
+    delete addonData.lastDroppedWordWindow;
+  }
+  return matches;
 }
 
 export function resolveWordDropTarget(): "word-confirmed" | "non-word" | "unknown" {

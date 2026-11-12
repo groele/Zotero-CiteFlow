@@ -26,7 +26,7 @@ interface CitationHost {
 }
 interface CiteWindow { Zotero_Tabs?: { selectedIndex: number; selectedID: string }; ZoteroPane?: { getSelectedItems(): CiteItem[] } }
 interface CiteGlobals { window?: CiteWindow; Zotero_Tabs?: CiteWindow["Zotero_Tabs"]; ZoteroPane?: CiteWindow["ZoteroPane"] }
-declare const addon: { data: { alive: boolean } };
+declare const addon: { data: { alive: boolean; verifyDroppedWordTarget?: () => boolean } };
 // End typed boundary.
 var citeItemsInFlight = false;
 var citeItems = async (requestedItems: CiteItem[] | null = null): Promise<void> => {
@@ -99,10 +99,16 @@ var citeItems = async (requestedItems: CiteItem[] | null = null): Promise<void> 
     try {
     if (field) {
       field = await host.Integration.Field.loadExisting(field);
-      if (field.type != 1) {
+      if (field.type == 2) {
         throw new host.Exception.Alert("integration.error.notInCitation");
       }
-      citation = new host.Integration.Citation(field, await field.unserialize(), await field.getNoteIndex());
+      if (field.type == 1) {
+        citation = new host.Integration.Citation(field, await field.unserialize(), await field.getNoteIndex());
+      } else {
+        newField = true;
+        field = new host.Integration.CitationField(field._field ?? field);
+        citation = new host.Integration.Citation(field);
+      }
     } else {
       newField = true;
       field = new host.Integration.CitationField(await this.addField(true));
@@ -200,6 +206,9 @@ var citeItems = async (requestedItems: CiteItem[] | null = null): Promise<void> 
         2
       );
     } else {
+      if (addon.data.verifyDroppedWordTarget?.() === false) {
+        return;
+      }
       await host.Integration.execCommand(
         "WinWord",
         "addEditCitation",
