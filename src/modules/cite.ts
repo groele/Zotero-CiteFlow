@@ -64,11 +64,21 @@ var citeItems = async (requestedItems: CiteItem[] | null = null): Promise<void> 
   const integration = host.Integration;
   const getApplication = integration.getApplication;
   let wrappedGetApplication: CitationHost["Integration"]["getApplication"];
+  const patchedApplications = new Map<NativeApplication, NativeApplication["getActiveDocument"]>();
+  const restorePatchedApplications = (): void => {
+    for (const [application, originalGetActiveDocument] of patchedApplications) {
+      try { application.getActiveDocument = originalGetActiveDocument; } catch {}
+    }
+    patchedApplications.clear();
+  };
   if (typeof getApplication === "function") {
     wrappedGetApplication = function(this: unknown, ...args: unknown[]) {
       const application = Reflect.apply(getApplication, this, args);
       if (args[0] === "WinWord" && typeof application?.getDocument === "function"
         && typeof application.getActiveDocument === "function") {
+        if (!patchedApplications.has(application)) {
+          patchedApplications.set(application, application.getActiveDocument);
+        }
         application.getActiveDocument = function() {
           return this.getDocument("");
         };
@@ -198,6 +208,7 @@ var citeItems = async (requestedItems: CiteItem[] | null = null): Promise<void> 
       );
     }
   } finally {
+    restorePatchedApplications();
     if (wrappedGetApplication && integration.getApplication === wrappedGetApplication) {
       integration.getApplication = getApplication;
     }

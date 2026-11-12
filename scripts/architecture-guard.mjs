@@ -127,11 +127,34 @@ test('§3 Fluent catalogues are symmetric and free of duplicate keys', (t) => {
     const text = read(`locale/${lang}/zoterocitation-addon.ftl`);
     return [...text.matchAll(/^([A-Za-z0-9_-]+)\s*=/gm)].map((m) => m[1]);
   };
+  const textOf = (lang) => read(`locale/${lang}/zoterocitation-addon.ftl`);
+  const xhtml = read('chrome/content/preferences.xhtml');
   const en = keysOf('en-US');
   const zh = keysOf('zh-CN');
   assert.equal(new Set(en).size, en.length, 'duplicate keys found in en-US catalogue');
   assert.equal(new Set(zh).size, zh.length, 'duplicate keys found in zh-CN catalogue');
   assert.deepEqual([...new Set(en)].sort(), [...new Set(zh)].sort(), 'en-US / zh-CN key sets differ');
+  for (const lang of ['en-US', 'zh-CN']) {
+    const content = textOf(lang);
+    const hardcoded = [...content.matchAll(/v\d+\.\d+\.\d+/g)].map((m) => m[0]);
+    assert.deepEqual(hardcoded, [], `${lang} FTL must not hardcode static version numbers: ${hardcoded.join(', ')}`);
+    assert.match(content, /^zoterocitation-settings-package-link\s*=.*\{\s*\$version\s*\}/m,
+      `${lang} zoterocitation-settings-package-link must use Fluent $version parameter`);
+  }
+  const runtimeOnlyKeys = new Set([
+    'zoterocitation-column-citation',
+    'zoterocitation-collection-pending',
+    'zoterocitation-drag-target-unknown',
+    'zoterocitation-settings-invalid-tag',
+    'zoterocitation-settings-save-failed',
+    'zoterocitation-settings-apply-failed',
+    'zoterocitation-settings-saved',
+    'zoterocitation-settings-restart',
+    'zoterocitation-settings-invalid',
+  ]);
+  const xhtmlKeys = new Set([...xhtml.matchAll(/data-l10n-id="([^"]+)"/g)].map((m) => m[1]));
+  const deadKeys = en.filter((k) => !xhtmlKeys.has(k) && !runtimeOnlyKeys.has(k));
+  assert.deepEqual(deadKeys, [], `unused Fluent keys not in XHTML or runtime allowlist: ${deadKeys.join(', ')}`);
   t.diagnostic(`${en.length} symmetric Fluent keys in both catalogues`);
 });
 
@@ -177,11 +200,13 @@ test('§4.1 every native preference has a settings-pane element and binding', (t
   );
   assert.deepEqual(missingInModule, [], `prefs missing in src/modules/preferences.ts: ${missingInModule.join(', ')}`);
 
+  const settingPairs = [...prefModule.matchAll(/\{\s*id:\s*["']([^"']+)["']\s*,\s*key:\s*["']([^"']+)["']/g)]
+    .map((m) => ({ id: m[1], key: m[2] }));
+  const settingMap = new Map(settingPairs.map((pair) => [pair.key, pair.id]));
   const missingInXhtml = prefKeys.filter((key) => {
-    // Check if key or camelCase representation is present as element ID
-    const shortKey = key.split('.').pop() || key;
-    const directPattern = new RegExp(`zoterocitation-setting-[A-Za-z0-9]+`);
-    return !xhtml.includes(key) && !xhtml.includes(shortKey);
+    const settingId = settingMap.get(key);
+    if (!settingId) return true;
+    return !new RegExp(`\\bid=["']zoterocitation-setting-${settingId}["']`).test(xhtml);
   });
   assert.deepEqual(missingInXhtml, [], `prefs unmounted in preferences.xhtml: ${missingInXhtml.join(', ')}`);
 
@@ -218,7 +243,15 @@ test('§5.3 runtime scripts contain no deprecated Gecko/Zotero APIs', (t) => {
   ];
   const banned = [
     { re: /\bComponents\.classes\b/, label: 'Components.classes' },
+    { re: /\bComponents\.interfaces\b/, label: 'Components.interfaces' },
+    { re: /\bComponents\.utils\b/, label: 'Components.utils' },
     { re: /\bCu\.import\s*\(/, label: 'legacy Cu.import' },
+    { re: /\bChromeUtils\.import\s*\(/, label: 'legacy ChromeUtils.import' },
+    { re: /\bnsIDOMWindowInternal\b/, label: 'legacy nsIDOMWindowInternal' },
+    { re: /\.ownerGlobal\b/, label: 'non-standard ownerGlobal' },
+    { re: /\bgetSelectedLibraryID\s*\(/, label: 'deprecated getSelectedLibraryID()' },
+    { re: /\bgetSelectedCollection\s*\(/, label: 'deprecated singular getSelectedCollection()' },
+    { re: /\b(?:defaultIn|disableIn|disabledIn)\s*:/, label: 'deprecated ItemTreeManager column property' },
     { re: /setAttribute\(\s*['"](?:disabled|hidden|checked|readonly|selected|open)['"]/, label: 'boolean state via setAttribute' },
     { re: /\bCheckboxStateChange\b/, label: 'legacy CheckboxStateChange event' },
   ];
@@ -226,6 +259,7 @@ test('§5.3 runtime scripts contain no deprecated Gecko/Zotero APIs', (t) => {
   for (const file of runtimeFiles) {
     const fileLines = read(file).split(/\r?\n/);
     fileLines.forEach((line, index) => {
+      if (/^\s*(?:\/\/|\/?\*)/.test(line)) return;
       for (const rule of banned) {
         if (rule.re.test(line)) hits.push(`${file}:${index + 1} ${rule.label}`);
       }
@@ -235,16 +269,25 @@ test('§5.3 runtime scripts contain no deprecated Gecko/Zotero APIs', (t) => {
   t.diagnostic(`scanned ${runtimeFiles.length} runtime files against ${banned.length} deprecated API patterns`);
 });
 
-test('§6 version fields are aligned across manifest, package, brand, UI and update feed', (t) => {
+test('§6 version fields are aligned across manifest, package, brand, UI, docs and update feed', (t) => {
   const rootPkg = readJson('package.json');
   const rootLock = readJson('package-lock.json');
   const manifest = readJson('manifest.json');
   const product = readJson('docs/brand/product.json');
   const update = readJson('update.json');
   const xhtml = read('chrome/content/preferences.xhtml');
+  const readmeZh = read('README.md');
+  const readmeEn = read('README.en.md');
 
   const badgeVersion = xhtml.match(/class="zoterocitation-version-badge">v([^<]+)</)?.[1];
+  const l10nArgsMatch = xhtml.match(/data-l10n-id="zoterocitation-settings-package-link"[^>]*data-l10n-args='([^']+)'/)
+    || xhtml.match(/data-l10n-args='([^']+)'[^>]*data-l10n-id="zoterocitation-settings-package-link"/);
+  const l10nVersion = l10nArgsMatch ? JSON.parse(l10nArgsMatch[1]).version : undefined;
+  const hrefVersion = xhtml.match(/releases\/download\/v([^/]+)\/zotero-citeflow-([^"']+)\.xpi/)?.[1];
+  const buildDate = xhtml.match(/<html:time\s+datetime="([^"]+)">([^<]+)<\/html:time>/);
   const updateVersion = update.addons['citeflow@groele']?.updates?.[0]?.version;
+  const readmeZhVersion = readmeZh.match(/img\.shields\.io\/badge\/version-([^-]+)-/)?.[1];
+  const readmeEnVersion = readmeEn.match(/img\.shields\.io\/badge\/version-([^-]+)-/)?.[1];
 
   const versions = {
     'manifest.json': manifest.version,
@@ -252,13 +295,19 @@ test('§6 version fields are aligned across manifest, package, brand, UI and upd
     'package-lock.json': rootLock.version,
     'docs/brand/product.json': product.version,
     'preferences.xhtml badge': badgeVersion,
+    'preferences.xhtml l10n-args': l10nVersion,
+    'preferences.xhtml package href': hrefVersion,
+    'README.md badge': readmeZhVersion,
+    'README.en.md badge': readmeEnVersion,
     'update.json': updateVersion,
   };
 
   const unique = [...new Set(Object.values(versions))];
   assert.equal(unique.length, 1, `version mismatch across metadata files: ${JSON.stringify(versions, null, 2)}`);
-  assert.equal(unique[0], baseline.lastReleasedVersion, `version does not match baseline lastReleasedVersion`);
-  t.diagnostic(`all 6 version declarations aligned at v${unique[0]}`);
+  assert.equal(unique[0], baseline.lastReleasedVersion, 'version does not match baseline lastReleasedVersion');
+  assert.ok(buildDate && buildDate[1] === buildDate[2] && buildDate[1] === baseline.capturedAt,
+    `preferences.xhtml build date (${buildDate?.[1]}) must match baseline capturedAt (${baseline.capturedAt})`);
+  t.diagnostic(`all ${Object.keys(versions).length} version declarations aligned at v${unique[0]}`);
 });
 
 test('§9 update feeds point at valid released HTTPS URLs and complete SHA-512 hashes', (t) => {
@@ -267,10 +316,17 @@ test('§9 update feeds point at valid released HTTPS URLs and complete SHA-512 h
   assert.ok(entries.length > 0, 'no update entries in update.json');
 
   for (const entry of entries) {
-    assert.match(entry.update_link, new RegExp('^https://github\\.com/groele/Zotero-CiteFlow/releases/download/v' + baseline.lastReleasedVersion.replace(/\./g, '\\.') + '/'), 'update_link must point to official release');
+    assert.match(entry.update_link, new RegExp('^https://github\\.com/groele/Zotero-CiteFlow/releases/download/v' + baseline.lastReleasedVersion.replace(/\./g, '\\.') + '/zotero-citeflow-' + baseline.lastReleasedVersion.replace(/\./g, '\\.') + '\\.xpi$'), 'update_link must point to official release XPI');
     assert.match(entry.update_hash, /^sha512:[0-9a-f]{128}$/i, 'update_hash must be a valid 128-hex sha512 digest');
     assert.equal(entry.applications?.zotero?.strict_min_version, '10.0');
     assert.equal(entry.applications?.zotero?.strict_max_version, '12.*');
+  }
+  if (fs.existsSync(path.join(root, 'dist/update.json'))) {
+    const distFeed = readJson('dist/update.json');
+    const distEntry = distFeed.addons['citeflow@groele']?.updates?.[0];
+    if (distEntry?.version === entries[0].version) {
+      assert.equal(distEntry.update_hash, entries[0].update_hash, 'root update.json and dist/update.json hashes must stay aligned');
+    }
   }
   t.diagnostic('update.json validated with compliant hash and URL');
 });

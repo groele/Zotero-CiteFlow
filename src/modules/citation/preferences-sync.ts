@@ -6,7 +6,7 @@ import { MANAGED_TAG_IDS_PREF, MANAGED_TAG_STATE_PREF, TEMP_COLLECTION_KEYS_PREF
 
 type Collection = {key?:string;libraryID?:number;eraseTx():Promise<void>};
 type Session = {collection?:Collection;closing?:boolean;idData?:Record<string,unknown>};
-type PrefContext = CitationPreferences & {_collectionsEnabled:boolean;_citationTagsEnabled:boolean;_citationTagName:string;_debugEnabled:boolean;_tagSyncDebounceMs:number;_itemsViewRefreshDebounceMs:number;_healthWindowMs:number;_perfSlowThresholdMs:number;sessions:Record<string,Session>;_temporaryCollectionKeys:Set<string>;_tagPreferencesNeedSync:boolean;_lastTagSyncSig:Record<string,string>;_managedCitationTagIDs:Record<string,boolean>;_managedCitationTagNames:Record<string,string>;_invalidateSessionIndex():void;clearStaleArtifacts():Promise<void>;initCollection(id:string,s:Session):Promise<void>;refreshSessionCitations(id:string,s:unknown):Promise<void>;syncCollectionItems(s:Session,ids:number[]):Promise<void>;syncCitationTags(id:string,ids:number[]):Promise<{complete?:boolean}>;logError(message:string,error:unknown):void};
+type PrefContext = CitationPreferences & {_listenerStopped?:boolean;_collectionsEnabled:boolean;_citationTagsEnabled:boolean;_citationTagName:string;_debugEnabled:boolean;_tagSyncDebounceMs:number;_itemsViewRefreshDebounceMs:number;_healthWindowMs:number;_perfSlowThresholdMs:number;sessions:Record<string,Session>;_temporaryCollectionKeys:Set<string>;_tagPreferencesNeedSync:boolean;_lastTagSyncSig:Record<string,string>;_managedCitationTagIDs:Record<string,boolean>;_managedCitationTagNames:Record<string,string>;_invalidateSessionIndex():void;clearStaleArtifacts():Promise<void>;initCollection(id:string,s:Session):Promise<void>;refreshSessionCitations(id:string,s:unknown):Promise<void>;syncCollectionItems(s:Session,ids:number[]):Promise<void>;syncCitationTags(id:string,ids:number[]):Promise<{complete?:boolean}>;logError(message:string,error:unknown):void};
 declare const addon: {data?:{citationDebugEnabled?:boolean}};
 
 export class CitationPreferences {
@@ -111,10 +111,15 @@ export class CitationPreferences {
     } else if (collectionsChanged && collectionsEnabled) {
       collectionTask = (async () => {
         for (const [id, session] of Object.entries(this.sessions || {})) {
+          if (this._listenerStopped || !this._collectionsEnabled) break;
           if (!session.collection && !session.closing) {
             await this.initCollection(id, session).catch(() => {});
+            if (this._listenerStopped || !this._collectionsEnabled) break;
+            if (session.closing || this.sessions?.[id] !== session) continue;
             if (!Object.keys(session.idData || {}).length && Zotero.Integration?.sessions?.[id]) {
               await this.refreshSessionCitations?.(id, Zotero.Integration.sessions[id]).catch(() => {});
+              if (this._listenerStopped || !this._collectionsEnabled) break;
+              if (session.closing || this.sessions?.[id] !== session) continue;
             }
             const updatedCollection = (session as Session).collection;
             if (updatedCollection && session.idData) {

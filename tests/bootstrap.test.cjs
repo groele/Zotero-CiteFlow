@@ -106,3 +106,12 @@ test('new CiteFlow startup disables the legacy add-on before loading its bundle'
   assert.ok(calls.indexOf('legacy disable') < calls.indexOf('CiteFlow bundle'));
   assert.equal(legacyActive, false);
 });
+
+test('shutdown succeeds without log errors on Gecko 140+ where Cu.unload is absent', async () => {
+  const { context, calls, data } = bootEnvironment();
+  context.Cu = {};
+  await context.startup(data, 1);
+  await context.shutdown(data, 4);
+  assert.equal(calls.filter((call) => call.startsWith('error:')).length, 0);
+  assert.equal(calls.filter((call) => call === 'destruct chrome').length, 1);
+});

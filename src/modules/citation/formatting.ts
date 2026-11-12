@@ -9,10 +9,10 @@ import { TEMP_COLLECTION_KEYS_PREF } from "./constants.ts";
 export class CitationFormatting {
   /** Schedules a debounced session refresh after retry delay. @private */
   _scheduleSessionRefresh(this: FormatContext, sessionID: string, targetSession: NativeSession, delayMs = 180) {
-    if (this._listenerStopped || this._refreshRetryTimerBySession[sessionID]) return;
+    if (this._listenerStopped || !this.sessions?.[sessionID] || this.sessions[sessionID].closing || this._refreshRetryTimerBySession[sessionID]) return;
     this._refreshRetryTimerBySession[sessionID] = timers.setTimeout(() => {
       delete this._refreshRetryTimerBySession[sessionID];
-      if (this._listenerStopped || !this.sessions?.[sessionID]) return;
+      if (this._listenerStopped || !this.sessions?.[sessionID] || this.sessions[sessionID].closing) return;
       void this.refreshSessionCitations(sessionID, targetSession).catch(error => this.logError("Failed to retry citation refresh", error));
     }, Math.max(50, delayMs));
   }

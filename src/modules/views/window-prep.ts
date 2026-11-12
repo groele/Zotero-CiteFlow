@@ -27,27 +27,31 @@ declare const runtime: NativeRuntime;
 const isStopped = (): boolean => addon.data.alive === false;
 
 export class ViewsWindowPrep {
-  async prepareWindow(this: WindowPrepContext): Promise<void> {
+  async prepareWindow(this: WindowPrepContext): Promise<boolean> {
     for (let attempt = 0; !this.pane?.itemsView && attempt < 200; attempt++) {
-      if (this._disposed || isStopped() || this.window?.closed) return;
+      if (this._disposed || isStopped() || this.window?.closed) return false;
       await Zotero.Promise.delay(50);
     }
-    if (this._disposed || isStopped() || this.window?.closed) return;
+    if (this._disposed || isStopped() || this.window?.closed) return false;
     const itemsView = this.pane?.itemsView;
-    if (!itemsView) throw new Error("Zotero item tree did not initialize");
+    if (!itemsView) {
+      Zotero?.logError?.(new Error("Zotero item tree did not initialize"));
+      return false;
+    }
     await itemsView.waitForLoad?.();
     for (let attempt = 0; Array.isArray(itemsView.collectionTreeRows)
       && !itemsView.collectionTreeRows.length && attempt < 200; attempt++) {
-      if (this._disposed || isStopped() || this.window?.closed) return;
+      if (this._disposed || isStopped() || this.window?.closed) return false;
       await Zotero.Promise.delay(50);
     }
     if (Array.isArray(itemsView.collectionTreeRows) && !itemsView.collectionTreeRows.length) {
-      throw new Error("Zotero item tree collection context did not initialize");
+      Zotero?.logError?.(new Error("Zotero item tree collection context did not initialize"));
+      return false;
     }
     await itemsView._ensureSortContextReady?.();
     await itemsView._refreshPromise;
-    if (this._disposed || isStopped() || this.window?.closed) return;
-    if (this._columnResetGuard || typeof itemsView._resetColumns !== "function") return;
+    if (this._disposed || isStopped() || this.window?.closed) return false;
+    if (this._columnResetGuard || typeof itemsView._resetColumns !== "function") return true;
     const restore = runtime.patch(itemsView, "_resetColumns", config.addonRef, original => function(this: unknown, ...args: unknown[]) {
       const view = this as ItemView;
       if (!view.tree) {
@@ -61,5 +65,6 @@ export class ViewsWindowPrep {
     });
     this._columnResetGuard = true;
     this._patchDisposers.push(restore);
+    return true;
   }
 }

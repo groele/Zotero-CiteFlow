@@ -4,6 +4,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const pkg = JSON.parse(await fs.readFile(path.join(root, "package.json"), "utf8"));
+const baseline = JSON.parse(await fs.readFile(path.join(root, "scripts/architecture-baseline.json"), "utf8"));
+const buildDefines = {
+  __buildVersion__: JSON.stringify(pkg.version),
+  __buildDate__: JSON.stringify(process.env.CITEFLOW_BUILD_DATE || baseline.capturedAt || new Date().toISOString().slice(0, 10)),
+};
 const result = await build({
   absWorkingDir: root,
   entryPoints: ["src/index.ts"],
@@ -15,6 +21,7 @@ const result = await build({
   treeShaking: true,
   minify: false,
   legalComments: "inline",
+  define: buildDefines,
   write: false,
   metafile: true,
 });
@@ -41,5 +48,6 @@ await build({
   entryPoints: ["src/preferences.ts"],
   outfile: "chrome/content/preferences.js",
   bundle: true, format: "iife", target: ["firefox140"],
-  charset: "utf8", treeShaking: true, minify: false
+  charset: "utf8", treeShaking: true, minify: false,
+  define: buildDefines,
 });

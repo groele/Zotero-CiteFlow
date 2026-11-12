@@ -21,12 +21,14 @@ async function onStartup(): Promise<void> {
   startupPromise = (async () => {
     await Promise.all([Zotero.initializationPromise, Zotero.unlockPromise, Zotero.uiReadyPromise]);
     if (!addon.data.alive) return;
-    const mainWindow = Zotero.getMainWindow() as unknown as HostWindow;
-    if (!mainWindow?.document) throw new Error("Zotero main window is unavailable");
-    hookGlobals.window = mainWindow;
-    hookGlobals.document = mainWindow.document;
-    hookGlobals.ZoteroPane = mainWindow.ZoteroPane;
-    hookGlobals.Zotero_Tabs = mainWindow.Zotero_Tabs;
+    const mainWindow = (Zotero.getMainWindow?.()
+      || Zotero.getMainWindows?.()?.find((w) => (w as unknown as HostWindow)?.document && !(w as unknown as HostWindow)?.closed)) as unknown as HostWindow | undefined;
+    if (mainWindow?.document) {
+      hookGlobals.window = mainWindow;
+      hookGlobals.document = mainWindow.document;
+      hookGlobals.ZoteroPane = mainWindow.ZoteroPane;
+      hookGlobals.Zotero_Tabs = mainWindow.Zotero_Tabs;
+    }
     await initLocale();
     if (!addon.data.alive) return;
     const preferences = new Preferences(applyPreferences);
@@ -44,7 +46,14 @@ async function onStartup(): Promise<void> {
     if (!addon.data.alive) return;
     const views = new Views();
     addon.data.views = views;
-    for (const win of Zotero.getMainWindows?.() || [mainWindow]) await attachWindow(win as unknown as HostWindow);
+    const windows = Zotero.getMainWindows?.() || (mainWindow ? [mainWindow] : []);
+    for (const win of windows) {
+      try {
+        await attachWindow(win as unknown as HostWindow);
+      } catch (error) {
+        Zotero.logError(error as Error);
+      }
+    }
     if (!addon.data.alive) return;
     await views.createCitationColumn();
     if (!addon.data.alive) return;
@@ -67,8 +76,11 @@ async function attachWindow(win: HostWindow): Promise<void> {
   windowBindings.set(win, binding);
   binding.readyPromise = (async () => {
     try {
-      await views.prepareWindow?.();
-      if (binding.closed || win.closed || !addon.data.alive) { await detachWindow(win); return; }
+      const prepared = await views.prepareWindow?.();
+      if (prepared === false || binding.closed || win.closed || !addon.data.alive) {
+        await detachWindow(win);
+        return;
+      }
       await views.patchIcon();
       if (binding.closed || win.closed || !addon.data.alive) { await detachWindow(win); return; }
       await views.dragCite();
@@ -111,7 +123,11 @@ async function onMainWindowLoad(win: HostWindow): Promise<void> {
     hookGlobals.ZoteroPane = win.ZoteroPane;
     hookGlobals.Zotero_Tabs = win.Zotero_Tabs;
   }
-  await attachWindow(win);
+  try {
+    await attachWindow(win);
+  } catch (error) {
+    Zotero.logError(error as Error);
+  }
 }
 async function onMainWindowUnload(win: HostWindow): Promise<void> {
   await detachWindow(win);

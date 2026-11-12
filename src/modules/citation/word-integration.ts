@@ -326,6 +326,7 @@ export class CitationWordIntegration {
       docId: initialDocId,
       pending: true
     };
+    session.pending = true;
     this.sessions[sessionID] = session;
     this._invalidateSessionIndex();
 
@@ -334,7 +335,7 @@ export class CitationWordIntegration {
         await this.initCollection(sessionID, session);
         return !this._listenerStopped && this.sessions[sessionID] === session ? session : undefined;
       } catch (error) {
-        if (this.sessions[sessionID] === session) delete this.sessions[sessionID];
+        if (!existing && this.sessions[sessionID] === session) delete this.sessions[sessionID];
         this._invalidateSessionIndex();
         throw error;
       } finally {

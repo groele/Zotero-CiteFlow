@@ -128,3 +128,97 @@ test('shutdown awaits resources and continues after independent cleanup failures
   assert.equal(addon.data.alive, false);
   assert.equal('ZoteroCitation' in context.Zotero, false);
 });
+
+test('ViewsWindowPrep logs and returns false without throwing when itemTree is unavailable', async () => {
+  const esbuild = require('esbuild');
+  const { NativeRuntime } = await import('../src/runtime.ts');
+  const bundle = esbuild.buildSync({
+    entryPoints: [path.join(__dirname, '../src/modules/views/window-prep.ts')],
+    bundle: true, format: 'iife', globalName: '__wp', write: false, target: 'firefox140'
+  }).outputFiles[0].text;
+  const errors = [];
+  const context = vm.createContext({
+    console, setTimeout, clearTimeout,
+    addon: { data: { alive: true } },
+    runtime: new NativeRuntime(),
+    Zotero: {
+      Promise: { delay: async () => {} },
+      logError: (err) => errors.push(err?.message || String(err))
+    }
+  });
+  vm.runInContext(bundle, context);
+  const { ViewsWindowPrep } = context.__wp;
+
+  const missingViewCtx = { pane: {}, window: { closed: false }, _disposed: false, _patchDisposers: [] };
+  assert.equal(await ViewsWindowPrep.prototype.prepareWindow.call(missingViewCtx), false);
+  assert.match(errors[0], /item tree did not initialize/);
+
+  errors.length = 0;
+  const emptyTreeCtx = {
+    pane: { itemsView: { collectionTreeRows: [], forceUpdate() {} } },
+    window: { closed: false }, _disposed: false, _patchDisposers: []
+  };
+  assert.equal(await ViewsWindowPrep.prototype.prepareWindow.call(emptyTreeCtx), false);
+  assert.match(errors[0], /collection context did not initialize/);
+});
+
+test('startup tolerates missing main window and failing window attachment while keeping preferences active', async () => {
+  const esbuild = require('esbuild');
+  const { NativeRuntime } = await import('../src/runtime.ts');
+  const bundle = esbuild.buildSync({
+    entryPoints: [path.join(__dirname, '../src/hooks.ts')],
+    bundle: true, format: 'iife', globalName: '__hooks', write: false, target: 'firefox140',
+    define: { __buildVersion__: '"16.1.0"', __buildDate__: '"2026-11-12"' }
+  }).outputFiles[0].text;
+
+  for (const mode of ['no-window', 'bad-window']) {
+    const errors = [];
+    let registeredPane = null;
+    const runtime = new NativeRuntime();
+    const addon = { data: { alive: true }, api: {} };
+    const badWindow = {
+      closed: false,
+      document: { addEventListener() {}, removeEventListener() {} },
+      ZoteroPane: {
+        itemsView: { collectionTreeRows: [], forceUpdate() {} },
+        collectionsView: {}
+      }
+    };
+    const context = vm.createContext({
+      console, setTimeout, clearTimeout, setInterval, clearInterval,
+      addon, runtime, getString: (k) => k,
+      Zotero: {
+        isWin: true,
+        initializationPromise: Promise.resolve(),
+        unlockPromise: Promise.resolve(),
+        uiReadyPromise: Promise.resolve(),
+        getMainWindow: () => null,
+        getMainWindows: () => (mode === 'no-window' ? [] : [badWindow]),
+        Prefs: {
+          get: (k) => (k === 'extensions.zotero.zoterocitation.enable' ? true : undefined),
+          set() {}, clear() {}, registerObserver: () => Symbol('obs'), unregisterObserver() {}
+        },
+        Promise: { delay: async () => {} },
+        PreferencePanes: {
+          register: async (opts) => { registeredPane = opts.pluginID; return 'zoterocitation-preferences'; },
+          unregister() {}
+        },
+        ItemTreeManager: { async registerColumns() {}, async unregisterColumns() {} },
+        Libraries: { userLibraryID: 1 },
+        Collections: { getByLibrary: () => [] },
+        Integration: { sessions: {}, execCommand() {} },
+        logError: (err) => errors.push(err?.message || String(err))
+      }
+    });
+    addon.data.locale = { 'column-citation': 'Citation', 'collection-pending': 'Pending', 'drag-target-unknown': 'Unknown' };
+    vm.runInContext(bundle, context);
+    await context.__hooks.default.onStartup();
+    assert.equal(addon.data.alive, true, `${mode}: addon must remain alive`);
+    assert.equal(registeredPane, 'citeflow@groele', `${mode}: preferences must stay registered`);
+    assert.ok(addon.data.citation, `${mode}: citation service must remain running`);
+    if (mode === 'bad-window') {
+      assert.ok(errors.some(m => /collection context did not initialize/.test(m)), 'bad-window logs non-fatal error');
+    }
+    await context.__hooks.default.onShutdown();
+  }
+});

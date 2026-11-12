@@ -23,8 +23,8 @@ npm run guard              # node scripts/architecture-guard.mjs
 # Build bundled runtime script (typecheck + guard + esbuild)
 npm run build              # tsc --noEmit && npm run guard && node scripts/build-source.mjs
 
-# Run full test suite (builds first, then executes node test runner across 73 tests)
-npm test                   # npm run build && node --test tests/*.test.*
+# Run full test suite (builds first, then executes all Node tests with native TypeScript stripping)
+npm test                   # npm run build && node --experimental-strip-types --test tests/*.test.*
 
 # Package production XPI
 npm run package            # pwsh -NoProfile -File scripts/build.ps1

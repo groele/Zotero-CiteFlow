@@ -249,17 +249,19 @@ async function testWinWordActiveDocumentNullCompatibility() {
   sandbox.addon.data.alive = true;
   sandbox.Zotero.Integration.Session = function() {};
   let activeDocumentReads = 0;
+  const singletonApp = {
+    getDocument(documentName) {
+      if (documentName === null) throw new TypeError("documentName.indexOf is not a function");
+      if (documentName !== "") throw new Error("unexpected document name");
+      activeDocumentReads += 1;
+      return { id: "active-word-document" };
+    },
+    getActiveDocument() { return this.getDocument(null); }
+  };
+  const originalAppGetActiveDocument = singletonApp.getActiveDocument;
   const originalGetApplication = function(name) {
     assert.equal(name, "WinWord");
-    return {
-      getDocument(documentName) {
-        if (documentName === null) throw new TypeError("documentName.indexOf is not a function");
-        if (documentName !== "") throw new Error("unexpected document name");
-        activeDocumentReads += 1;
-        return { id: "active-word-document" };
-      },
-      getActiveDocument() { return this.getDocument(null); }
-    };
+    return singletonApp;
   };
   sandbox.Zotero.Integration.getApplication = originalGetApplication;
   sandbox.Zotero.Integration.Session.prototype.cite = async function() {
@@ -275,6 +277,8 @@ async function testWinWordActiveDocumentNullCompatibility() {
   assert.equal(activeDocumentReads, 1, "quick cite resolves Word's active document through the supported empty-name path");
   assert.equal(sandbox.Zotero.Integration.getApplication, originalGetApplication,
     "temporary Word adapter compatibility wrapper is restored after native citation");
+  assert.equal(singletonApp.getActiveDocument, originalAppGetActiveDocument,
+    "patched WinWord application.getActiveDocument method must be restored in finally");
 }
 
 async function testWrapperChainSurvivesClear() {

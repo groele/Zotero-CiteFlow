@@ -522,8 +522,61 @@ async function testInsertRollbackAndCapturedSelection() {
   assert.deepEqual(insertedIDs, [1], "selection must be captured before async Word command");
   assert.equal(deleted, 1, "successful field must not be removed");
 }
+async function testStartupClearsOrphanManagedTagsAndSkipsActiveSessions() {
+  const prevCollections = sandbox.Zotero.Collections;
+  const prevSessions = sandbox.Zotero.Integration.sessions;
+  sandbox.Zotero.Collections = { getByLibrary: () => [] };
+  try {
+    const active = bareCitation();
+    active._managedCitationTagIDs = { 10: true };
+    active.sessions = { S: { collection: { key: "ACTIVE" } } };
+    sandbox.Zotero.Integration.sessions = { S: {} };
+    let activeSyncCalls = 0;
+    active.syncCitationTags = async () => { activeSyncCalls++; };
+    await active.clearStaleArtifacts();
+    assert.equal(activeSyncCalls, 0, "must not clear managed tags while Word sessions are active");
+
+    const orphan = bareCitation();
+    const removed = new Set(["/Citations", "ManualTag"]);
+    const item = {
+      libraryID: 1,
+      hasTag: (tag) => removed.has(tag),
+      removeTag: (tag) => removed.delete(tag),
+      saveTx: async () => {}
+    };
+    sandbox.Zotero.Libraries = { userLibraryID: 1, get: () => ({ editable: true }) };
+    sandbox.Zotero.Items.get = (id) => (id === 10 ? item : null);
+    sandbox.Zotero.Integration.sessions = {};
+    orphan._managedCitationTagIDs = { 10: true };
+    await orphan.clearStaleArtifacts();
+    assert.equal(removed.has("/Citations"), false, "orphaned plugin-managed tag must be purged at startup");
+    assert.equal(removed.has("ManualTag"), true, "user manual tags must stay untouched");
+    assert.deepEqual(orphan._managedCitationTagIDs, {});
+  } finally {
+    sandbox.Zotero.Collections = prevCollections;
+    sandbox.Zotero.Integration.sessions = prevSessions;
+  }
+}
+
+async function testRenameClearsRetryBudgetOnSuccess() {
+  const instance = bareCitation();
+  const collection = { name: "pending", saveTx: async () => {} };
+  instance.sessions.S = { collection };
+  instance._docIdBySession.S = "paper.docx";
+  instance._collectionRenameRetryCountBySession.S = 4;
+  await instance._renameCollection("S", "paper.docx", "paper.docx");
+  assert.equal(instance._collectionRenameRetryCountBySession.S, undefined,
+    "successful rename must reset exhausted retry budget");
+
+  instance._collectionRenameRetryCountBySession.S = 3;
+  await instance._renameCollection("S", "paper.docx", "paper.docx");
+  assert.equal(instance._collectionRenameRetryCountBySession.S, undefined,
+    "already-matching collection name must reset retry budget");
+}
+
 tests.push(testStartupCancellation, testRenameRollbackAndObsoleteRename,
-  testCiteSelectionAndNativeFailureRecovery, testInsertRollbackAndCapturedSelection);
+  testCiteSelectionAndNativeFailureRecovery, testInsertRollbackAndCapturedSelection,
+  testStartupClearsOrphanManagedTagsAndSkipsActiveSessions, testRenameClearsRetryBudgetOnSuccess);
 (async () => {
   for (const test of tests) { await test(); console.log(`PASS ${test.name}`); }
   console.log(`${manifest.version}: ${tests.length} stability suites passed`);

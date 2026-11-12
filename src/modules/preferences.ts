@@ -1,7 +1,13 @@
 import { config } from "../config.ts";
+import { supportsNativeDropTarget } from "./drop-target.ts";
+
+declare const __buildVersion__: string | undefined;
+declare const __buildDate__: string | undefined;
+const buildVersion = typeof __buildVersion__ === "string" ? __buildVersion__ : "";
+const buildDate = typeof __buildDate__ === "string" ? __buildDate__ : "";
 
 interface Setting { id: string; key: string; defaultValue: boolean | string | number; maxLength?: number; min?: number; max?: number }
-interface StatusMessage { id: string; args?: { min: number; max: number } }
+interface StatusMessage { id: string; args?: Record<string, string | number> }
 interface PreferencePanel { sync(setting: Setting): void; dispose(): void; updateStatus(): void }
 type PreferencesWindow = Window & { document: Document & { l10n: { setAttributes(element: Element | null, id: string, args?: StatusMessage["args"]): void } } };
 type PreferenceValue = boolean | string | number;
@@ -116,12 +122,43 @@ export class Preferences {
       win.document.l10n.setAttributes(status, this._applyFailed ? "zoterocitation-settings-apply-failed"
         : readSetting(settings[0]) !== this._startedEnabled ? "zoterocitation-settings-restart" : "zoterocitation-settings-saved");
     };
+    const badge = root.querySelector(".zoterocitation-version-badge");
+    if (badge && buildVersion) badge.textContent = `v${buildVersion}`;
+    const dateNode = root.querySelector(".zoterocitation-version-info time");
+    if (dateNode && buildDate) {
+      dateNode.setAttribute("datetime", buildDate);
+      dateNode.textContent = buildDate;
+    }
+    const packageLink = root.querySelector<HTMLAnchorElement>('[data-l10n-id="zoterocitation-settings-package-link"]');
+    if (packageLink && buildVersion) {
+      packageLink.setAttribute(
+        "href",
+        `https://github.com/groele/Zotero-CiteFlow/releases/download/v${buildVersion}/zotero-citeflow-${buildVersion}.xpi`
+      );
+      win.document.l10n?.setAttributes?.(packageLink, "zoterocitation-settings-package-link", { version: buildVersion });
+    }
+    const tagTextSetting = settings.find(setting => setting.id === "citationTagText")!;
+    const dragSupported = supportsNativeDropTarget();
     const updateDependencies = () => {
       const tagsEnabled = root.querySelector<HTMLInputElement>("#zoterocitation-setting-citationTags")?.checked;
       const tagTextInput = root.querySelector<HTMLInputElement>("#zoterocitation-setting-citationTagText");
-      if (tagTextInput) tagTextInput.disabled = !tagsEnabled;
+      if (tagTextInput) {
+        tagTextInput.disabled = !tagsEnabled;
+        if (!tagsEnabled) {
+          tagTextInput.setCustomValidity("");
+          const hadInvalid = invalid.delete("citationTagText");
+          if (hadInvalid) {
+            tagTextInput.value = String(readSetting(tagTextSetting));
+            updateStatus();
+          }
+        }
+      }
       const tagTextRow = typeof tagTextInput?.closest === "function" ? tagTextInput.closest(".zoterocitation-number-row") : null;
       if (tagTextRow?.classList) tagTextRow.classList.toggle("is-disabled", !tagsEnabled);
+      const dragInput = root.querySelector<HTMLInputElement>("#zoterocitation-setting-dragCite");
+      if (dragInput) dragInput.disabled = !dragSupported;
+      const dragRow = typeof dragInput?.closest === "function" ? dragInput.closest(".zoterocitation-option") : null;
+      if (dragRow?.classList) dragRow.classList.toggle("is-disabled", !dragSupported);
     };
     const on = (node: EventTarget, type: string, handler: EventListener) => {
       node.addEventListener(type, handler, { signal: controller.signal });

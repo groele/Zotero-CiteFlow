@@ -68,12 +68,13 @@ async function startup() {
     testTags: testItems.map(id => Zotero.Items.get(id).getTags().map(tag => tag.tag)),
     controls: root() ? [...root().querySelectorAll("input")].map(input => ({
       id: input.id, value: input.type === "checkbox" ? input.checked : input.value,
+      disabled: input.disabled,
       width: input.getBoundingClientRect().width, height: input.getBoundingClientRect().height,
       valid: input.checkValidity()
     })) : [],
     text: root()?.textContent.replace(/\s+/g, " ").trim(),
     status: root()?.querySelector("#zoterocitation-settings-status")?.getAttribute("data-l10n-id"),
-    prefValues: Object.fromEntries(["enable", "dragCite.enable", "citationTags.enable", "citationTags.text", "debug", "citationTagDebounceMs", "itemsViewRefreshDebounceMs", "healthWindowMs", "perfSlowThresholdMs"].map(key =>
+    prefValues: Object.fromEntries(["enable", "dragCite.enable", "collections.enable", "citationTags.enable", "citationTags.text", "debug", "citationTagDebounceMs", "itemsViewRefreshDebounceMs", "healthWindowMs", "perfSlowThresholdMs"].map(key =>
       [key, Zotero.Prefs.get("extensions.zotero.zoterocitation." + key, true)]))
   });
   async function run(data) {
@@ -148,11 +149,19 @@ async function startup() {
             try {
               // A synthetic DragEvent has no native drop target. Isolate the
               // citation pipeline test from the separate physical-drop test.
+              await pane.selectItem(items[0].id);
               viewPrototype._resolveDropTarget = () => "word-confirmed";
               pane.getSelectedItems = () => items;
               Zotero.ZoteroCitation.api.citeItems = requested => (completion = originalCite(requested));
               const transfer = new win.DataTransfer(); transfer.dropEffect = "copy";
-              pane.itemsView.onDragStart({ dataTransfer: transfer }, 0);
+              pane.itemsView.onDragStart({
+                dataTransfer: transfer,
+                preventDefault() {},
+                stopPropagation() {},
+                currentTarget: pane.itemsView?.domEl || win.document.documentElement
+              }, 0);
+              if (!transfer.types.includes("zotero/item")) throw Error("Drag stripped native zotero/item payload");
+              if (transfer.types.includes("text/html")) throw Error("Drag leaked native HTML bibliography payload");
               if (!transfer.types.includes("text/plain") || transfer.getData("text/plain") !== "") throw Error("Drag leaked native bibliography text");
               win.document.dispatchEvent(new win.DragEvent("dragend", { bubbles: true, dataTransfer: transfer,
                 screenX: win.screenX + win.outerWidth + 1000, screenY: win.screenY + win.outerHeight + 1000 }));
@@ -225,11 +234,24 @@ async function startup() {
       const originalTarget = viewPrototype._resolveDropTarget;
       try {
         viewPrototype._resolveDropTarget = () => data.target || "word-confirmed";
+        if (typeof pane.selectItem === "function") await pane.selectItem(testItems[0]);
         pane.getSelectedItems = () => [Zotero.Items.get(testItems[0])];
         Zotero.ZoteroCitation.api.citeItems = async () => { calls++; };
         const transfer = new win.DataTransfer(); transfer.dropEffect = "copy";
-        pane.itemsView.onDragStart({ dataTransfer: transfer }, 0);
-        const prepared = transfer.types.includes("text/plain");
+        const rowIndex = typeof pane.itemsView?.getRowIndexByID === "function"
+          ? Math.max(0, pane.itemsView.getRowIndexByID(testItems[0]))
+          : 0;
+        pane.itemsView.onDragStart({
+          dataTransfer: transfer,
+          preventDefault() {},
+          stopPropagation() {},
+          currentTarget: pane.itemsView?.domEl || win.document.documentElement
+        }, rowIndex);
+        const prepared = transfer.types.includes("text/plain")
+          && transfer.types.includes("zotero/item")
+          && transfer.getData("text/plain") === ""
+          && !transfer.types.includes("text/html")
+          && transfer.getData("text/html") === "";
         if (data.cancelAfterStart) {
           const control = root().querySelector("#zoterocitation-setting-dragCite");
           control.checked = false; control.dispatchEvent(new preferencesWindow.Event("change", { bubbles: true }));

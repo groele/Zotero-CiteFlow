@@ -19,7 +19,7 @@
     <eissn>none</eissn>
     <issnl>none</issnl>
     <summary>Compact Journal Reference</summary>
-    <published>Compact Journal Reference</published>
+    <published>2026-05-17T06:39:04+00:00</published>
     <updated>2026-05-17T06:39:04+00:00</updated>
     <rights license="http://creativecommons.org/licenses/by-sa/3.0/">This work is licensed under a Creative Commons Attribution-ShareAlike 3.0 License</rights>
   </info>
@@ -79,7 +79,7 @@
         <text variable="title" text-case="title" font-style="italic" font-variant="small-caps"/>
       </if>
       <else>
-        <text strip-periods="false" font-variant="normal"/>
+        <text variable="title" strip-periods="false" font-variant="normal"/>
       </else>
     </choose>
   </macro>
@@ -103,7 +103,7 @@
         <if type="entry-dictionary entry-encyclopedia" match="none">
           <group delimiter=" ">
             <text term="in" text-case="capitalize-first"/>
-            <text font-style="italic"/>
+            <text variable="container-title" font-style="italic"/>
           </group>
         </if>
         <else>
@@ -140,7 +140,7 @@
   <macro name="access">
     <choose>
       <if variable="DOI" match="any">
-        <text variable="status" display="block"/>
+        <text variable="DOI" prefix="https://doi.org/"/>
       </if>
       <else-if type="article-journal book chapter entry-encyclopedia entry-dictionary paper-conference" match="none">
         <choose>
@@ -171,8 +171,7 @@
   </citation>
   <bibliography second-field-align="flush" entry-spacing="0">
     <layout suffix=".">
-      <text prefix="[" suffix="]"/>
-      <text suffix=" "/>
+      <text variable="citation-number" prefix="[" suffix="]"/>
       <choose>
         <if type="article-journal review" match="any">
           <group delimiter=" ">
@@ -182,7 +181,7 @@
               <text macro="issued" font-weight="bold"/>
               <choose>
                 <if variable="volume">
-                  <group delimiter=" ">
+                  <group>
                     <text variable="volume" font-style="italic"/>
                     <text variable="issue" prefix="(" suffix=")"/>
                   </group>
@@ -214,7 +213,7 @@
           <group delimiter=", ">
             <group delimiter=". ">
               <text macro="title"/>
-              <text/>
+              <text variable="genre"/>
             </group>
             <text macro="publisher"/>
             <text macro="issued"/>

@@ -129,6 +129,10 @@ export function probeWordWindowTitles(): { foregroundTitle: string; visibleTitle
   }
 }
 
+export function supportsNativeDropTarget(): boolean {
+  return typeof Zotero === "undefined" || Zotero.isWin !== false;
+}
+
 export function resolveWordDropTarget(): "word-confirmed" | "non-word" | "unknown" {
   if (!Zotero.isWin) return "unknown";
   let processHandle: NativePointer | undefined;

@@ -8,7 +8,7 @@ Track Word citations and connect them to Zotero items.
 
 [简体中文](README.md) · [English](README.en.md)
 
-[![Release](https://img.shields.io/badge/version-16.0.0-245ac7?style=flat-square)](https://github.com/groele/Zotero-CiteFlow/releases/tag/v16.0.0) · [Download XPI](https://github.com/groele/Zotero-CiteFlow/releases/download/v16.0.0/zotero-citeflow-16.0.0.xpi) · [Report an issue](https://github.com/groele/Zotero-CiteFlow/issues)
+[![Release](https://img.shields.io/badge/version-16.1.0-245ac7?style=flat-square)](https://github.com/groele/Zotero-CiteFlow/releases/tag/v16.1.0) · [Download XPI](https://github.com/groele/Zotero-CiteFlow/releases/download/v16.1.0/zotero-citeflow-16.1.0.xpi) · [Report an issue](https://github.com/groele/Zotero-CiteFlow/issues)
 
 [Overview](#overview) · [Installation and updates](#installation) · [Quick start](#quick-start) · [Key features](#features) · [CSL Style Reference Case](#csl-example) · [Settings](#settings) · [Data, sync, and services](#data) · [Compatibility and validation](#compatibility) · [Troubleshooting](#troubleshooting) · [Development and documentation](#development) · [The Flow series](#series) · [Origin and license](#license)
 
@@ -24,7 +24,7 @@ Install this add-on independently and combine it with other Flow products as nee
 
 ## Installation and updates
 
-1. Download [zotero-citeflow-16.0.0.xpi](https://github.com/groele/Zotero-CiteFlow/releases/download/v16.0.0/zotero-citeflow-16.0.0.xpi) (add-on version **16.0.0**), not the Source code ZIP.
+1. Download [zotero-citeflow-16.1.0.xpi](https://github.com/groele/Zotero-CiteFlow/releases/download/v16.1.0/zotero-citeflow-16.1.0.xpi) (add-on version **16.1.0**), not the Source code ZIP.
 2. In Zotero, open **Tools → Plugins/Add-ons**, then choose **Install Add-on From File** from the gear menu.
 3. Select the XPI, complete installation, and restart if requested.
 
@@ -47,7 +47,7 @@ Update feed: [update.json](https://github.com/groele/Zotero-CiteFlow/blob/main/u
 | Differentiator | What it does | Boundary |
 |---|---|---|
 | Word citation status | Surfaces recognized Word citation information in Zotero’s item list, so writers can review whether an item has entered a document. | An unrecognized result is not a claim that an item has never been cited. |
-| Editable citation drag-and-drop | Routes a dragged item to Microsoft Word through Zotero integration, producing an editable Zotero citation field rather than plain text. | Applies only to an explicit Word target; it never rewrites existing Word fields or promises insertion into other applications. |
+| Editable citation drag-and-drop | Routes a dragged item to Microsoft Word through Zotero integration, producing an editable Zotero citation field rather than plain text. | Active only on Windows for confirmed `WINWORD.EXE` cursor targets while preserving `zotero/item` payloads for Zotero collection/trash drags; macOS and Linux keep native Zotero dragging and Quick Copy untouched; never rewrites existing Word fields. |
 | Controlled citation tags & read-only guard | Marks citation relationships with add-on-owned tags; tag text and automatic tagging are configurable while manual tags are retained. Strictly adheres to `item.isEditable()` guards to prevent dirty writes in read-only group libraries or trash. | Disable/rename actions touch only tags the add-on can establish as its own; read-only items retain ownership records without illegal writes. |
 | Layered Architecture & Function Governance | Thoroughly cleans up monolithic code into 11 strict architectural domain sections, eliminates dead code, and maximizes maintainability and stability. | Strictly defined boundaries with complete forward compatibility. |
 | Three-level 40px golden baseline settings panel | Adheres to Zotero Flow 2026-11-02 design standards: 16px container padding, Level-2 labels and Level-3 subordinate elements strictly aligned at the 40px vertical line, 100% Fluent localized and keyboard accessible. | Built with modern Gecko box models; seamlessly adapts to Dark, Light, and High-Contrast system themes. |
@@ -96,7 +96,7 @@ To meet strict page limit requirements for top-tier journals and conference subm
 
 Open the add-on preference page in **Zotero → Settings → Zotero CiteFlow**.
 
-Restart Zotero after changing citation tracking. Configure dragging, tag text, and delays separately. Restore Defaults resets only the add-on’s nine settings.
+Restart Zotero after changing citation tracking. Configure dragging, temporary collections, tag text, and delays separately. Restore Defaults resets only the add-on’s ten settings.
 
 <a id="data"></a>
 
@@ -111,9 +111,9 @@ Restart Zotero after changing citation tracking. Configure dragging, tag text, a
 
 | Item | Scope |
 |---|---|
-| Current add-on version | 16.0.0 |
+| Current add-on version | 16.1.0 |
 | Declared Zotero range | `10.0` through `12.*` |
-| Evidence boundary | 16.0.0 fully achieved §5.9 360-line ceiling across all 34 TypeScript modules (0 debt declared), established 13-point architecture-guard compliance suite, refactored settings into 5 lifecycle cards aligned with 14px / 40px grid standards, and introduced interlocking collection toggle. |
+| Evidence boundary | 16.1.0 preserves §5.9 360-line zero-debt modularity and adds native Zotero 10+ drag payload preservation, non-Windows Quick Copy protection, modern `enabledTreeIDs` column registration, resilient startup/window recovery, complete WinWord wrapper restoration, startup orphan managed-tag cleanup, exact `isCollection` own-descriptor restoration on sorted rows, mid-flight cancellation & post-close timer guards for async session sync/formatting, hardened `ensureSession` re-initialization, compile-time version injection, CSL 1.0.2 template fixes, syntax validation, and deterministic ZIP/update-feed integrity checks. |
 
 Add-on and Zotero versions are separate. Declared compatibility does not establish testing on every host, operating system or service. This patch validates the targeted behaviors listed above, not all plugin workflows or main-profile installation.
 
@@ -140,6 +140,7 @@ npm run package
 - [技术与维护指南 / Technical guide](CORE-TECHNICAL-MAINTENANCE.md)
 - [第三方声明 / Third-party notices](THIRD_PARTY.md)
 - [版本说明 / Release notes](RELEASE_NOTES.md)
+- [v16.1.0 阶段说明 / Milestone notes](docs/releases/v16.1.0.md)
 - [v16.0.0 阶段说明 / Milestone notes](docs/releases/v16.0.0.md)
 - [v13.0.9 阶段说明 / Milestone notes](docs/releases/v13.0.9.md)
 - [v13.0.8 阶段说明 / Milestone notes](docs/releases/v13.0.8.md)

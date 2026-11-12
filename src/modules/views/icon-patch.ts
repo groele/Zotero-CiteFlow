@@ -285,17 +285,22 @@ export class ViewsIconPatch {
               return view._insertCitationRowAbovePublications(current, col as unknown as CollectionRef);
             }
           }
-          const maskedRows: TreeRow[] = [];
+          const maskedRows: Array<{ row: TreeRow; hasOwn: boolean; original: TreeRow["isCollection"] }> = [];
           for (const row of current._rows || []) {
             if ((row?.isCollection?.() || row?.type === "collection") && view._isCitationCollection(row?.ref)) {
+              const hasOwn = Object.prototype.hasOwnProperty.call(row, "isCollection");
+              const originalFn = row.isCollection;
               row.isCollection = () => false;
-              maskedRows.push(row);
+              maskedRows.push({ row, hasOwn, original: originalFn });
             }
           }
           try {
             return await original.call(this, objectType, id);
           } finally {
-            for (const row of maskedRows) delete row.isCollection;
+            for (const { row, hasOwn, original: originalFn } of maskedRows) {
+              if (hasOwn) row.isCollection = originalFn;
+              else delete row.isCollection;
+            }
           }
         });
         if (typeof restoreAddSorted === "function") (this._patchDisposers ??= []).push(restoreAddSorted);

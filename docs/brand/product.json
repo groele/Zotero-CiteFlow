@@ -16,7 +16,7 @@
   "githubDescription": "Track Word citations and connect them to Zotero items. Part of Zotero Flow.",
   "repository": "https://github.com/groele/Zotero-CiteFlow",
   "addonID": "citeflow@groele",
-  "version": "16.0.0",
+  "version": "16.1.0",
   "license": "AGPL-3.0-only",
   "releaseStatus": "released"
 }

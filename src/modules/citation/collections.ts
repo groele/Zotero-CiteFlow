@@ -14,18 +14,32 @@ type Collection = Omit<Zotero.Collection, "libraryID"> & {libraryID:number;_isCi
 type Search = {key:string;eraseTx():Promise<void>};
 const timers = globalThis as unknown as {setTimeout(callback:()=>void,ms:number):number;clearTimeout(id:number):void};
 type Session = {collection?:Collection;closing?:boolean;docId?:string;lastName?:string;_renameTask?:Promise<void>|null};
-type Context = CitationCollections & {sessions:Record<string,Session>;_listenerStopped:boolean;_temporaryCollectionKeys:Set<string>;_managedSearchKeys:Set<string>;_docIdBySession:Record<string,string>;_collectionRenameRetryCountBySession:Record<string,number>;_collectionRenameRetryTimerBySession:Record<string,number>;_getDocumentDisplayName(id:string):string;_getPendingCollectionName(id:string):string;_invalidateSessionIndex():void;_saveKeySet(key:string,values:Set<string>):void;logError(message:string,error:unknown):void;debugLog(...args:unknown[]):void};
+type Context = CitationCollections & {sessions:Record<string,Session>;_listenerStopped:boolean;_temporaryCollectionKeys:Set<string>;_managedSearchKeys:Set<string>;_managedCitationTagIDs?:Record<string,boolean>;_docIdBySession:Record<string,string>;_collectionRenameRetryCountBySession:Record<string,number>;_collectionRenameRetryTimerBySession:Record<string,number>;_getDocumentDisplayName(id:string):string;_getPendingCollectionName(id:string):string;_invalidateSessionIndex():void;_saveKeySet(key:string,values:Set<string>):void;syncCitationTags?(id:string,items:number[]):Promise<unknown>;logError(message:string,error:unknown):void;debugLog(...args:unknown[]):void};
 declare const addon: {data?:{views?:{repositionCitationCollections?():void}}};
 
 export class CitationCollections {
   /**
-   * Purges orphan temporary collections and legacy searches without modifying user collections.
+   * Purges orphan temporary collections, legacy searches, and stale managed tags from prior sessions.
    * @returns {Promise<void>}
    */
   async clearStaleArtifacts(this: Context) {
     const libraryID = Zotero.Libraries.userLibraryID;
     await this._clearStaleTemporaryCollections(libraryID);
     await this._clearStaleManagedSearches(libraryID);
+    await this._clearStaleManagedTags();
+  }
+
+  /**
+   * Clears persisted plugin-managed citation tags at startup when no Word integration sessions are active.
+   * @returns {Promise<void>}
+   * @private
+   */
+  async _clearStaleManagedTags(this: Context) {
+    const activeSessions = Object.keys(this.sessions || {}).length > 0
+      || Object.keys((Zotero.Integration as unknown as {sessions?:Record<string,unknown>})?.sessions || {}).length > 0;
+    if (activeSessions || !Object.keys(this._managedCitationTagIDs || {}).length
+      || typeof this.syncCitationTags !== "function") return;
+    await this.syncCitationTags("__startup__", []);
   }
 
   /**
@@ -249,10 +263,14 @@ export class CitationCollections {
       if (this._listenerStopped || session.closing || this.sessions?.[sessionID] !== session
         || (docId && this._docIdBySession[sessionID] !== docId) || !session.collection) return;
       const previousName = session.collection.name;
-      if (previousName === targetName) return;
+      if (previousName === targetName) {
+        this._clearCollectionRenameRetry(sessionID);
+        return;
+      }
       session.collection.name = targetName;
       try {
         await session.collection.saveTx({ skipSelect: true });
+        this._clearCollectionRenameRetry(sessionID);
         session.lastName = targetName;
         addon?.data?.views?.repositionCitationCollections?.();
       } catch (error) {

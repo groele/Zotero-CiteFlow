@@ -1,3 +1,28 @@
+# Zotero CiteFlow 16.1.0
+
+**发布日期**：2026-11-12
+**适用版本**：Zotero `10.0` - `12.*`
+
+## 原生拖拽兼容、并发生命周期自愈与全链路工程加固（v16.1.0）
+
+- **Zotero 10+ 原生拖拽与条目树列适配（`drag-cite.ts` / `drop-target.ts` / `views.ts` / `icon-patch.ts`）**：
+  - 拖拽开始时优先执行原生 `itemsView.onDragStart` 保留 `zotero/item` 负载，避免拖入文集与废纸篓功能受损，随后仅清理 `text/html` 与 `text/plain` 防止默认书目文本污染 Word；
+  - 通过 `supportsNativeDropTarget()` 仅在 Windows 启用 Word 拖拽接管，macOS / Linux 自动保留 Zotero 原生拖拽与快速复制行为并在设置页禁用该开关；
+  - 引用状态列迁移至 `enabledTreeIDs: ["main"]`，移除已废弃的 `defaultIn` / `disabledIn` 属性以消除 Zotero 10+ 控制台警告；
+  - `ViewsIconPatch._addSortedRow` 精确记录并还原排序行自有的 `isCollection` 属性，仅清理插件自身注入的原型遮罩函数。
+- **启动容错、并发异步中止、WinWord 包装恢复与标签/重命名收口（`window-prep.ts` / `hooks.ts` / `cite.ts` / `collections.ts` / `preferences-sync.ts` / `formatting.ts` / `word-integration.ts`）**：
+  - `ViewsWindowPrep.prepareWindow()` 在树视图未就绪时记录非致命日志并返回 `false`，`hooks.onStartup()` 容忍无初始主窗口及单窗口挂载失败，确保设置面板与监听服务稳健运行；
+  - `preferences-sync.ts` 增加 `_listenerStopped` 状态及跨 `await` 中途取消检查，`formatting.ts` 对 `_scheduleSessionRefresh` 及异步定时器回调增加关闭态保护，防止卸载或关闭后触发无效刷新；
+  - `word-integration.ts` 的 `ensureSession` 在既有会话缺少关联文集而重新初始化时标记 `session.pending = true`，并在失败捕获路径保留既有合法会话不被误删；
+  - `cite.ts` 登记并按实例追踪临时适配的 WinWord `application`，在 `finally` 阶段通过 `restorePatchedApplications()` 彻底恢复 `getActiveDocument`；
+  - `CitationCollections.clearStaleArtifacts()` 增加 `_clearStaleManagedTags()` 在无活跃 Word 会话时清理孤立插件标签；`_renameCollection()` 成功后重置 `_clearCollectionRenameRetry()` 预算。
+- **动态版本注入、设置联动、本地化与 CSL/构建修复（`preferences.ts` / `.ftl` / `preferences.css` / `compact-journal-reference.csl` / `build.ps1` / `architecture-guard.mjs`）**：
+  - 采用编译期宏 `__buildVersion__` / `__buildDate__` 与 Fluent 参数 `v{ $version }` 消除 `.ftl` 静态版本号硬编码，移除死键 `zoterocitation-settings-functions` 并对齐中英文引用标签提示语；
+  - 取消勾选 `citationTags` 时同步复位 `citationTagText` 校验错误状态与已保存值，并修复窄屏媒体查询下的 `.zoterocitation-subordinate-row` 缩进优先级；
+  - 修复 `compact-journal-reference.csl` 的标题/容器变量缺失、空 `<text>` 元素、DOI 前缀、卷期分隔及时间戳问题；规范 ZIP `/` 路径、增加 `chrome/content/preferences.js` 语法检查并打通 `build.ps1` 根 `update.json` 与 `architecture-guard.mjs` 全链路守卫。
+
+---
+
 # Zotero CiteFlow 16.0.0
 
 **发布日期**：2026-11-06

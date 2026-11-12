@@ -89,6 +89,7 @@ class Views {
     const registered = await Zotero.ItemTreeManager.registerColumns({
       dataKey: key,
       label: getString(`column-${key}`),
+      enabledTreeIDs: ["main"],
       zoteroPersist: ["width", "hidden", "sortDirection"],
       dataProvider: item => this.getCitationText(item.id),
       renderCell: (index, data, column, isFirstColumn, doc = this.document) => {

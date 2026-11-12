@@ -11,15 +11,15 @@ import numpy as np
 from PIL import Image
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ORIG_ICON_PATH = r"C:\Users\gro_e\.gemini\antigravity\brain\d110951d-475e-4281-b336-bbd0cc1352f6\.user_uploaded\media_1792410939646_2a53f83a.png"
+ORIG_ICON_PATH = os.environ.get("CITEFLOW_ORIG_ICON_PATH", "")
 
 ICONS_DIRS = [
     os.path.join(ROOT_DIR, "chrome", "content", "icons"),
 ]
 
-# Also sync to zotero-citation folder if it exists
-OTHER_PROJECT_DIR = r"d:\Dev Studio\zotero-citation"
-if os.path.exists(OTHER_PROJECT_DIR):
+# Optional secondary icon output directory for manual multi-repo sync
+OTHER_PROJECT_DIR = os.environ.get("CITEFLOW_SYNC_PROJECT_DIR", "")
+if OTHER_PROJECT_DIR and os.path.exists(OTHER_PROJECT_DIR):
     ICONS_DIRS.append(os.path.join(OTHER_PROJECT_DIR, "chrome", "content", "icons"))
 
 def build_vector_svg(src_img_path):
@@ -111,6 +111,10 @@ def build_sdf_master_1024(orig_img):
     return Image.fromarray(master_arr)
 
 def generate():
+    if not ORIG_ICON_PATH or not os.path.exists(ORIG_ICON_PATH):
+        raise FileNotFoundError(
+            "Set CITEFLOW_ORIG_ICON_PATH to a 64x64 RGBA master PNG before running generate_all_icons.py"
+        )
     for d in ICONS_DIRS:
         os.makedirs(d, exist_ok=True)
 

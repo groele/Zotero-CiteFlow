@@ -224,7 +224,8 @@
 }
 
 
-#zoterocitation-settings .zoterocitation-number-row.is-disabled label {
+#zoterocitation-settings .zoterocitation-number-row.is-disabled label,
+#zoterocitation-settings .zoterocitation-option.is-disabled span {
   color: var(--flow-pref-muted);
   opacity: 0.65;
 }
@@ -329,7 +330,8 @@
     padding-inline: 10px;
   }
 
-  #zoterocitation-settings .zoterocitation-number-row {
+  #zoterocitation-settings .zoterocitation-number-row,
+  #zoterocitation-settings .zoterocitation-number-row.zoterocitation-subordinate-row {
     grid-template-columns: minmax(0, 1fr);
     margin-inline-start: 0;
     gap: 4px;

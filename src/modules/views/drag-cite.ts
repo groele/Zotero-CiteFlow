@@ -1,6 +1,6 @@
 import { config } from "../../config.ts";
 import { getString } from "../locale.ts";
-import { resolveWordDropTarget } from "../drop-target.ts";
+import { resolveWordDropTarget, supportsNativeDropTarget } from "../drop-target.ts";
 
 import type { NativeRuntime } from "../../runtime.ts";
 export interface CiteItem { id?: number; deleted?: boolean; inTrash?: boolean; isRegularItem?(): boolean; isTopLevelItem(): boolean }
@@ -27,6 +27,7 @@ export class ViewsDragCite {
    */
   _dragEnabled(this: DragContext): boolean {
     return !this._disposed && addon.data.alive !== false
+      && supportsNativeDropTarget()
       && Zotero.Prefs.get("extensions.zotero.zoterocitation.dragCite.enable", true) !== false;
   }
 
@@ -63,6 +64,7 @@ export class ViewsDragCite {
    */
   async dragCite(this: DragContext): Promise<void> {
     if (this._dragEndHandler || this._disposed || addon.data.alive === false
+      || !supportsNativeDropTarget()
       || Zotero.Prefs.get("extensions.zotero.zoterocitation.dragCite.enable", true) === false) return;
     this._dragEndHandler = (event: DragEvent) => {
       const items = this._dragItems;
@@ -91,11 +93,14 @@ export class ViewsDragCite {
           const row = args[1] as number;
           this._dragItems = null;
           this._dragStartedAt = 0;
+          const dragActive = this._dragEnabled();
           const selection = this.pane.itemsView.selection;
-          if (this._dragEnabled() && Number.isInteger(row) && selection
+          if (dragActive && Number.isInteger(row) && selection
             && !selection.isSelected(row)) selection.select(row);
+          const nativeResult = original.call(this.pane.itemsView, event, row);
+          if (nativeResult === false) return false;
           const items = this.pane?.getSelectedItems?.();
-          if (this._dragEnabled() && event.dataTransfer && items?.length
+          if (dragActive && event?.dataTransfer && items?.length
             && items.every((item) => item && item.deleted !== true && item.inTrash !== true
               && item.isRegularItem?.() && item.isTopLevelItem())) {
             const seenIDs = new Set<number>();
@@ -107,10 +112,12 @@ export class ViewsDragCite {
               return true;
             });
             this._dragStartedAt = Date.now();
+            // Strip plain/HTML Quick Copy payloads so Word uses CiteFlow's native field
+            // while preserving Zotero's internal drag data (e.g. zotero/item).
+            try { event.dataTransfer.clearData?.("text/html"); } catch {}
             event.dataTransfer.setData("text/plain", "");
-            return;
           }
-          return original.call(this.pane.itemsView, event, row);
+          return nativeResult;
         });
       if (typeof restore === "function") (this._patchDisposers ??= []).push(restore);
     } catch (error) {

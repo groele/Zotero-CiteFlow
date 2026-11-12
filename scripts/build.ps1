@@ -1,5 +1,6 @@
 param(
-    [string]$OutputDirectory = 'dist'
+    [string]$OutputDirectory = 'dist',
+    [switch]$SyncRootFeed
 )
 
 $ErrorActionPreference = 'Stop'
@@ -34,6 +35,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'source build failed; run npm ci to restore pinned build dependencies' }
     & node --check bootstrap.js
     if ($LASTEXITCODE -ne 0) { throw 'bootstrap.js syntax check failed' }
+    & node --check chrome/content/preferences.js
+    if ($LASTEXITCODE -ne 0) { throw 'preferences.js syntax check failed' }
     & node --check chrome/content/scripts/index.js
     if ($LASTEXITCODE -ne 0) { throw 'index.js syntax check failed' }
 
@@ -56,7 +59,8 @@ try {
                 if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
                     throw "Missing runtime file: $relativePath"
                 }
-                $entry = $archive.CreateEntry($relativePath, [System.IO.Compression.CompressionLevel]::Optimal)
+                $entryName = $relativePath -replace '\\', '/'
+                $entry = $archive.CreateEntry($entryName, [System.IO.Compression.CompressionLevel]::Optimal)
                 $entry.LastWriteTime = [DateTimeOffset]::new(2020, 1, 1, 0, 0, 0, [TimeSpan]::Zero)
                 $inputStream = [System.IO.File]::OpenRead($sourcePath)
                 $outputStream = $entry.Open()
@@ -113,6 +117,11 @@ try {
         }
     }
     $candidateFeed | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $outputPath 'update.json') -Encoding utf8NoBOM
+    $distDefaultPath = [System.IO.Path]::GetFullPath((Join-Path $projectRoot 'dist'))
+    $shouldSyncRootFeed = $SyncRootFeed -or ($outputPath -eq $distDefaultPath)
+    if ($shouldSyncRootFeed) {
+        $candidateFeed | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $projectRoot 'update.json') -Encoding utf8NoBOM
+    }
     $previousFeed = $env:CITEFLOW_UPDATE_MANIFEST
     try {
         $env:CITEFLOW_UPDATE_MANIFEST = Join-Path $outputPath 'update.json'

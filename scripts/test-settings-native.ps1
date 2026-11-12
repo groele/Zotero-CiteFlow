@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory)][string]$XpiPath,
     [string]$ZoteroExecutable = 'C:/Program Files/Zotero/zotero.exe',
     [int]$Port = 23131,
@@ -113,10 +113,10 @@ try {
     Assert-Settings ($initial.tracking -and $initial.paneRegistered) 'Tracking starts and settings register' $initial
     Assert-Settings ($initial.paneLabel -eq 'Zotero CiteFlow') 'Settings sidebar uses the full Zotero CiteFlow name' $initial
     $opened = Invoke-SettingsTest @{ action = 'open' }
-    Assert-Settings ($opened.controls.Count -eq 9 -and @($opened.controls | Where-Object { $_.width -le 0 -or $_.height -le 0 }).Count -eq 0) 'All nine native controls render with positive dimensions' $opened
-    $localized = if ($Locale -eq 'zh-CN') { $opened.text -match '功能设置' -and $opened.text -match '恢复默认设置' } else { $opened.text -match 'Features' -and $opened.text -match 'Restore defaults' }
+    Assert-Settings ($opened.controls.Count -eq 10 -and @($opened.controls | Where-Object { $_.width -le 0 -or $_.height -le 0 }).Count -eq 0) 'All ten native controls render with positive dimensions' $opened
+    $localized = if ($Locale -eq 'zh-CN') { $opened.text -match '基础服务与引用追踪' -and $opened.text -match '恢复默认设置' } else { $opened.text -match 'Core Tracking Service' -and $opened.text -match 'Restore defaults' }
     Assert-Settings $localized "$Locale Fluent labels resolve in the native pane" $opened
-    Assert-Settings ($opened.observerCount -eq 9 -and $opened.panelCount -eq 1) 'Nine preference observers and one panel mount are registered' $opened
+    Assert-Settings ($opened.observerCount -eq 10 -and $opened.panelCount -eq 1) 'Ten preference observers and one panel mount are registered' $opened
     Assert-Settings (($opened.controls | Where-Object id -eq 'zoterocitation-setting-citationTagText').value -eq '/Citations') 'Tag text box defaults to /Citations' $opened
     $tagFixtures = Invoke-SettingsTest @{ action = 'tagFixtures' }
     Assert-Settings ($tagFixtures.testTags[0] -contains '/Citations') 'Default tag saves into a real Zotero item' $tagFixtures
@@ -124,10 +124,18 @@ try {
     Assert-Settings ($custom.testTags[0] -contains '已引用' -and $custom.testTags[0] -notcontains '/Citations' -and $custom.testTags[1].Count -eq 2) 'Custom tag renames managed tags and preserves manual tags' $custom
     $tagsOff = Invoke-SettingsTest @{ action = 'change'; id = 'citationTags'; value = $false }
     Assert-Settings ($tagsOff.testTags[0].Count -eq 0 -and $tagsOff.testTags[1].Count -eq 2) 'Disabling automatic tags removes only managed tags' $tagsOff
+    Assert-Settings (($tagsOff.controls | Where-Object id -eq 'zoterocitation-setting-citationTagText').disabled) 'Disabling automatic tags disables the tag text input' $tagsOff
     $tagsOn = Invoke-SettingsTest @{ action = 'change'; id = 'citationTags'; value = $true }
-    Assert-Settings ($tagsOn.testTags[0] -contains '已引用') 'Re-enabling tags restores the custom tag' $tagsOn
+    Assert-Settings ($tagsOn.testTags[0] -contains '已引用' -and -not ($tagsOn.controls | Where-Object id -eq 'zoterocitation-setting-citationTagText').disabled) 'Re-enabling tags restores the custom tag and unlocks the tag input' $tagsOn
     $blank = Invoke-SettingsTest @{ action = 'change'; id = 'citationTagText'; value = '   ' }
     Assert-Settings ($blank.prefValues.'citationTags.text' -eq '已引用' -and $blank.status -eq 'zoterocitation-settings-invalid-tag') 'Empty tag text is rejected without losing the saved name' $blank
+    $clearedByToggle = Invoke-SettingsTest @{ action = 'change'; id = 'citationTags'; value = $false }
+    Assert-Settings ($clearedByToggle.status -eq 'zoterocitation-settings-saved') 'Disabling automatic tags clears stale invalid tag status' $clearedByToggle
+    $null = Invoke-SettingsTest @{ action = 'change'; id = 'citationTags'; value = $true }
+    $colOff = Invoke-SettingsTest @{ action = 'change'; id = 'collections'; value = $false }
+    Assert-Settings ($colOff.prefValues.'collections.enable' -eq $false) 'Collections toggle persists disabled state' $colOff
+    $colOn = Invoke-SettingsTest @{ action = 'change'; id = 'collections'; value = $true }
+    Assert-Settings ($colOn.prefValues.'collections.enable' -eq $true) 'Collections toggle persists enabled state' $colOn
     $null = Invoke-SettingsTest @{ action = 'close' }
     $null = Invoke-SettingsTest @{ action = 'open' }
     $drag = Invoke-SettingsTest @{ action = 'change'; id = 'dragCite'; value = $true }
@@ -164,11 +172,11 @@ try {
     $null = Invoke-SettingsTest @{ action = 'close' }
     $reopened = Invoke-SettingsTest @{ action = 'open' }
     Assert-Settings (($reopened.controls | Where-Object id -eq 'zoterocitation-setting-citationTagDebounceMs').value -eq '625') 'Reopening settings restores the saved value' $reopened
-    Assert-Settings ($reopened.panelCount -eq 1 -and $reopened.observerCount -eq 9) 'Reopening does not duplicate observers or panel mounts' $reopened
+    Assert-Settings ($reopened.panelCount -eq 1 -and $reopened.observerCount -eq 10) 'Reopening does not duplicate observers or panel mounts' $reopened
     $disabled = Invoke-SettingsTest @{ action = 'disable' }
     Assert-Settings (-not $disabled.paneRegistered -and $disabled.probe.remainingObservers -eq 0 -and $disabled.probe.remainingPanels -eq 0 -and $disabled.probe.remainingPatches -eq 0) 'Disabling the add-on removes its pane, observers, panels, and wrappers' $disabled
     $enabled = Invoke-SettingsTest @{ action = 'enable' }
-    Assert-Settings ($enabled.tracking -and $enabled.paneRegistered -and $enabled.observerCount -eq 9) 'Re-enabling the add-on restores one settings pane and its observers' $enabled
+    Assert-Settings ($enabled.tracking -and $enabled.paneRegistered -and $enabled.observerCount -eq 10) 'Re-enabling the add-on restores one settings pane and its observers' $enabled
     $null = Invoke-SettingsTest @{ action = 'open' }
     $off = Invoke-SettingsTest @{ action = 'change'; id = 'enable'; value = $false }
     Assert-Settings ($off.status -eq 'zoterocitation-settings-restart') 'Tracking toggle displays restart requirement' $off

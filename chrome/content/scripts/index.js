@@ -485,12 +485,17 @@
       } else if (collectionsChanged && collectionsEnabled) {
         collectionTask = (async () => {
           for (const [id, session] of Object.entries(this.sessions || {})) {
+            if (this._listenerStopped || !this._collectionsEnabled) break;
             if (!session.collection && !session.closing) {
               await this.initCollection(id, session).catch(() => {
               });
+              if (this._listenerStopped || !this._collectionsEnabled) break;
+              if (session.closing || this.sessions?.[id] !== session) continue;
               if (!Object.keys(session.idData || {}).length && Zotero.Integration?.sessions?.[id]) {
                 await this.refreshSessionCitations?.(id, Zotero.Integration.sessions[id]).catch(() => {
                 });
+                if (this._listenerStopped || !this._collectionsEnabled) break;
+                if (session.closing || this.sessions?.[id] !== session) continue;
               }
               const updatedCollection = session.collection;
               if (updatedCollection && session.idData) {
@@ -877,13 +882,24 @@
   var timers = globalThis;
   var CitationCollections = class {
     /**
-     * Purges orphan temporary collections and legacy searches without modifying user collections.
+     * Purges orphan temporary collections, legacy searches, and stale managed tags from prior sessions.
      * @returns {Promise<void>}
      */
     async clearStaleArtifacts() {
       const libraryID = Zotero.Libraries.userLibraryID;
       await this._clearStaleTemporaryCollections(libraryID);
       await this._clearStaleManagedSearches(libraryID);
+      await this._clearStaleManagedTags();
+    }
+    /**
+     * Clears persisted plugin-managed citation tags at startup when no Word integration sessions are active.
+     * @returns {Promise<void>}
+     * @private
+     */
+    async _clearStaleManagedTags() {
+      const activeSessions = Object.keys(this.sessions || {}).length > 0 || Object.keys(Zotero.Integration?.sessions || {}).length > 0;
+      if (activeSessions || !Object.keys(this._managedCitationTagIDs || {}).length || typeof this.syncCitationTags !== "function") return;
+      await this.syncCitationTags("__startup__", []);
     }
     /**
      * Purges tracked and relation-marked stale temporary citation collections.
@@ -1089,10 +1105,14 @@
       }).then(async () => {
         if (this._listenerStopped || session.closing || this.sessions?.[sessionID] !== session || docId && this._docIdBySession[sessionID] !== docId || !session.collection) return;
         const previousName = session.collection.name;
-        if (previousName === targetName) return;
+        if (previousName === targetName) {
+          this._clearCollectionRenameRetry(sessionID);
+          return;
+        }
         session.collection.name = targetName;
         try {
           await session.collection.saveTx({ skipSelect: true });
+          this._clearCollectionRenameRetry(sessionID);
           session.lastName = targetName;
           addon?.data?.views?.repositionCitationCollections?.();
         } catch (error) {
@@ -1401,6 +1421,7 @@
         docId: initialDocId,
         pending: true
       };
+      session.pending = true;
       this.sessions[sessionID] = session;
       this._invalidateSessionIndex();
       const task = (async () => {
@@ -1408,7 +1429,7 @@
           await this.initCollection(sessionID, session);
           return !this._listenerStopped && this.sessions[sessionID] === session ? session : void 0;
         } catch (error) {
-          if (this.sessions[sessionID] === session) delete this.sessions[sessionID];
+          if (!existing && this.sessions[sessionID] === session) delete this.sessions[sessionID];
           this._invalidateSessionIndex();
           throw error;
         } finally {
@@ -1918,10 +1939,10 @@
   var CitationFormatting = class {
     /** Schedules a debounced session refresh after retry delay. @private */
     _scheduleSessionRefresh(sessionID, targetSession, delayMs = 180) {
-      if (this._listenerStopped || this._refreshRetryTimerBySession[sessionID]) return;
+      if (this._listenerStopped || !this.sessions?.[sessionID] || this.sessions[sessionID].closing || this._refreshRetryTimerBySession[sessionID]) return;
       this._refreshRetryTimerBySession[sessionID] = timers4.setTimeout(() => {
         delete this._refreshRetryTimerBySession[sessionID];
-        if (this._listenerStopped || !this.sessions?.[sessionID]) return;
+        if (this._listenerStopped || !this.sessions?.[sessionID] || this.sessions[sessionID].closing) return;
         void this.refreshSessionCitations(sessionID, targetSession).catch((error) => this.logError("Failed to retry citation refresh", error));
       }, Math.max(50, delayMs));
     }
@@ -2519,24 +2540,28 @@
   var ViewsWindowPrep = class {
     async prepareWindow() {
       for (let attempt = 0; !this.pane?.itemsView && attempt < 200; attempt++) {
-        if (this._disposed || isStopped() || this.window?.closed) return;
+        if (this._disposed || isStopped() || this.window?.closed) return false;
         await Zotero.Promise.delay(50);
       }
-      if (this._disposed || isStopped() || this.window?.closed) return;
+      if (this._disposed || isStopped() || this.window?.closed) return false;
       const itemsView = this.pane?.itemsView;
-      if (!itemsView) throw new Error("Zotero item tree did not initialize");
+      if (!itemsView) {
+        Zotero?.logError?.(new Error("Zotero item tree did not initialize"));
+        return false;
+      }
       await itemsView.waitForLoad?.();
       for (let attempt = 0; Array.isArray(itemsView.collectionTreeRows) && !itemsView.collectionTreeRows.length && attempt < 200; attempt++) {
-        if (this._disposed || isStopped() || this.window?.closed) return;
+        if (this._disposed || isStopped() || this.window?.closed) return false;
         await Zotero.Promise.delay(50);
       }
       if (Array.isArray(itemsView.collectionTreeRows) && !itemsView.collectionTreeRows.length) {
-        throw new Error("Zotero item tree collection context did not initialize");
+        Zotero?.logError?.(new Error("Zotero item tree collection context did not initialize"));
+        return false;
       }
       await itemsView._ensureSortContextReady?.();
       await itemsView._refreshPromise;
-      if (this._disposed || isStopped() || this.window?.closed) return;
-      if (this._columnResetGuard || typeof itemsView._resetColumns !== "function") return;
+      if (this._disposed || isStopped() || this.window?.closed) return false;
+      if (this._columnResetGuard || typeof itemsView._resetColumns !== "function") return true;
       const restore = runtime.patch(itemsView, "_resetColumns", config.addonRef, (original) => function(...args) {
         const view = this;
         if (!view.tree) {
@@ -2554,6 +2579,7 @@
       });
       this._columnResetGuard = true;
       this._patchDisposers.push(restore);
+      return true;
     }
   };
 
@@ -2720,6 +2746,9 @@
       return { foregroundTitle: "", visibleTitles: [] };
     }
   }
+  function supportsNativeDropTarget() {
+    return typeof Zotero === "undefined" || Zotero.isWin !== false;
+  }
   function resolveWordDropTarget() {
     if (!Zotero.isWin) return "unknown";
     let processHandle;
@@ -2768,7 +2797,7 @@
      * @private
      */
     _dragEnabled() {
-      return !this._disposed && addon.data.alive !== false && Zotero.Prefs.get("extensions.zotero.zoterocitation.dragCite.enable", true) !== false;
+      return !this._disposed && addon.data.alive !== false && supportsNativeDropTarget() && Zotero.Prefs.get("extensions.zotero.zoterocitation.dragCite.enable", true) !== false;
     }
     /**
      * Probes the native process under cursor to determine if the target is Microsoft Word.
@@ -2800,7 +2829,7 @@
      * @returns {Promise<void>}
      */
     async dragCite() {
-      if (this._dragEndHandler || this._disposed || addon.data.alive === false || Zotero.Prefs.get("extensions.zotero.zoterocitation.dragCite.enable", true) === false) return;
+      if (this._dragEndHandler || this._disposed || addon.data.alive === false || !supportsNativeDropTarget() || Zotero.Prefs.get("extensions.zotero.zoterocitation.dragCite.enable", true) === false) return;
       this._dragEndHandler = (event) => {
         const items = this._dragItems;
         const startedAt = this._dragStartedAt || 0;
@@ -2828,10 +2857,13 @@
             const row = args[1];
             this._dragItems = null;
             this._dragStartedAt = 0;
+            const dragActive = this._dragEnabled();
             const selection = this.pane.itemsView.selection;
-            if (this._dragEnabled() && Number.isInteger(row) && selection && !selection.isSelected(row)) selection.select(row);
+            if (dragActive && Number.isInteger(row) && selection && !selection.isSelected(row)) selection.select(row);
+            const nativeResult = original.call(this.pane.itemsView, event, row);
+            if (nativeResult === false) return false;
             const items = this.pane?.getSelectedItems?.();
-            if (this._dragEnabled() && event.dataTransfer && items?.length && items.every((item) => item && item.deleted !== true && item.inTrash !== true && item.isRegularItem?.() && item.isTopLevelItem())) {
+            if (dragActive && event?.dataTransfer && items?.length && items.every((item) => item && item.deleted !== true && item.inTrash !== true && item.isRegularItem?.() && item.isTopLevelItem())) {
               const seenIDs = /* @__PURE__ */ new Set();
               this._dragItems = items.filter((item) => {
                 if (item.id != null) {
@@ -2841,10 +2873,13 @@
                 return true;
               });
               this._dragStartedAt = Date.now();
+              try {
+                event.dataTransfer.clearData?.("text/html");
+              } catch {
+              }
               event.dataTransfer.setData("text/plain", "");
-              return;
             }
-            return original.call(this.pane.itemsView, event, row);
+            return nativeResult;
           }
         );
         if (typeof restore === "function") (this._patchDisposers ??= []).push(restore);
@@ -3106,14 +3141,19 @@
             const maskedRows = [];
             for (const row of current._rows || []) {
               if ((row?.isCollection?.() || row?.type === "collection") && view._isCitationCollection(row?.ref)) {
+                const hasOwn = Object.prototype.hasOwnProperty.call(row, "isCollection");
+                const originalFn = row.isCollection;
                 row.isCollection = () => false;
-                maskedRows.push(row);
+                maskedRows.push({ row, hasOwn, original: originalFn });
               }
             }
             try {
               return await original.call(this, objectType, id);
             } finally {
-              for (const row of maskedRows) delete row.isCollection;
+              for (const { row, hasOwn, original: originalFn } of maskedRows) {
+                if (hasOwn) row.isCollection = originalFn;
+                else delete row.isCollection;
+              }
             }
           });
           if (typeof restoreAddSorted === "function") (this._patchDisposers ??= []).push(restoreAddSorted);
@@ -3224,6 +3264,7 @@
       const registered = await Zotero.ItemTreeManager.registerColumns({
         dataKey: key,
         label: getString(`column-${key}`),
+        enabledTreeIDs: ["main"],
         zoteroPersist: ["width", "hidden", "sortDirection"],
         dataProvider: (item) => this.getCitationText(item.id),
         renderCell: (index, data, column, isFirstColumn, doc = this.document) => {
@@ -3308,6 +3349,8 @@
   var views_default = Views;
 
   // src/modules/preferences.ts
+  var buildVersion = true ? "16.1.0" : "";
+  var buildDate = true ? "2026-11-12" : "";
   var prefix = "extensions.zotero.zoterocitation.";
   var settings = [
     { id: "enable", key: "enable", defaultValue: true },
@@ -3409,12 +3452,43 @@
         }
         win.document.l10n.setAttributes(status, this._applyFailed ? "zoterocitation-settings-apply-failed" : readSetting(settings[0]) !== this._startedEnabled ? "zoterocitation-settings-restart" : "zoterocitation-settings-saved");
       };
+      const badge = root.querySelector(".zoterocitation-version-badge");
+      if (badge && buildVersion) badge.textContent = `v${buildVersion}`;
+      const dateNode = root.querySelector(".zoterocitation-version-info time");
+      if (dateNode && buildDate) {
+        dateNode.setAttribute("datetime", buildDate);
+        dateNode.textContent = buildDate;
+      }
+      const packageLink = root.querySelector('[data-l10n-id="zoterocitation-settings-package-link"]');
+      if (packageLink && buildVersion) {
+        packageLink.setAttribute(
+          "href",
+          `https://github.com/groele/Zotero-CiteFlow/releases/download/v${buildVersion}/zotero-citeflow-${buildVersion}.xpi`
+        );
+        win.document.l10n?.setAttributes?.(packageLink, "zoterocitation-settings-package-link", { version: buildVersion });
+      }
+      const tagTextSetting = settings.find((setting) => setting.id === "citationTagText");
+      const dragSupported = supportsNativeDropTarget();
       const updateDependencies = () => {
         const tagsEnabled = root.querySelector("#zoterocitation-setting-citationTags")?.checked;
         const tagTextInput = root.querySelector("#zoterocitation-setting-citationTagText");
-        if (tagTextInput) tagTextInput.disabled = !tagsEnabled;
+        if (tagTextInput) {
+          tagTextInput.disabled = !tagsEnabled;
+          if (!tagsEnabled) {
+            tagTextInput.setCustomValidity("");
+            const hadInvalid = invalid.delete("citationTagText");
+            if (hadInvalid) {
+              tagTextInput.value = String(readSetting(tagTextSetting));
+              updateStatus();
+            }
+          }
+        }
         const tagTextRow = typeof tagTextInput?.closest === "function" ? tagTextInput.closest(".zoterocitation-number-row") : null;
         if (tagTextRow?.classList) tagTextRow.classList.toggle("is-disabled", !tagsEnabled);
+        const dragInput = root.querySelector("#zoterocitation-setting-dragCite");
+        if (dragInput) dragInput.disabled = !dragSupported;
+        const dragRow = typeof dragInput?.closest === "function" ? dragInput.closest(".zoterocitation-option") : null;
+        if (dragRow?.classList) dragRow.classList.toggle("is-disabled", !dragSupported);
       };
       const on = (node, type, handler) => {
         node.addEventListener(type, handler, { signal: controller.signal });
@@ -3514,12 +3588,13 @@
     startupPromise = (async () => {
       await Promise.all([Zotero.initializationPromise, Zotero.unlockPromise, Zotero.uiReadyPromise]);
       if (!addon.data.alive) return;
-      const mainWindow = Zotero.getMainWindow();
-      if (!mainWindow?.document) throw new Error("Zotero main window is unavailable");
-      hookGlobals.window = mainWindow;
-      hookGlobals.document = mainWindow.document;
-      hookGlobals.ZoteroPane = mainWindow.ZoteroPane;
-      hookGlobals.Zotero_Tabs = mainWindow.Zotero_Tabs;
+      const mainWindow = Zotero.getMainWindow?.() || Zotero.getMainWindows?.()?.find((w) => w?.document && !w?.closed);
+      if (mainWindow?.document) {
+        hookGlobals.window = mainWindow;
+        hookGlobals.document = mainWindow.document;
+        hookGlobals.ZoteroPane = mainWindow.ZoteroPane;
+        hookGlobals.Zotero_Tabs = mainWindow.Zotero_Tabs;
+      }
       await initLocale();
       if (!addon.data.alive) return;
       const preferences = new Preferences(applyPreferences);
@@ -3537,7 +3612,14 @@
       if (!addon.data.alive) return;
       const views = new views_default();
       addon.data.views = views;
-      for (const win of Zotero.getMainWindows?.() || [mainWindow]) await attachWindow(win);
+      const windows = Zotero.getMainWindows?.() || (mainWindow ? [mainWindow] : []);
+      for (const win of windows) {
+        try {
+          await attachWindow(win);
+        } catch (error) {
+          Zotero.logError(error);
+        }
+      }
       if (!addon.data.alive) return;
       await views.createCitationColumn();
       if (!addon.data.alive) return;
@@ -3563,8 +3645,8 @@
     windowBindings.set(win, binding);
     binding.readyPromise = (async () => {
       try {
-        await views.prepareWindow?.();
-        if (binding.closed || win.closed || !addon.data.alive) {
+        const prepared = await views.prepareWindow?.();
+        if (prepared === false || binding.closed || win.closed || !addon.data.alive) {
           await detachWindow(win);
           return;
         }
@@ -3617,7 +3699,11 @@
       hookGlobals.ZoteroPane = win.ZoteroPane;
       hookGlobals.Zotero_Tabs = win.Zotero_Tabs;
     }
-    await attachWindow(win);
+    try {
+      await attachWindow(win);
+    } catch (error) {
+      Zotero.logError(error);
+    }
   }
   async function onMainWindowUnload(win) {
     await detachWindow(win);
@@ -3708,10 +3794,23 @@
     const integration = host2.Integration;
     const getApplication = integration.getApplication;
     let wrappedGetApplication;
+    const patchedApplications = /* @__PURE__ */ new Map();
+    const restorePatchedApplications = () => {
+      for (const [application, originalGetActiveDocument] of patchedApplications) {
+        try {
+          application.getActiveDocument = originalGetActiveDocument;
+        } catch {
+        }
+      }
+      patchedApplications.clear();
+    };
     if (typeof getApplication === "function") {
       wrappedGetApplication = function(...args) {
         const application = Reflect.apply(getApplication, this, args);
         if (args[0] === "WinWord" && typeof application?.getDocument === "function" && typeof application.getActiveDocument === "function") {
+          if (!patchedApplications.has(application)) {
+            patchedApplications.set(application, application.getActiveDocument);
+          }
           application.getActiveDocument = function() {
             return this.getDocument("");
           };
@@ -3835,6 +3934,7 @@
         );
       }
     } finally {
+      restorePatchedApplications();
       if (wrappedGetApplication && integration.getApplication === wrappedGetApplication) {
         integration.getApplication = getApplication;
       }

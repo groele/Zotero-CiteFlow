@@ -33,7 +33,12 @@ test('drag citation applies live independently of column visibility, without dup
   const column = { dataKey: 'citation', hidden: false };
   const items = [{ id: 7, isRegularItem: () => true, isTopLevelItem: () => true }];
   const win = { screenX: 0, screenY: 0, outerWidth: 800, outerHeight: 600,
-    ZoteroPane: { getSelectedItems: () => items, itemsView: { onDragStart() { nativeStarts++; }, getColumns: () => [column] } },
+    ZoteroPane: { getSelectedItems: () => items, itemsView: { onDragStart(event) {
+      nativeStarts++;
+      event.dataTransfer?.setData?.('zotero/item', '7');
+      event.dataTransfer?.setData?.('text/html', '<b>Ref</b>');
+      event.dataTransfer?.setData?.('text/plain', 'Native Quick Copy');
+    }, getColumns: () => [column] } },
     document: { addEventListener(type, fn) { handlers.set(type, fn); }, removeEventListener(type) { handlers.delete(type); } } };
   const original = win.ZoteroPane.itemsView.onDragStart;
   const context = vm.createContext({ runtime, config: { addonID: 'citeflow@groele', addonRef: 'zoterocitation' },
@@ -45,12 +50,28 @@ test('drag citation applies live independently of column visibility, without dup
   await view.dragCite(); assert.equal(handlers.size, 0);
   prefs.set(prefix + 'dragCite.enable', true); await view.dragCite(); await view.dragCite();
   assert.equal(runtime.pendingPatchCount, 1); assert.equal(handlers.size, 1);
-  const startDrag = (row = 0) => { const data = []; win.ZoteroPane.itemsView.onDragStart({ dataTransfer: { setData: (...args) => data.push(args) } }, row); return data; };
+  const startDrag = (row = 0) => {
+    const store = new Map();
+    const calls = [];
+    win.ZoteroPane.itemsView.onDragStart({ dataTransfer: {
+      setData: (type, value) => { store.set(type, value); calls.push([type, value]); },
+      clearData: (type) => store.delete(type),
+      getData: (type) => store.get(type)
+    } }, row);
+    return { store, calls };
+  };
   const drop = extra => handlers.get('dragend')({ screenX: 900, screenY: 700, dataTransfer: { dropEffect: 'copy' }, ...extra });
-  assert.equal(startDrag()[0][1], ''); drop({}); assert.equal(cites, 1);
+  const firstDrag = startDrag();
+  assert.equal(firstDrag.store.get('zotero/item'), '7', 'native internal drag payload must be preserved for collection/trash drags');
+  assert.equal(firstDrag.store.has('text/html'), false, 'HTML bibliography payload must be cleared during Word drag');
+  assert.equal(firstDrag.store.get('text/plain'), '', 'plain-text bibliography must be suppressed during Word drag');
+  assert.equal(nativeStarts, 1, 'native onDragStart runs even when CiteFlow drag is active');
+  drop({}); assert.equal(cites, 1);
   startDrag(); prefs.set(prefix + 'dragCite.enable', false); drop({}); assert.equal(cites, 1);
-  startDrag(); assert.equal(nativeStarts, 1);
-  prefs.set(prefix + 'dragCite.enable', true); column.hidden = true; startDrag(); assert.equal(nativeStarts, 1);
+  const disabledDrag = startDrag();
+  assert.equal(disabledDrag.store.get('text/plain'), 'Native Quick Copy', 'disabled dragCite keeps native Quick Copy text');
+  assert.equal(nativeStarts, 3);
+  prefs.set(prefix + 'dragCite.enable', true); column.hidden = true; startDrag(); assert.equal(nativeStarts, 4);
   win.ZoteroPane.itemsView.getColumns = () => [];
   startDrag(); drop({}); assert.equal(cites, 2, 'drag works without a registered or visible citation column');
   cites = 1;
@@ -73,6 +94,41 @@ test('drag citation applies live independently of column visibility, without dup
   assert.equal(citedItemID, 8, 'the inserted citation matches the row under the pointer');
   await view.dispose(); assert.equal(handlers.size, 0); assert.equal(runtime.pendingPatchCount, 0);
   assert.equal(win.ZoteroPane.itemsView.onDragStart, original);
+});
+
+test('macOS and Linux keep native Quick Copy drag untouched without attaching CiteFlow handlers', async () => {
+  const { NativeRuntime } = await import('../src/runtime.ts'); const runtime = new NativeRuntime();
+  const prefs = new Map([[prefix + 'dragCite.enable', true]]); const handlers = new Map(); let nativeStarts = 0, cites = 0;
+  const items = [{ id: 7, isRegularItem: () => true, isTopLevelItem: () => true }];
+  const win = { screenX: 0, screenY: 0, outerWidth: 800, outerHeight: 600,
+    ZoteroPane: { getSelectedItems: () => items, itemsView: { onDragStart(event) {
+      nativeStarts++;
+      event.dataTransfer?.setData?.('zotero/item', '7');
+      event.dataTransfer?.setData?.('text/html', '<b>Ref</b>');
+      event.dataTransfer?.setData?.('text/plain', 'Native Quick Copy');
+    }, getColumns: () => [{ dataKey: 'citation', hidden: false }] } },
+    document: { addEventListener(type, fn) { handlers.set(type, fn); }, removeEventListener(type) { handlers.delete(type); } } };
+  const original = win.ZoteroPane.itemsView.onDragStart;
+  const context = vm.createContext({ runtime, config: { addonID: 'citeflow@groele', addonRef: 'zoterocitation' },
+    addon: { data: { alive: true }, api: { citeItems: async () => { cites++; } } },
+    Zotero: { isWin: false, Prefs: { get: key => prefs.get(key) }, logError() {}, ItemTreeManager: {} } });
+  const Views = extractClass(context, 'Views', '\n  };\n  var views_default'); const view = new Views(win);
+  await view.dragCite();
+  assert.equal(runtime.pendingPatchCount, 0, 'non-Windows platforms do not install CiteFlow drag wrappers');
+  assert.equal(handlers.size, 0, 'non-Windows platforms do not register Word dragend listeners');
+  assert.equal(win.ZoteroPane.itemsView.onDragStart, original);
+  const store = new Map();
+  win.ZoteroPane.itemsView.onDragStart({ dataTransfer: {
+    setData: (type, value) => store.set(type, value),
+    clearData: (type) => store.delete(type),
+    getData: (type) => store.get(type)
+  } }, 0);
+  assert.equal(nativeStarts, 1);
+  assert.equal(store.get('zotero/item'), '7');
+  assert.equal(store.get('text/html'), '<b>Ref</b>');
+  assert.equal(store.get('text/plain'), 'Native Quick Copy');
+  assert.equal(cites, 0);
+  await view.dispose();
 });
 
 test('window preparation waits for collection context and safely refreshes an empty library', async () => {

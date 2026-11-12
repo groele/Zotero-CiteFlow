@@ -1,9 +1,13 @@
 param(
-    [string]$XpiPath = 'dist/candidate-v10/zotero-citeflow-10.0.0.xpi',
+    [string]$XpiPath = '',
     [int]$Port = 23129
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
+if (-not $XpiPath) {
+    $manifest = Get-Content -LiteralPath (Join-Path $projectRoot 'manifest.json') -Raw | ConvertFrom-Json
+    $XpiPath = "dist/zotero-citeflow-$($manifest.version).xpi"
+}
 $testRoot = Join-Path $projectRoot ('dist/native-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
 $profile = Join-Path $testRoot 'profile'
 $data = Join-Path $testRoot 'data'

@@ -59,7 +59,10 @@ test('citation insertion preserves the validated native Word field behavior apar
   const adapterEnd = current.indexOf('  const patchedCite =', adapterStart);
   assert.ok(adapterStart > 0 && adapterEnd > adapterStart);
   current = current.slice(0, adapterStart) + current.slice(adapterEnd);
-  current = current.replace('    if (wrappedGetApplication && integration.getApplication === wrappedGetApplication) {\n      integration.getApplication = getApplication;\n    }\n', '')
+  assert.ok(current.includes('    restorePatchedApplications();\n'), 'cite.ts must restore patched application instances in finally');
+  current = current
+    .replace('    restorePatchedApplications();\n', '')
+    .replace('    if (wrappedGetApplication && integration.getApplication === wrappedGetApplication) {\n      integration.getApplication = getApplication;\n    }\n', '')
     .replace(/\nexport \{ citeItems \};\n?$/, '').trim();
   const expected = fs.readFileSync(path.join(__dirname, 'fixtures/citation-reference.sha256'), 'utf8').trim();
   assert.equal(crypto.createHash('sha256').update(current).digest('hex'), expected,

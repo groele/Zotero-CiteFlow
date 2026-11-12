@@ -1,11 +1,24 @@
 {
   "policy": "freeze-and-shrink",
   "maxSourceLines": 360,
-  "capturedAt": "2026-11-06",
+  "capturedAt": "2026-11-12",
   "debtCleared": true,
   "note": "Known §5.9 debt. Listed files may stay at or below the recorded line count, but must never grow; any other source file above 360 lines fails the guard. Remove an entry only after splitting that module below 360 lines. Every entry must still exist and must still exceed the ceiling - stale entries are rejected by the baseline integrity test.",
-  "lastReleasedVersion": "16.0.0",
+  "lastReleasedVersion": "16.1.0",
   "splitHistory": [
+    {
+      "version": "16.1.0",
+      "date": "2026-11-12",
+      "resolved": [
+        "Fixed Compact Journal Reference CSL rendering (citation-number, title, container-title, DOI, thesis genre, volume(issue))",
+        "Preserved native Zotero onDragStart drag payloads alongside Word drag-to-cite, and cleanly scoped drag confirmation to Windows",
+        "Removed ItemTreeManager defaultIn/disabledIn deprecation warnings via enabledTreeIDs: ['main']",
+        "Restored Word Integration getApplication getActiveDocument cleanly and hardened window-prep/startup degradation",
+        "Added startup cleanup of orphaned managed citation tags after APP_SHUTDOWN and reset rename retry counters on success",
+        "Preserved own isCollection descriptors on sorted rows, guarded async pref/session refresh flows across shutdown/close, hardened ensureSession re-init, and added build/FTL checks",
+        "Added build-time __buildVersion__/__buildDate__ Fluent bindings and synchronized update.json SHA-512 feed generation"
+      ]
+    },
     {
       "version": "16.0.0",
       "date": "2026-11-06",

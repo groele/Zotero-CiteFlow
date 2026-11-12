@@ -8,7 +8,7 @@
 
 [简体中文](README.md) · [English](README.en.md)
 
-[![当前版本](https://img.shields.io/badge/version-16.0.0-245ac7?style=flat-square)](https://github.com/groele/Zotero-CiteFlow/releases/tag/v16.0.0) · [下载 XPI](https://github.com/groele/Zotero-CiteFlow/releases/download/v16.0.0/zotero-citeflow-16.0.0.xpi) · [问题反馈](https://github.com/groele/Zotero-CiteFlow/issues)
+[![当前版本](https://img.shields.io/badge/version-16.1.0-245ac7?style=flat-square)](https://github.com/groele/Zotero-CiteFlow/releases/tag/v16.1.0) · [下载 XPI](https://github.com/groele/Zotero-CiteFlow/releases/download/v16.1.0/zotero-citeflow-16.1.0.xpi) · [问题反馈](https://github.com/groele/Zotero-CiteFlow/issues)
 
 [产品定位](#overview) · [安装与更新](#installation) · [快速开始](#quick-start) · [核心功能](#features) · [CSL 引用格式参考案例](#csl-example) · [设置与使用](#settings) · [数据、同步与外部服务](#data) · [兼容性与验证范围](#compatibility) · [常见问题](#troubleshooting) · [开发与详细文档](#development) · [系列产品](#series) · [项目来源与许可](#license)
 
@@ -24,7 +24,7 @@
 
 ## 安装与更新
 
-1. 下载 [zotero-citeflow-16.0.0.xpi](https://github.com/groele/Zotero-CiteFlow/releases/download/v16.0.0/zotero-citeflow-16.0.0.xpi)（插件版本 **16.0.0**），不要安装 Source code ZIP.
+1. 下载 [zotero-citeflow-16.1.0.xpi](https://github.com/groele/Zotero-CiteFlow/releases/download/v16.1.0/zotero-citeflow-16.1.0.xpi)（插件版本 **16.1.0**），不要安装 Source code ZIP.
 2. 在 Zotero 打开 **工具 → 插件／附加组件**，从齿轮菜单选择 **从文件安装插件**。
 3. 选择 XPI，完成安装；按提示重启 Zotero。
 
@@ -47,7 +47,7 @@
 | 特色能力 | 能解决什么问题 | 实际边界 |
 |---|---|---|
 | Word 引文状态回看 | 在 Zotero 条目列表中呈现已识别的 Word 引文信息，帮助写作时回看条目是否已被引用。 | 状态来自插件可识别的 Word/Zotero 引文链路，不把未识别结果判定为“从未引用”。 |
-| 可编辑引文拖放 | 将条目拖入 Microsoft Word 时沿用 Zotero 集成，插入可继续编辑的 Zotero 引文域，而非普通文本。 | 仅对明确的 Word 目标生效；不会改写既有 Word 引文域，也不承诺向其他应用插入。 |
+| 可编辑引文拖放 | 将条目拖入 Microsoft Word 时沿用 Zotero 集成，插入可继续编辑的 Zotero 引文域，而非普通文本。 | 仅在 Windows 下对经原生目标探测确认的 Word 目标生效（保留 `zotero/item` 以维持分类/废纸篓移动）；macOS/Linux 自动保留 Zotero 原生拖拽与快速复制；不会改写既有 Word 引文域。 |
 | 可控的引用标签与只读保护 | 用插件拥有的标签标记引用关系；改标签文字或关闭时只处理插件自身标签，且严格受 `item.isEditable()` 保护，避免在只读群组库与回收站中非法写入。 | 关闭或改名时只处理插件可确认拥有的标签；只读条目保留所有权记录但不脏写。 |
 | 分层治理架构 | 彻底清理堆砌代码，对全量函数划分 11 大职责领域分门别类治理，消灭死代码，提升可维护性与运行稳定性。 | 各领域职责清晰、边界严格，对外接口保持完全向前兼容。 |
 | 三级 40px 黄金对齐基准设置面板 | 遵循 Zotero Flow 统一设置面板规范，16px 边距、二级文字与三级从属项严格对齐于 40px 垂直基准线，支持 Fluent 100% 国际化与键盘无障碍访问。 | 面板完全基于现代 Web/XUL 盒模型构建，无缝适配深色/浅色与高对比度主题。 |
@@ -98,7 +98,7 @@
 
 在 **Zotero → 设置 → Zotero CiteFlow** 中查看插件偏好页。
 
-引用追踪开关需要重启 Zotero；拖拽、引用标签文字和延迟参数分别配置。恢复默认值只重置插件的九项设置。
+引用追踪开关需要重启 Zotero；拖拽、临时文集、引用标签文字和延迟参数分别配置。恢复默认值只重置插件的十项设置。
 
 <a id="data"></a>
 
@@ -113,9 +113,9 @@
 
 | 项目 | 范围 |
 |---|---|
-| 当前插件版本 | 16.0.0 |
+| 当前插件版本 | 16.1.0 |
 | 清单声明的 Zotero 范围 | `10.0` 至 `12.*` |
-| 当前说明 | 16.0.0 达成全仓 360 行硬约束（0 债务），建立涵盖 13 项硬约束的 architecture-guard 自动化守护套件，重构设置面板为五大业务流转模块卡片，严格落实 14px 字号基准与 40px 黄金垂直对齐线，新增临时文集独立开关与开关联动禁用防护。 |
+| 当前说明 | 16.1.0 在 16.0.0 全仓 360 行零债务与 13 项 architecture-guard 基础上，修复 Zotero 10+ `itemsView` 原生拖拽保留、非 Windows 平台快速复制免误伤、引用列现代 `enabledTreeIDs` 声明、启动容错、WinWord `application` 包装恢复、启动清理孤立托管标签、排序行自有 `isCollection` 描述符恢复、异步设置同步与格式化定时器关闭竞态保护、`ensureSession` 既有会话重初始化状态兜底、动态版本注入、CSL 模板缺陷与确定性 ZIP/语法检查/更新源校验。 |
 
 插件版本与 Zotero 版本分别管理。兼容声明不等于已验证所有宿主、系统和外部服务；本轮仅验证上述定向行为，未覆盖所有业务流程或主环境安装。
 
@@ -142,6 +142,7 @@ npm run package
 - [技术与维护指南 / Technical guide](CORE-TECHNICAL-MAINTENANCE.md)
 - [第三方声明 / Third-party notices](THIRD_PARTY.md)
 - [版本说明 / Release notes](RELEASE_NOTES.md)
+- [v16.1.0 阶段说明 / Milestone notes](docs/releases/v16.1.0.md)
 - [v16.0.0 阶段说明 / Milestone notes](docs/releases/v16.0.0.md)
 - [v13.0.9 阶段说明 / Milestone notes](docs/releases/v13.0.9.md)
 - [v13.0.8 阶段说明 / Milestone notes](docs/releases/v13.0.8.md)

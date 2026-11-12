@@ -73,3 +73,15 @@ test('both locale files define the citation column title', () => {
     assert.match(ftl, /^zoterocitation-column-citation\s*=/m, locale);
   }
 });
+
+test('bundled compact-journal-reference CSL has valid metadata and non-empty text fields', () => {
+  const csl = fs.readFileSync(path.join(root, 'csl/compact-journal-reference.csl'), 'utf8');
+  const published = csl.match(/<published>([^<]+)<\/published>/)?.[1];
+  assert.match(published || '', /^\d{4}-\d{2}-\d{2}T/, 'CSL <published> must be an ISO-8601 timestamp');
+  const emptyTextTags = [...csl.matchAll(/<text\b([^>]*)\/?>/g)].filter(([, attrs]) =>
+    !/\b(?:variable|macro|term|value)=/.test(attrs)
+  );
+  assert.equal(emptyTextTags.length, 0, `empty CSL <text> tags without source attribute: ${emptyTextTags.map(m => m[0]).join(', ')}`);
+  assert.match(csl, /<if variable="DOI" match="any">\s*<text variable="DOI"/);
+  assert.doesNotMatch(csl, /<if variable="DOI"[^>]*>\s*<text variable="status"/);
+});

@@ -30,6 +30,10 @@ const checks = `
   const view = Object.create(Views.prototype);
   view._disposed = false;
   await view.createCitationColumn();
+  assert.deepEqual([...registeredOptions.enabledTreeIDs], ["main"],
+    "citation column uses Zotero 10+ enabledTreeIDs without deprecated props");
+  assert.equal("defaultIn" in registeredOptions, false, "deprecated defaultIn must not be passed");
+  assert.equal("disabledIn" in registeredOptions, false, "deprecated disabledIn must not be passed");
   assert.equal(registeredOptions.dataProvider({ id: 7 }, "citation"), "1: A",
     "duplicate selection entries must not create false ambiguity");
   sandbox.ZoteroPane.itemsView.getColumns = () => [

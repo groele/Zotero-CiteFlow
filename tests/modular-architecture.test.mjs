@@ -945,3 +945,137 @@ test("v13.2.1 execution logic: initCollection mid-flight abort, foreground title
   assert.match(css, /\.zoterocitation-number-row\s*\{[\s\S]*?margin-inline-start:\s*0;/);
   assert.match(css, /\.zoterocitation-number-row\.zoterocitation-subordinate-row\s*\{[\s\S]*?margin-inline-start:\s*24px;/);
 });
+
+test("v16.1.0 round-2 edge cases: icon-patch own isCollection restore, preferences-sync mid-flight abort, formatting post-close timer guard, and word-integration existing session preservation", async () => {
+  const prevZotero = globalThis.Zotero;
+  const prevAddon = globalThis.addon;
+  const prevRuntime = globalThis.runtime;
+  try {
+    // 1. ViewsIconPatch._addSortedRow restores own isCollection instead of deleting it, while removing prototype shadow masks
+    const { ViewsIconPatch } = await import("../src/modules/views/icon-patch.ts");
+    const protoRow = Object.create({ isCollection() { return true; } });
+    protoRow.ref = { _isCiteFlowCollection: true, key: "PROTO_CITE" };
+    const ownIsCollection = function() { return true; };
+    const ownRow = { isCollection: ownIsCollection, ref: { _isCiteFlowCollection: true, key: "OWN_CITE" } };
+    const normalRow = { isCollection() { return true; }, ref: { key: "REGULAR" } };
+    let maskedDuringOriginal = null;
+    const cv = {
+      _rows: [protoRow, ownRow, normalRow],
+      getRow: (i) => cv._rows[i],
+      renderItem: () => null,
+      _addSortedRow: async () => {
+        maskedDuringOriginal = [protoRow.isCollection(), ownRow.isCollection(), normalRow.isCollection()];
+        return true;
+      }
+    };
+    globalThis.Zotero = { Collections: { get: () => ({ id: 999, key: "REGULAR" }) } };
+    globalThis.addon = { data: { alive: true } };
+    globalThis.runtime = {
+      log() {},
+      patch(owner, key, _name, create) {
+        const prev = owner[key];
+        owner[key] = create(prev);
+        return () => { owner[key] = prev; };
+      }
+    };
+    const iconView = Object.create(ViewsIconPatch.prototype);
+    iconView._disposed = false;
+    iconView._patchDisposers = [];
+    iconView.pane = { collectionsView: cv };
+    iconView.repositionCitationCollections = () => true;
+    await iconView.patchIcon();
+    await cv._addSortedRow("collection", 999);
+    assert.deepEqual(maskedDuringOriginal, [false, false, true], "Only CiteFlow citation rows should be masked during _addSortedRow");
+    assert.equal(Object.hasOwn(protoRow, "isCollection"), false, "Prototype-inherited row must have temporary own shadow removed");
+    assert.equal(protoRow.isCollection(), true);
+    assert.equal(Object.hasOwn(ownRow, "isCollection"), true, "Row with own isCollection must retain own property");
+    assert.equal(ownRow.isCollection, ownIsCollection, "Own isCollection method must be restored verbatim");
+    assert.equal(ownRow.isCollection(), true);
+
+    // 2. preferences-sync aborts cleanly mid-flight if collections toggle OFF or session closes during await initCollection
+    const { CitationPreferences } = await import("../src/modules/citation/preferences-sync.ts");
+    const p = Object.create(CitationPreferences.prototype);
+    p.logError = () => {};
+    p._getCitationTagName = () => "/Citations";
+    p._getBoolPref = () => false;
+    p._getClampedIntPref = (_k, def) => def;
+    p._invalidateSessionIndex = () => {};
+    p._listenerStopped = false;
+    p._collectionsEnabled = false;
+    let prefColsEnabled = true;
+    let initCalls = [];
+    let syncedSessions = [];
+    p.sessions = {
+      S1: { closing: false, idData: { "10": {} } },
+      S2: { closing: false, idData: { "20": {} } }
+    };
+    globalThis.Zotero = {
+      Prefs: { get: (k) => (k.endsWith("collections.enable") ? prefColsEnabled : true) },
+      Integration: { sessions: { S1: {}, S2: {} } },
+      Libraries: { userLibraryID: 1 }
+    };
+    p.initCollection = async (id, s) => {
+      initCalls.push(id);
+      s.collection = { key: `K_${id}` };
+      prefColsEnabled = false;
+      p._collectionsEnabled = false;
+    };
+    p.refreshSessionCitations = async () => { syncedSessions.push("refresh"); };
+    p.syncCollectionItems = async (s) => { syncedSessions.push(s.collection?.key); };
+    await p.applyPreferences();
+    assert.deepEqual(initCalls, ["S1"], "Toggle off mid-flight must stop loop before initializing S2");
+    assert.deepEqual(syncedSessions, [], "Toggle off mid-flight must not invoke post-init sync on S1");
+
+    // 3. formatting._scheduleSessionRefresh & _refreshSessionCitations ignore closed/removed sessions
+    const c = Object.create(Citation.prototype);
+    c._initSessionTracking();
+    c._resetInternalTrackingMaps();
+    c._minRefreshInterval = 50;
+    c.logError = () => {};
+    c.debugLog = () => {};
+    c._recordPerf = () => {};
+    c._bumpDebugCounter = () => {};
+    c._saveManagedTagIDs = () => true;
+    c.scheduleCitationTagSync = () => {};
+    c.updateCitations = async () => {};
+    c.sessions.S_CLOSED = { closing: true, idData: {} };
+    c._scheduleSessionRefresh("S_CLOSED", {}, 100);
+    assert.equal(c._refreshRetryTimerBySession.S_CLOSED, undefined, "Closing session must never schedule a retry timer");
+    const nativeTarget = { styleClass: "in-text" };
+    c.sessions.S_RACE = { closing: false, idData: {} };
+    let resolveRead;
+    c._readSessionCitationSnapshots = () => new Promise(r => { resolveRead = r; });
+    const inFlightRefresh = c.refreshSessionCitations("S_RACE", nativeTarget);
+    await new Promise(r => setImmediate(r));
+    await c.refreshSessionCitations("S_RACE", nativeTarget); // sets refreshState.pending = true
+    c.sessions.S_RACE.closing = true;
+    delete c.sessions.S_RACE;
+    resolveRead({ citationsByItemID: {}, citationsByIndex: {}, transientMismatch: false });
+    await inFlightRefresh;
+    assert.equal(c._refreshRetryTimerBySession.S_RACE, undefined, "Pending refresh must not schedule a timer after session close");
+
+    // 4. ensureSession sets pending=true on existing session and preserves existing idData when initCollection fails
+    const existingSession = { idData: { "42": { plainCitation: "1: Keep" } }, pending: false };
+    c.sessions = { S_EXIST: existingSession };
+    c._listenerStopped = false;
+    c._invalidateSessionIndex = () => {};
+    c._getPendingCollectionName = () => "Pending";
+    c._getDocumentDisplayName = () => "";
+    c._extractSessionDocumentId = () => undefined;
+    let observedPendingDuringInit = false;
+    c.initCollection = async (_id, s) => {
+      observedPendingDuringInit = s.pending === true;
+      throw new Error("db locked");
+    };
+    globalThis.Zotero = { Prefs: { get: () => true }, Integration: { sessions: { S_EXIST: {} } } };
+    await assert.rejects(c.ensureSession("S_EXIST", { styleClass: "in-text" }), /db locked/);
+    assert.equal(observedPendingDuringInit, true, "Existing session entering initCollection must mark pending=true");
+    assert.equal(c.sessions.S_EXIST, existingSession, "Existing session object must remain tracked after transient collection init failure");
+    assert.equal(c.sessions.S_EXIST.idData["42"]?.plainCitation, "1: Keep");
+    assert.equal(c.sessions.S_EXIST.pending, false, "pending flag must clear in finally");
+  } finally {
+    if (prevZotero === undefined) delete globalThis.Zotero; else globalThis.Zotero = prevZotero;
+    if (prevAddon === undefined) delete globalThis.addon; else globalThis.addon = prevAddon;
+    if (prevRuntime === undefined) delete globalThis.runtime; else globalThis.runtime = prevRuntime;
+  }
+});

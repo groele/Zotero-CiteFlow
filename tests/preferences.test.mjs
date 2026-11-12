@@ -272,3 +272,48 @@ test('external pane loader initializes after fragment insertion and releases its
   assert.equal(listeners.size, 0);
   prefs.dispose();
 });
+
+test('disabling citationTags clears invalid custom tag status and restores saved value', async () => {
+  const f = fixture();
+  const prefs = new Preferences(() => {});
+  await prefs.register();
+  prefs.init(f.win);
+  const enableTags = f.nodes.get('#zoterocitation-setting-citationTags');
+  const tagText = f.nodes.get('#zoterocitation-setting-citationTagText');
+  const status = f.nodes.get('#zoterocitation-settings-status');
+
+  tagText.value = '  已保存标签  ';
+  tagText.dispatch('change');
+  assert.equal(f.store.get(prefix + 'citationTags.text'), '已保存标签');
+
+  tagText.value = '   ';
+  tagText.dispatch('change');
+  assert.equal(status.l10nID, 'zoterocitation-settings-invalid-tag');
+
+  enableTags.checked = false;
+  enableTags.dispatch('change');
+  await prefs.settled;
+  assert.equal(tagText.disabled, true);
+  assert.equal(tagText.value, '已保存标签');
+  assert.notEqual(status.l10nID, 'zoterocitation-settings-invalid-tag');
+  prefs.dispose();
+});
+
+test('non-Windows platforms disable the Windows-only Word drag-cite setting control', async () => {
+  const f = fixture();
+  const prevIsWin = Zotero.isWin;
+  Zotero.isWin = false;
+  try {
+    const prefs = new Preferences(() => {});
+    await prefs.register();
+    prefs.init(f.win);
+    const dragCite = f.nodes.get('#zoterocitation-setting-dragCite');
+    assert.equal(dragCite.disabled, true);
+    Zotero.Prefs.set(prefix + 'dragCite.enable', true, true);
+    assert.equal(dragCite.disabled, true);
+    prefs.dispose();
+  } finally {
+    if (prevIsWin === undefined) delete Zotero.isWin;
+    else Zotero.isWin = prevIsWin;
+  }
+});

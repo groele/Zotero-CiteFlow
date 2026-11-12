@@ -88,7 +88,7 @@ async function waitForZotero() {
             onOpenWindow: function (aWindow) {
                 let domWindow = aWindow
                     .QueryInterface(Ci.nsIInterfaceRequestor)
-                    .getInterface(Ci.nsIDOMWindowInternal || Ci.nsIDOMWindow);
+                    .getInterface(Ci.nsIDOMWindow);
                 attachLoad(domWindow);
             },
         };
@@ -199,7 +199,7 @@ async function shutdown({ id, version, resourceURI, rootURI }, reason) {
     }
     try {
         const scriptRootURI = rootURI || resourceURI?.spec;
-        if (scriptRootURI) {
+        if (scriptRootURI && typeof Cu?.unload === "function") {
             Cu.unload(`${scriptRootURI.endsWith("/") ? scriptRootURI : scriptRootURI + "/"}chrome/content/scripts/index.js`);
         }
     } catch (error) {
