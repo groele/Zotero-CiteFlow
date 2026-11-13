@@ -3939,7 +3939,7 @@
   var views_default = Views;
 
   // src/modules/preferences.ts
-  var buildVersion = true ? "16.3.0" : "";
+  var buildVersion = true ? "16.3.1" : "";
   var buildDate = true ? "2026-11-12" : "";
   var prefix = "extensions.zotero.zoterocitation.";
   var settings = [
