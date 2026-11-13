@@ -4,10 +4,10 @@
   "capturedAt": "2026-11-12",
   "debtCleared": true,
   "note": "Known §5.9 debt. Listed files may stay at or below the recorded line count, but must never grow; any other source file above 360 lines fails the guard. Remove an entry only after splitting that module below 360 lines. Every entry must still exist and must still exceed the ceiling - stale entries are rejected by the baseline integrity test.",
-  "lastReleasedVersion": "16.2.1",
+  "lastReleasedVersion": "16.2.2",
   "splitHistory": [
     {
-      "version": "16.2.1",
+      "version": "16.2.2",
       "date": "2026-11-12",
       "resolved": [
         "Deferred session refresh fingerprint commit until both debounced tag sync and ItemTree view invalidation succeed cleanly, with automatic retry on failure (sync-state-helpers.ts)",

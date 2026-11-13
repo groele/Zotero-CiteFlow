@@ -1968,6 +1968,7 @@
       if (this._tagSyncTimerBySession[sessionID]) return;
       this._tagSyncTimerBySession[sessionID] = timers4.setTimeout(() => {
         delete this._tagSyncTimerBySession[sessionID];
+        if (this._listenerStopped) return;
         const pendingIDs = this._pendingTagSyncIDsBySession[sessionID];
         if (!pendingIDs || this._tagSyncInFlightBySession[sessionID]) return;
         delete this._pendingTagSyncIDsBySession[sessionID];
@@ -2949,6 +2950,9 @@
       if (Number.isSafeInteger(revision) && this._index?.sessions === sessions && this._index.revision === revision) {
         return this._index;
       }
+      if (this._index?.sessions === sessions && this._index.byKey.size === 0 && this._index.byItem.size === 0 && Object.keys(sessions).length === 0) {
+        return this._index;
+      }
       const index = { sessions, revision, byKey: /* @__PURE__ */ new Map(), byItem: /* @__PURE__ */ new Map() };
       for (const session of Object.values(sessions)) {
         if (!session || session.closing) continue;
@@ -3008,6 +3012,8 @@
         const host2 = Zotero;
         const api = host2.ZoteroCitation?.api || {};
         const index = this._getSessionIndex(api);
+        const itemSessions = index.byItem.get(numericID);
+        if (!itemSessions || itemSessions.length === 0) return "";
         const wordSessions = this._resolveSelectedCollectionSessions(index);
         if (wordSessions.size) {
           const matches2 = [...wordSessions].filter((session) => session.idData?.[numericID] || session.idData?.[itemID]);
@@ -3652,24 +3658,31 @@
         if (!cv) return;
         const restoreRender = runtime.patch(cv, "renderItem", config.addonRef, (original) => (...args) => {
           const [index, selection, oldDiv, columns] = args;
-          const previousIcon = oldDiv?.querySelector(".cell-icon");
-          if (previousIcon) {
-            view._restoreIconNode(previousIcon);
-            view._iconNodeStates?.delete(previousIcon);
+          if (view._iconNodeStates?.size) {
+            const previousIcon = oldDiv?.querySelector(".cell-icon");
+            if (previousIcon && view._iconNodeStates.has(previousIcon)) {
+              view._restoreIconNode(previousIcon);
+              view._iconNodeStates.delete(previousIcon);
+            }
           }
           const div = original.call(cv, index, selection, oldDiv, columns);
           if (view._disposed || addon.data.alive === false) return div;
           const row = cv.getRow(index);
-          const isCitationCollection = view._isCitationCollection(row?.ref);
-          const iconNode = div?.querySelector(".cell-icon");
-          if (iconNode && isCitationCollection) {
-            view._rememberIconNode(iconNode);
-            iconNode.style.backgroundImage = `url(chrome://${config.addonRef}/content/icons/word.png)`;
-            iconNode.classList.remove("icon-search", "icon-collection");
-            iconNode.classList.add("icon-publications");
-          } else if (iconNode) {
-            view._restoreIconNode(iconNode);
-            view._iconNodeStates?.delete(iconNode);
+          const isCitationCollection = Boolean(row?.isCollection?.() || row?.type === "collection") && view._isCitationCollection(row?.ref);
+          if (isCitationCollection) {
+            const iconNode = div?.querySelector(".cell-icon");
+            if (iconNode) {
+              view._rememberIconNode(iconNode);
+              iconNode.style.backgroundImage = `url(chrome://${config.addonRef}/content/icons/word.png)`;
+              iconNode.classList.remove("icon-search", "icon-collection");
+              iconNode.classList.add("icon-publications");
+            }
+          } else if (view._iconNodeStates?.size) {
+            const iconNode = div?.querySelector(".cell-icon");
+            if (iconNode && view._iconNodeStates.has(iconNode)) {
+              view._restoreIconNode(iconNode);
+              view._iconNodeStates.delete(iconNode);
+            }
           }
           return div;
         });
@@ -3912,7 +3925,7 @@
   var views_default = Views;
 
   // src/modules/preferences.ts
-  var buildVersion = true ? "16.2.1" : "";
+  var buildVersion = true ? "16.2.2" : "";
   var buildDate = true ? "2026-11-12" : "";
   var prefix = "extensions.zotero.zoterocitation.";
   var settings = [

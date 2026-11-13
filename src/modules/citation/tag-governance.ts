@@ -49,6 +49,7 @@ export class CitationTagGovernance {
 
     this._tagSyncTimerBySession[sessionID] = timers.setTimeout(() => {
       delete this._tagSyncTimerBySession[sessionID];
+      if (this._listenerStopped) return;
       const pendingIDs = this._pendingTagSyncIDsBySession[sessionID];
       if (!pendingIDs || this._tagSyncInFlightBySession[sessionID]) return;
       delete this._pendingTagSyncIDsBySession[sessionID];

@@ -234,24 +234,29 @@ export class ViewsIconPatch {
       if (!cv) return;
       const restoreRender = runtime.patch(cv, "renderItem", config.addonRef, (original) => (...args: unknown[]) => {
         const [index, selection, oldDiv, columns] = args as [number, unknown, HTMLElement | null, unknown];
-        const previousIcon = oldDiv?.querySelector<HTMLElement>(".cell-icon");
-        if (previousIcon) {
-          view._restoreIconNode(previousIcon);
-          view._iconNodeStates?.delete(previousIcon);
+        if (view._iconNodeStates?.size) {
+          const previousIcon = oldDiv?.querySelector<HTMLElement>(".cell-icon");
+          if (previousIcon && view._iconNodeStates.has(previousIcon)) {
+            view._restoreIconNode(previousIcon);
+            view._iconNodeStates.delete(previousIcon);
+          }
         }
         const div = original.call(cv, index, selection, oldDiv, columns) as HTMLElement | null;
         if (view._disposed || addon.data.alive === false) return div;
         const row = cv.getRow(index);
-        const isCitationCollection = view._isCitationCollection(row?.ref);
-        const iconNode = div?.querySelector<HTMLElement>(".cell-icon");
-        if (iconNode && isCitationCollection) {
-          view._rememberIconNode(iconNode);
-          iconNode.style.backgroundImage = `url(chrome://${config.addonRef}/content/icons/word.png)`;
-          iconNode.classList.remove("icon-search", "icon-collection");
-          iconNode.classList.add("icon-publications");
-        } else if (iconNode) {
-          view._restoreIconNode(iconNode);
-          view._iconNodeStates?.delete(iconNode);
+        const isCitationCollection = Boolean(row?.isCollection?.() || row?.type === "collection")
+          && view._isCitationCollection(row?.ref);
+        if (isCitationCollection) {
+          const iconNode = div?.querySelector<HTMLElement>(".cell-icon");
+          if (iconNode) {
+            view._rememberIconNode(iconNode);
+            iconNode.style.backgroundImage = `url(chrome://${config.addonRef}/content/icons/word.png)`;
+            iconNode.classList.remove("icon-search", "icon-collection");
+            iconNode.classList.add("icon-publications");
+          }
+        } else if (view._iconNodeStates?.size) {
+          const iconNode = div?.querySelector<HTMLElement>(".cell-icon");
+          if (iconNode && view._iconNodeStates.has(iconNode)) { view._restoreIconNode(iconNode); view._iconNodeStates.delete(iconNode); }
         }
         return div;
       });

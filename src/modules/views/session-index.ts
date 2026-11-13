@@ -23,6 +23,10 @@ export class ViewsSessionIndex {
     if (Number.isSafeInteger(revision) && this._index?.sessions === sessions && this._index.revision === revision) {
       return this._index;
     }
+    if (this._index?.sessions === sessions && this._index.byKey.size === 0 && this._index.byItem.size === 0
+      && Object.keys(sessions).length === 0) {
+      return this._index;
+    }
     const index: SessionIndex = { sessions, revision, byKey: new Map(), byItem: new Map() };
     for (const session of Object.values(sessions)) {
       if (!session || session.closing) continue;
@@ -84,6 +88,8 @@ export class ViewsSessionIndex {
       const host = Zotero as unknown as Host;
       const api = host.ZoteroCitation?.api || {};
       const index = this._getSessionIndex(api);
+      const itemSessions = index.byItem.get(numericID);
+      if (!itemSessions || itemSessions.length === 0) return "";
       const wordSessions = this._resolveSelectedCollectionSessions(index);
 
       if (wordSessions.size) {
