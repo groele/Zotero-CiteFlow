@@ -12,7 +12,7 @@
 
 [简体中文](README.md) · [English](README.en.md)
 
-[![当前版本](https://img.shields.io/badge/version-16.3.1-245ac7?style=flat-square)](https://github.com/groele/Zotero-CiteFlow/releases/tag/v16.3.1) · [下载 XPI](https://github.com/groele/Zotero-CiteFlow/releases/download/v16.3.1/zotero-citeflow-16.3.1.xpi) · [问题反馈](https://github.com/groele/Zotero-CiteFlow/issues)
+[![当前版本](https://img.shields.io/badge/version-16.3.2-245ac7?style=flat-square)](https://github.com/groele/Zotero-CiteFlow/releases/tag/v16.3.2) · [下载 XPI](https://github.com/groele/Zotero-CiteFlow/releases/download/v16.3.2/zotero-citeflow-16.3.2.xpi) · [问题反馈](https://github.com/groele/Zotero-CiteFlow/issues)
 
 ![Zotero 10.0–12.*](https://img.shields.io/badge/Zotero-10.0--12.*-2f855a?style=flat-square)
 ![License AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0--only-64748b?style=flat-square)
@@ -45,19 +45,19 @@
 
 ## 📦 安装与更新
 
-### 安装当前稳定版 (`v16.3.1`)
+### 安装当前稳定版 (`v16.3.2`)
 
-1. 前往 GitHub Releases 下载安装包 [**`zotero-citeflow-16.3.1.xpi`**](https://github.com/groele/Zotero-CiteFlow/releases/download/v16.3.1/zotero-citeflow-16.3.1.xpi)（版本 **16.3.1**）。**不要下载** GitHub 自动生成的 `Source code (zip)` 源码压缩包。
+1. 前往 GitHub Releases 下载安装包 [**`zotero-citeflow-16.3.2.xpi`**](https://github.com/groele/Zotero-CiteFlow/releases/download/v16.3.2/zotero-citeflow-16.3.2.xpi)（版本 **16.3.2**）。**不要下载** GitHub 自动生成的 `Source code (zip)` 源码压缩包。
 2. 打开 Zotero，进入菜单 **工具 → 插件／附加组件**（或 **Tools → Plugins/Add-ons**）。
 3. 点击右上角齿轮图标，选择 **从文件安装插件… (Install Add-on From File…)**，选中下载好的 `.xpi` 文件并按提示重启 Zotero。
 
-### 安装包完整性校验指纹 (`16.3.1`)
+### 安装包完整性校验指纹 (`16.3.2`)
 
 | 校验项 | 数值 |
 |---|---|
-| 安装包文件名 | `zotero-citeflow-16.3.1.xpi`（`98,761` 字节，20 个 ZIP 条目） |
-| SHA-256 | `58ED767983502BA75EBF70F60939A4340554E4251D07D27D569E379689C0ED35` |
-| SHA-512 | `1b0fbe2b6ae0a6a597e9e062660a2027e435e595aaa595029a42aa857ff8ca3144d61c43703d8e1b97271d51182cb7e70ec280e0e39f979b64964c6f0b48e960` |
+| 安装包文件名 | `zotero-citeflow-16.3.2.xpi`（`95,856` 字节，20 个 ZIP 条目） |
+| SHA-256 | `93039A659962692F65C28DAEB55701263C64EEFEB9BB3F084D52015C477D8E8F` |
+| SHA-512 | `73c6bc7c79d43565fe8816c763f8dcfb727cb84f0c307355d1acce251622cab4061ac22ca3289d86f6e077fa9a54f2f3a7b660e8401a1afc8c27d7d1a912cf87` |
 
 ### 旧版迁移与自动更新
 
@@ -226,13 +226,13 @@
 
 | 维度 | 说明 |
 |---|---|
-| **当前插件版本** | `16.3.1` |
+| **当前插件版本** | `16.3.2` |
 | **清单声明的 Zotero 兼容范围** | `10.0` 至 `12.*`（`manifest.json` & `update.json`） |
 | **编译与引擎架构** | TypeScript 严格模式（`tsconfig.json` `strict: true`），esbuild 目标 `firefox140` / Gecko `153+`，生产包保持未压缩可审计 (`minify: false`)，全面禁用 `Cu.import` / `Components.*` / `defaultIn` 等过时 API |
-| **`v16.3.1` 自动化验证** | • `tsc --noEmit`：0 错误<br>• `scripts/architecture-guard.mjs`：13/13 通过（37 个 TS 模块均 `<= 360` 行、零债务、`43` 组对称 FTL 键、`10` 处版本统一对齐 `v16.3.1`）<br>• 全套 Node 自动化测试 (`npm test`)：**93/93** 通过（含 `tests/citeflow-fixes.test.mjs` 6 项、`tests/enhancement-stability.test.mjs` 6 项、`citation-stability` 25 项、`citation-data` 13 项、`citation-word` 10 项及锁定的 `cite.ts` 守卫/SHA-256 核验等） |
-| **历史桌面端实机隔离验收（`v16.2.0`）** | `v16.2.0` 曾对 `dist/zotero-citeflow-16.2.0.xpi` 执行 `scripts/test-settings-native.ps1` 真实 **Zotero `10.0.8`** 隔离配置文件启动与设置页验收（`zh-CN` 40/40、`en-US` 40/40 通过）；`v16.3.1` 本轮未重跑桌面端 Zotero 实机隔离启动验收。 |
+| **`v16.3.2` 自动化验证** | • `tsc --noEmit`：0 错误<br>• `scripts/architecture-guard.mjs`：13/13 通过（38 个 TS 模块均 `<= 360` 行、零债务、`43` 组对称 FTL 键、`10` 处版本统一对齐 `v16.3.2`）<br>• 全套 Node 自动化测试 (`npm test`)：**93/93** 通过（含 `tests/citeflow-fixes.test.mjs` 6 项、`tests/enhancement-stability.test.mjs` 6 项、`citation-stability` 25 项、`citation-data` 13 项、`citation-word` 10 项及锁定的 `cite.ts` 守卫/SHA-256 核验等） |
+| **历史桌面端实机隔离验收（`v16.2.0`）** | `v16.2.0` 曾对 `dist/zotero-citeflow-16.2.0.xpi` 执行 `scripts/test-settings-native.ps1` 真实 **Zotero `10.0.8`** 隔离配置文件启动与设置页验收（`zh-CN` 40/40、`en-US` 40/40 通过）；`v16.3.2` 本轮未重跑桌面端 Zotero 实机隔离启动验收。 |
 | **历史 Word 真机物理基线** | Windows + Zotero `10.0.6` + Microsoft Word `16.0.20430` 曾完成真实普通条目拖拽插入可刷新 `ADDIN ZOTERO_ITEM CSL_CITATION` 域与非 Word 拖放零插入验收（记录于 [CORE-TECHNICAL-MAINTENANCE.md](CORE-TECHNICAL-MAINTENANCE.md)）。 |
-| **诚实未覆盖边界** | `v16.3.1` 本轮尚未在桌面环境中执行真机 Zotero 设置页冒烟，也尚未启动**双窗口物理 Microsoft Word（`WINWORD.EXE`）**执行实时焦点切换与实体 COM 插入联合实测；尚未实机认证 Zotero `11` / `12`、macOS Word、LibreOffice Writer 或用户主配置文件升级迁移。 |
+| **诚实未覆盖边界** | `v16.3.2` 本轮尚未在桌面环境中执行真机 Zotero 设置页冒烟，也尚未启动**双窗口物理 Microsoft Word（`WINWORD.EXE`）**执行实时焦点切换与实体 COM 插入联合实测；尚未实机认证 Zotero `11` / `12`、macOS Word、LibreOffice Writer 或用户主配置文件升级迁移。 |
 
 ---
 

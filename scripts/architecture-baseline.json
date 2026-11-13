@@ -1,11 +1,18 @@
 {
   "policy": "freeze-and-shrink",
   "maxSourceLines": 360,
-  "capturedAt": "2026-11-12",
+  "capturedAt": "2026-11-13",
   "debtCleared": true,
   "note": "Known §5.9 debt. Listed files may stay at or below the recorded line count, but must never grow; any other source file above 360 lines fails the guard. Remove an entry only after splitting that module below 360 lines. Every entry must still exist and must still exceed the ceiling - stale entries are rejected by the baseline integrity test.",
-  "lastReleasedVersion": "16.3.1",
+  "lastReleasedVersion": "16.3.2",
   "splitHistory": [
+    {
+      "version": "16.3.2",
+      "date": "2026-11-13",
+      "resolved": [
+        "Redesigned CiteFlow brand icon to pure-vector academic citation brackets framing a lightning bolt ([⚡]) across icon.svg, citeflow.svg, multi-resolution PNGs, and ICO assets"
+      ]
+    },
     {
       "version": "16.3.1",
       "date": "2026-11-12",

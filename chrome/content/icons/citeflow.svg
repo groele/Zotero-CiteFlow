@@ -1,30 +1,32 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" fill="none" role="img" aria-label="Zotero CiteFlow">
   <title>Zotero CiteFlow</title>
-  <desc>Circular Flow C mark symbolizing reference citation flows between Zotero and Word.</desc>
+  <desc>Academic citation brackets framing a lightning bolt symbolizing fast Word citation tracking and drag-and-drop citing.</desc>
   <defs>
-    <linearGradient id="cfBlueGrad" x1="26" y1="42" x2="106" y2="28" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#38bdf8" />
-      <stop offset="50%" stop-color="#0ea5e9" />
-      <stop offset="100%" stop-color="#2563eb" />
+    <linearGradient id="cfBracketLeft" x1="18" y1="22" x2="46" y2="106" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#22D3EE" />
+      <stop offset="50%" stop-color="#0EA5E9" />
+      <stop offset="100%" stop-color="#6366F1" />
     </linearGradient>
-    <linearGradient id="cfPurpleGrad" x1="34" y1="36" x2="46" y2="104" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#818cf8" />
-      <stop offset="50%" stop-color="#6366f1" />
-      <stop offset="100%" stop-color="#7c3aed" />
+    <linearGradient id="cfBracketRight" x1="82" y1="22" x2="110" y2="106" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="50%" stop-color="#3B82F6" />
+      <stop offset="100%" stop-color="#7C3AED" />
     </linearGradient>
-    <linearGradient id="cfOrangeGrad" x1="38" y1="90" x2="108" y2="86" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#ef4444" />
-      <stop offset="40%" stop-color="#f97316" />
-      <stop offset="80%" stop-color="#f59e0b" />
-      <stop offset="100%" stop-color="#fbbf24" />
+    <linearGradient id="cfBoltGrad" x1="46" y1="25" x2="84" y2="103" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FACC15" />
+      <stop offset="50%" stop-color="#F97316" />
+      <stop offset="100%" stop-color="#EF4444" />
     </linearGradient>
+    <filter id="cfSoftShadow" x="-18%" y="-18%" width="136%" height="136%">
+      <feDropShadow dx="0" dy="3" stdDeviation="3.2" flood-color="#0F172A" flood-opacity="0.2" />
+    </filter>
   </defs>
-  <g>
-    <!-- Left Pillar (Indigo / Purple) -->
-    <path d="M 40 36 C 27 42, 18 52, 18 65 C 18 85, 31 101, 50 107 C 56 109, 60 103, 55 97 C 45 90, 40 79, 40 65 C 40 53, 44 45, 48 40 C 50 37, 45 34, 40 36 Z" fill="url(#cfPurpleGrad)" />
-    <!-- Bottom Swoosh (Coral Red to Gold) -->
-    <path d="M 45 79 C 38 79, 36 87, 40 94 C 47 104, 58 110, 72 110 C 88 110, 102 99, 109 85 C 111 81, 107 78, 103 81 C 94 87, 84 90, 72 90 C 60 90, 53 85, 50 81 C 48.5 79.5, 47 79, 45 79 Z" fill="url(#cfOrangeGrad)" />
-    <!-- Top Arc (Sky Blue to Royal Blue) -->
-    <path d="M 27 46 C 23 45, 24 40, 28 36 C 38 23, 54 18, 71 18 C 87 18, 99 24, 106 32 C 110 36.5, 108 44, 101 44 C 95 44, 90 40, 84 38 C 78 36, 71 36, 63 36 C 50 36, 41 41, 35 45 C 32 47, 29 46.5, 27 46 Z" fill="url(#cfBlueGrad)" />
+  <g filter="url(#cfSoftShadow)">
+    <!-- Left Academic Citation Bracket [ -->
+    <path d="M 43 22 H 28 C 21 22, 18 26, 18 33 V 95 C 18 102, 21 106, 28 106 H 43" stroke="url(#cfBracketLeft)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" />
+    <!-- Right Academic Citation Bracket ] -->
+    <path d="M 85 22 H 100 C 107 22, 110 26, 110 33 V 95 C 110 102, 107 106, 100 106 H 85" stroke="url(#cfBracketRight)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" />
+    <!-- Center Citation Bolt -->
+    <path d="M 72 26 L 45 68 H 64 L 56 102 L 83 60 H 64 Z" fill="url(#cfBoltGrad)" stroke="url(#cfBoltGrad)" stroke-width="4" stroke-linejoin="round" />
   </g>
 </svg>

@@ -1,6 +1,6 @@
 {
   "name": "zotero-citeflow",
-  "version": "16.3.1",
+  "version": "16.3.2",
   "private": true,
   "license": "AGPL-3.0-only",
   "description": "Track Word citations and connect them to Zotero items.",

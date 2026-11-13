@@ -3939,8 +3939,8 @@
   var views_default = Views;
 
   // src/modules/preferences.ts
-  var buildVersion = true ? "16.3.1" : "";
-  var buildDate = true ? "2026-11-12" : "";
+  var buildVersion = true ? "16.3.2" : "";
+  var buildDate = true ? "2026-11-13" : "";
   var prefix = "extensions.zotero.zoterocitation.";
   var settings = [
     { id: "enable", key: "enable", defaultValue: true },
