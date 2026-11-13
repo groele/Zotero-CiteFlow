@@ -4,8 +4,17 @@
   "capturedAt": "2026-11-13",
   "debtCleared": true,
   "note": "Known §5.9 debt. Listed files may stay at or below the recorded line count, but must never grow; any other source file above 360 lines fails the guard. Remove an entry only after splitting that module below 360 lines. Every entry must still exist and must still exceed the ceiling - stale entries are rejected by the baseline integrity test.",
-  "lastReleasedVersion": "16.3.2",
+  "lastReleasedVersion": "17.0.0",
   "splitHistory": [
+    {
+      "version": "17.0.0",
+      "date": "2026-11-13",
+      "resolved": [
+        "Unified Major Release v17.0.0 across Zotero Flow suite",
+        "Verified all 38 TypeScript source modules <= 360 lines (max 359 lines, 0 debtCleared violations, 0 @ts-ignore/@ts-nocheck, 0 bare console.log)",
+        "Synchronized deterministic XPI build, SHA-512 update feed, and README integrity checksums at v17.0.0"
+      ]
+    },
     {
       "version": "16.3.2",
       "date": "2026-11-13",
