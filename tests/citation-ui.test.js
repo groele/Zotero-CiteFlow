@@ -56,7 +56,7 @@ const checks = `
   };
   const iconView = Object.create(Views.prototype);
   iconView._rememberIconNode(iconNode);
-  iconNode.style.backgroundImage = "url(chrome://zoterocitation/content/icons/word.png)";
+  iconNode.style.backgroundImage = "url(chrome://zoterocitation/content/icons/word.svg)";
   iconNode.classList.remove("icon-search");
   iconNode.classList.add("icon-publications");
   iconView.dispose();

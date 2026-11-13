@@ -12,7 +12,7 @@ Track Word citations and connect them to Zotero items.
 
 [简体中文](README.md) · [English](README.en.md)
 
-[![Release](https://img.shields.io/badge/version-16.2.2-245ac7?style=flat-square)](https://github.com/groele/Zotero-CiteFlow/releases/tag/v16.2.2) · [Download XPI](https://github.com/groele/Zotero-CiteFlow/releases/download/v16.2.2/zotero-citeflow-16.2.2.xpi) · [Report an issue](https://github.com/groele/Zotero-CiteFlow/issues)
+[![Release](https://img.shields.io/badge/version-16.3.0-245ac7?style=flat-square)](https://github.com/groele/Zotero-CiteFlow/releases/tag/v16.3.0) · [Download XPI](https://github.com/groele/Zotero-CiteFlow/releases/download/v16.3.0/zotero-citeflow-16.3.0.xpi) · [Report an issue](https://github.com/groele/Zotero-CiteFlow/issues)
 
 ![Zotero 10.0–12.*](https://img.shields.io/badge/Zotero-10.0--12.*-2f855a?style=flat-square)
 ![License AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0--only-64748b?style=flat-square)
@@ -45,17 +45,17 @@ When writing a thesis, journal manuscript, or multiple parallel reviews, writers
 
 ## 📦 Installation and Updates
 
-### Installing Release `v16.2.2`
+### Installing Release `v16.3.0`
 
-1. Download [**`zotero-citeflow-16.2.2.xpi`**](https://github.com/groele/Zotero-CiteFlow/releases/download/v16.2.2/zotero-citeflow-16.2.2.xpi) (add-on version **16.2.2**). Do **not** install GitHub’s `Source code (zip)` archive.
+1. Download [**`zotero-citeflow-16.3.0.xpi`**](https://github.com/groele/Zotero-CiteFlow/releases/download/v16.3.0/zotero-citeflow-16.3.0.xpi) (add-on version **16.3.0**). Do **not** install GitHub’s `Source code (zip)` archive.
 2. Open Zotero and navigate to **Tools → Plugins/Add-ons**.
 3. Open the gear menu in the top-right corner, choose **Install Add-on From File…**, select the downloaded `.xpi`, and restart Zotero when prompted.
 
-### Package Integrity Checksums (`16.2.2`)
+### Package Integrity Checksums (`16.3.0`)
 
 | Field | Value |
 |---|---|
-| Asset Filename | `zotero-citeflow-16.2.2.xpi` (`98,761` bytes, 20 ZIP entries) |
+| Asset Filename | `zotero-citeflow-16.3.0.xpi` (`98,761` bytes, 20 ZIP entries) |
 | SHA-256 | `58ED767983502BA75EBF70F60939A4340554E4251D07D27D569E379689C0ED35` |
 | SHA-512 | `1b0fbe2b6ae0a6a597e9e062660a2027e435e595aaa595029a42aa857ff8ca3144d61c43703d8e1b97271d51182cb7e70ec280e0e39f979b64964c6f0b48e960` |
 
@@ -216,13 +216,13 @@ Declared compatibility ranges and verified evidence are kept strictly distinct:
 
 | Layer | Status / Scope |
 |---|---|
-| **Current Add-on Version** | `16.2.2` |
+| **Current Add-on Version** | `16.3.0` |
 | **Declared Zotero Range** | `10.0` through `12.*` (`manifest.json` & `update.json`) |
 | **Runtime Target** | Strict TypeScript (`strict: true`), esbuild target `firefox140` / Gecko `153+`, unminified auditable bundles (`minify: false`), zero deprecated `Cu.import` / `Components.*` / `defaultIn` APIs |
-| **`v16.2.2` Automated Verification** | • `tsc --noEmit`: `0` errors<br>• `scripts/architecture-guard.mjs`: **13/13** passed (all 37 TS files in `src/` `<= 360` lines, zero debt, `43` symmetric FTL keys, `10` synced preferences, `10` version alignments at `v16.2.2`)<br>• Full test suite (`npm test`): **93/93** passed (`tests/citeflow-fixes.test.mjs` 6 cases, `tests/enhancement-stability.test.mjs` 6 cases, `citation-stability` 25, `citation-data` 13, `citation-word` 10, locked `cite.ts` guard & SHA-256 baseline, etc.) |
-| **Historical Isolated Desktop Acceptance (`v16.2.0`)** | `v16.2.0` previously ran [`scripts/test-settings-native.ps1`](scripts/test-settings-native.ps1) against `dist/zotero-citeflow-16.2.0.xpi` in real **Zotero `10.0.8`** isolated profiles (`zh-CN` 40/40, `en-US` 40/40 passed); `v16.2.2` did not re-run the desktop Zotero isolated launch smoke test. |
+| **`v16.3.0` Automated Verification** | • `tsc --noEmit`: `0` errors<br>• `scripts/architecture-guard.mjs`: **13/13** passed (all 37 TS files in `src/` `<= 360` lines, zero debt, `43` symmetric FTL keys, `10` synced preferences, `10` version alignments at `v16.3.0`)<br>• Full test suite (`npm test`): **93/93** passed (`tests/citeflow-fixes.test.mjs` 6 cases, `tests/enhancement-stability.test.mjs` 6 cases, `citation-stability` 25, `citation-data` 13, `citation-word` 10, locked `cite.ts` guard & SHA-256 baseline, etc.) |
+| **Historical Isolated Desktop Acceptance (`v16.2.0`)** | `v16.2.0` previously ran [`scripts/test-settings-native.ps1`](scripts/test-settings-native.ps1) against `dist/zotero-citeflow-16.2.0.xpi` in real **Zotero `10.0.8`** isolated profiles (`zh-CN` 40/40, `en-US` 40/40 passed); `v16.3.0` did not re-run the desktop Zotero isolated launch smoke test. |
 | **Historical Physical Word Baseline** | Windows + Zotero `10.0.6` + Microsoft Word `16.0.20430` physically verified regular-item drag insertion producing refreshable `ADDIN ZOTERO_ITEM CSL_CITATION` fields and zero insertions on Explorer drops ([CORE-TECHNICAL-MAINTENANCE.md](CORE-TECHNICAL-MAINTENANCE.md)). |
-| **Explicit Unverified Boundaries** | `v16.2.2` has not yet undergone a live desktop Zotero settings smoke re-run or live dual-window physical **Microsoft Word (`WINWORD.EXE`)** interactive focus-switching and COM insertion testing in this session, nor physical certification on Zotero `11` / `12`, macOS Word, WPS Writer, LibreOffice, or main-profile migration. |
+| **Explicit Unverified Boundaries** | `v16.3.0` has not yet undergone a live desktop Zotero settings smoke re-run or live dual-window physical **Microsoft Word (`WINWORD.EXE`)** interactive focus-switching and COM insertion testing in this session, nor physical certification on Zotero `11` / `12`, macOS Word, WPS Writer, LibreOffice, or main-profile migration. |
 
 ---
 

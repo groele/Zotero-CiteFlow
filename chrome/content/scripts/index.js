@@ -2262,18 +2262,26 @@
       extraIDs.sort((a, b) => a - b);
     }
     const itemsApi = typeof Zotero !== "undefined" ? Zotero?.Items : void 0;
-    const appendEntry = (id, prefix2) => {
-      const rawList = citationsByItemID?.[id];
-      const citations = Array.isArray(rawList) ? rawList.map((entry) => {
-        const text = entry?.properties?.plainCitation;
-        return typeof text === "string" ? text : "";
-      }).join("") : "";
-      const item = typeof itemsApi?.get === "function" ? itemsApi.get(id) : null;
-      const meta = item ? `${item.libraryID ?? ""}:${item.deleted === true ? 1 : 0}:${item.inTrash === true ? 1 : 0}` : "missing";
-      parts.push(`${prefix2}${id}${meta}${citations}`);
-    };
-    for (const id of sortedItemIDs) appendEntry(id, "");
-    for (const id of extraIDs) appendEntry(id, "+");
+    const getItem = typeof itemsApi?.get === "function" ? itemsApi.get.bind(itemsApi) : null;
+    for (let pass = 0; pass < 2; pass++) {
+      const list = pass === 0 ? sortedItemIDs : extraIDs;
+      const prefix2 = pass === 0 ? "" : "+";
+      for (let i = 0; i < list.length; i++) {
+        const id = list[i];
+        const rawList = citationsByItemID?.[id];
+        let citations = "";
+        if (Array.isArray(rawList) && rawList.length > 0) {
+          for (let j = 0; j < rawList.length; j++) {
+            const text = rawList[j]?.properties?.plainCitation;
+            if (j > 0) citations += "";
+            if (typeof text === "string") citations += text;
+          }
+        }
+        const item = getItem ? getItem(id) : null;
+        const meta = item ? `${item.libraryID ?? ""}:${item.deleted === true ? 1 : 0}:${item.inTrash === true ? 1 : 0}` : "missing";
+        parts.push(`${prefix2}${id}${meta}${citations}`);
+      }
+    }
     return parts.join("");
   }
   function collectChangedCitationItemIDs(oldData, newData) {
@@ -3461,6 +3469,118 @@
     }
   };
 
+  // src/modules/views/collection-order-helpers.ts
+  function isBottomVirtualRow(treeRow) {
+    if (!treeRow || typeof treeRow !== "object") return false;
+    const t = treeRow.type;
+    return t === "publications" || t === "duplicates" || t === "unfiled" || t === "retracted" || t === "trash" || Boolean(treeRow.isPublications?.() || treeRow.isDuplicates?.() || treeRow.isUnfiled?.() || treeRow.isRetracted?.() || treeRow.isTrash?.());
+  }
+  function compareCollectionNames(nameA, nameB) {
+    const a = String(nameA ?? ""), b = String(nameB ?? "");
+    return typeof Zotero?.localeCompare === "function" ? Zotero.localeCompare(a, b) : a.localeCompare(b);
+  }
+  function reorderCitationRowsInSlice(ctx, rows, startIndex, endIndex, targetLevel) {
+    if (!Array.isArray(rows) || startIndex < 0 || endIndex <= startIndex || endIndex > rows.length) return false;
+    const beforeBlocks = [], citationBlocks = [], afterBlocks = [];
+    let i = startIndex, reachedBottomVirtual = false;
+    while (i < endIndex) {
+      const head = rows[i], block = [head];
+      i += 1;
+      while (i < endIndex && (rows[i]?.level ?? targetLevel) > targetLevel) {
+        block.push(rows[i]);
+        i += 1;
+      }
+      const isCitation = Boolean((head?.isCollection?.() || head?.type === "collection") && ctx._isCitationCollection(head?.ref));
+      if (isCitation) citationBlocks.push(block);
+      else if (reachedBottomVirtual || ctx._isBottomVirtualRow(head)) {
+        reachedBottomVirtual = true;
+        afterBlocks.push(block);
+      } else beforeBlocks.push(block);
+    }
+    if (!citationBlocks.length) return false;
+    citationBlocks.sort((a, b) => ctx._compareCollectionNames(a[0]?.ref?.name, b[0]?.ref?.name));
+    const reordered = [...beforeBlocks.flat(), ...citationBlocks.flat(), ...afterBlocks.flat()];
+    if (reordered.length !== endIndex - startIndex) return false;
+    let changed = false;
+    for (let k = 0; k < reordered.length; k++) {
+      if (rows[startIndex + k] !== reordered[k]) {
+        changed = true;
+        break;
+      }
+    }
+    if (!changed) return false;
+    rows.splice(startIndex, endIndex - startIndex, ...reordered);
+    return true;
+  }
+  function reorderViewCollections(ctx, cv) {
+    const rows = cv?._rows;
+    if (!cv || !Array.isArray(rows) || !rows.length) return false;
+    const focusedID = cv.getRow?.(cv.selection?.focused)?.id;
+    const pivotID = cv.getRow?.(cv.selection?.pivot)?.id;
+    const selectedIDs = cv.selection?.selected instanceof Set ? [...cv.selection.selected].map((idx) => cv.getRow?.(idx)?.id).filter(Boolean) : [];
+    let anyChanged = false, i = 0;
+    while (i < rows.length) {
+      const row = rows[i];
+      const isLib = Boolean(row?.isLibrary?.(true) || row?.type === "library" || row?.type === "group");
+      if (isLib && (typeof cv.isContainerOpen !== "function" || cv.isContainerOpen(i))) {
+        const libLevel = typeof cv.getLevel === "function" ? cv.getLevel(i) : row.level ?? 0;
+        let endIndex = i + 1;
+        while (endIndex < rows.length) {
+          const nextLevel = typeof cv.getLevel === "function" ? cv.getLevel(endIndex) : rows[endIndex]?.level ?? 0;
+          if (nextLevel <= libLevel) break;
+          endIndex += 1;
+        }
+        if (ctx._reorderCitationRowsInSlice(rows, i + 1, endIndex, libLevel + 1)) anyChanged = true;
+        i = endIndex;
+      } else {
+        i += 1;
+      }
+    }
+    if (!anyChanged) return false;
+    cv._refreshRowMap?.();
+    if (cv.selection && cv._rowMap) {
+      if (focusedID && typeof cv._rowMap[focusedID] === "number") cv.selection.focused = cv._rowMap[focusedID];
+      if (pivotID && typeof cv._rowMap[pivotID] === "number") cv.selection.pivot = cv._rowMap[pivotID];
+      if (cv.selection.selected instanceof Set && selectedIDs.length) {
+        cv.selection.selected = new Set(selectedIDs.map((id) => cv._rowMap[id]).filter((idx) => typeof idx === "number"));
+      }
+    }
+    cv.tree?.invalidate?.();
+    return true;
+  }
+  function insertCitationRowAbovePublications(ctx, cv, col) {
+    const startRow = cv._rowMap?.["L" + col.libraryID];
+    if (startRow === void 0 || typeof cv.isContainerOpen === "function" && !cv.isContainerOpen(startRow)) return false;
+    const libLevel = typeof cv.getLevel === "function" ? cv.getLevel(startRow) : cv._rows?.[startRow]?.level ?? 0;
+    const level = libLevel + 1;
+    let beforeRow = startRow + 1;
+    if (typeof cv.isContainerEmpty !== "function" || !cv.isContainerEmpty(startRow)) {
+      for (let i = startRow + 1; i < (cv._rows?.length || 0); i++) {
+        const rowLevel = typeof cv.getLevel === "function" ? cv.getLevel(i) : cv._rows[i]?.level ?? 0;
+        if (rowLevel < level) {
+          beforeRow = i;
+          break;
+        }
+        if (rowLevel === level) {
+          const treeRow = cv.getRow(i);
+          if (ctx._isBottomVirtualRow(treeRow)) {
+            beforeRow = i;
+            break;
+          }
+          if ((treeRow?.isCollection?.() || treeRow?.type === "collection") && ctx._isCitationCollection(treeRow.ref) && ctx._compareCollectionNames(treeRow.ref?.name, col.name) > 0) {
+            beforeRow = i;
+            break;
+          }
+        }
+        beforeRow = i + 1;
+      }
+    }
+    if (typeof cv._includedInTree !== "function" || cv._includedInTree(col)) {
+      cv._addRow(new Zotero.CollectionTreeRow(cv, "collection", col, level), beforeRow);
+    }
+    return beforeRow;
+  }
+
   // src/modules/views/icon-patch.ts
   var TEMP_COLLECTION_RELATION2 = "dc:relation";
   var TEMP_COLLECTION_MARKERS = /* @__PURE__ */ new Set([
@@ -3483,67 +3603,28 @@
           return true;
         }
       }
+      if (this._nonCitationCollectionCache?.has(rowRef)) return false;
       try {
         const relations = rowRef.getRelationsByPredicate?.(TEMP_COLLECTION_RELATION2) || [];
         if (Array.isArray(relations) && relations.some((rel) => TEMP_COLLECTION_MARKERS.has(rel))) return true;
+        if (typeof rowRef.getRelationsByPredicate === "function") {
+          (this._nonCitationCollectionCache ??= /* @__PURE__ */ new WeakSet()).add(rowRef);
+        }
       } catch {
       }
       return false;
     }
-    /**
-     * Checks whether a CollectionTreeRow is a bottom virtual library row (starting at My Publications).
-     * @private
-     */
+    /** @private */
     _isBottomVirtualRow(treeRow) {
-      if (!treeRow || typeof treeRow !== "object") return false;
-      const t = treeRow.type;
-      return t === "publications" || t === "duplicates" || t === "unfiled" || t === "retracted" || t === "trash" || Boolean(treeRow.isPublications?.() || treeRow.isDuplicates?.() || treeRow.isUnfiled?.() || treeRow.isRetracted?.() || treeRow.isTrash?.());
+      return isBottomVirtualRow(treeRow);
     }
-    /**
-     * Compares two collection names using Zotero's locale collator.
-     * @private
-     */
+    /** @private */
     _compareCollectionNames(nameA, nameB) {
-      const a = String(nameA ?? ""), b = String(nameB ?? "");
-      return typeof Zotero?.localeCompare === "function" ? Zotero.localeCompare(a, b) : a.localeCompare(b);
+      return compareCollectionNames(nameA, nameB);
     }
-    /**
-     * Reorders CiteFlow temporary Word collection rows within a library slice so they appear
-     * after all regular user collections/searches and immediately above My Publications.
-     * @private
-     */
+    /** @private */
     _reorderCitationRowsInSlice(rows, startIndex, endIndex, targetLevel) {
-      if (!Array.isArray(rows) || startIndex < 0 || endIndex <= startIndex || endIndex > rows.length) return false;
-      const beforeBlocks = [], citationBlocks = [], afterBlocks = [];
-      let i = startIndex, reachedBottomVirtual = false;
-      while (i < endIndex) {
-        const head = rows[i], block = [head];
-        i += 1;
-        while (i < endIndex && (rows[i]?.level ?? targetLevel) > targetLevel) {
-          block.push(rows[i]);
-          i += 1;
-        }
-        const isCitation = Boolean((head?.isCollection?.() || head?.type === "collection") && this._isCitationCollection(head?.ref));
-        if (isCitation) citationBlocks.push(block);
-        else if (reachedBottomVirtual || this._isBottomVirtualRow(head)) {
-          reachedBottomVirtual = true;
-          afterBlocks.push(block);
-        } else beforeBlocks.push(block);
-      }
-      if (!citationBlocks.length) return false;
-      citationBlocks.sort((a, b) => this._compareCollectionNames(a[0]?.ref?.name, b[0]?.ref?.name));
-      const reordered = [...beforeBlocks.flat(), ...citationBlocks.flat(), ...afterBlocks.flat()];
-      if (reordered.length !== endIndex - startIndex) return false;
-      let changed = false;
-      for (let k = 0; k < reordered.length; k++) {
-        if (rows[startIndex + k] !== reordered[k]) {
-          changed = true;
-          break;
-        }
-      }
-      if (!changed) return false;
-      rows.splice(startIndex, endIndex - startIndex, ...reordered);
-      return true;
+      return reorderCitationRowsInSlice(this, rows, startIndex, endIndex, targetLevel);
     }
     /**
      * Enumerates all unique active collectionsView instances across main and detached windows.
@@ -3560,45 +3641,9 @@
       }
       return views;
     }
-    /**
-     * Reorders Word collections in a single collectionsView instance.
-     * @private
-     */
+    /** @private */
     _reorderViewCollections(cv) {
-      const rows = cv?._rows;
-      if (!cv || !Array.isArray(rows) || !rows.length) return false;
-      const focusedID = cv.getRow?.(cv.selection?.focused)?.id;
-      const pivotID = cv.getRow?.(cv.selection?.pivot)?.id;
-      const selectedIDs = cv.selection?.selected instanceof Set ? [...cv.selection.selected].map((idx) => cv.getRow?.(idx)?.id).filter(Boolean) : [];
-      let anyChanged = false, i = 0;
-      while (i < rows.length) {
-        const row = rows[i];
-        const isLib = Boolean(row?.isLibrary?.(true) || row?.type === "library" || row?.type === "group");
-        if (isLib && (typeof cv.isContainerOpen !== "function" || cv.isContainerOpen(i))) {
-          const libLevel = typeof cv.getLevel === "function" ? cv.getLevel(i) : row.level ?? 0;
-          let endIndex = i + 1;
-          while (endIndex < rows.length) {
-            const nextLevel = typeof cv.getLevel === "function" ? cv.getLevel(endIndex) : rows[endIndex]?.level ?? 0;
-            if (nextLevel <= libLevel) break;
-            endIndex += 1;
-          }
-          if (this._reorderCitationRowsInSlice(rows, i + 1, endIndex, libLevel + 1)) anyChanged = true;
-          i = endIndex;
-        } else {
-          i += 1;
-        }
-      }
-      if (!anyChanged) return false;
-      cv._refreshRowMap?.();
-      if (cv.selection && cv._rowMap) {
-        if (focusedID && typeof cv._rowMap[focusedID] === "number") cv.selection.focused = cv._rowMap[focusedID];
-        if (pivotID && typeof cv._rowMap[pivotID] === "number") cv.selection.pivot = cv._rowMap[pivotID];
-        if (cv.selection.selected instanceof Set && selectedIDs.length) {
-          cv.selection.selected = new Set(selectedIDs.map((id) => cv._rowMap[id]).filter((idx) => typeof idx === "number"));
-        }
-      }
-      cv.tree?.invalidate?.();
-      return true;
+      return reorderViewCollections(this, cv);
     }
     /**
      * Repositions active CiteFlow Word collection rows across all open views to sit right above My Publications.
@@ -3611,41 +3656,9 @@
       }
       return anyChanged;
     }
-    /**
-     * Inserts a CiteFlow temporary Word collection row immediately above My Publications in collectionsView.
-     * @private
-     */
+    /** @private */
     _insertCitationRowAbovePublications(cv, col) {
-      const startRow = cv._rowMap?.["L" + col.libraryID];
-      if (startRow === void 0 || typeof cv.isContainerOpen === "function" && !cv.isContainerOpen(startRow)) return false;
-      const libLevel = typeof cv.getLevel === "function" ? cv.getLevel(startRow) : cv._rows?.[startRow]?.level ?? 0;
-      const level = libLevel + 1;
-      let beforeRow = startRow + 1;
-      if (typeof cv.isContainerEmpty !== "function" || !cv.isContainerEmpty(startRow)) {
-        for (let i = startRow + 1; i < (cv._rows?.length || 0); i++) {
-          const rowLevel = typeof cv.getLevel === "function" ? cv.getLevel(i) : cv._rows[i]?.level ?? 0;
-          if (rowLevel < level) {
-            beforeRow = i;
-            break;
-          }
-          if (rowLevel === level) {
-            const treeRow = cv.getRow(i);
-            if (this._isBottomVirtualRow(treeRow)) {
-              beforeRow = i;
-              break;
-            }
-            if ((treeRow?.isCollection?.() || treeRow?.type === "collection") && this._isCitationCollection(treeRow.ref) && this._compareCollectionNames(treeRow.ref?.name, col.name) > 0) {
-              beforeRow = i;
-              break;
-            }
-          }
-          beforeRow = i + 1;
-        }
-      }
-      if (typeof cv._includedInTree !== "function" || cv._includedInTree(col)) {
-        cv._addRow(new Zotero.CollectionTreeRow(cv, "collection", col, level), beforeRow);
-      }
-      return beforeRow;
+      return insertCitationRowAbovePublications(this, cv, col);
     }
     /**
      * Patches collectionsView.renderItem, _expandRow, and _addSortedRow to display the Word icon
@@ -3673,7 +3686,7 @@
             const iconNode = div?.querySelector(".cell-icon");
             if (iconNode) {
               view._rememberIconNode(iconNode);
-              iconNode.style.backgroundImage = `url(chrome://${config.addonRef}/content/icons/word.png)`;
+              iconNode.style.backgroundImage = `url(chrome://${config.addonRef}/content/icons/word.svg)`;
               iconNode.classList.remove("icon-search", "icon-collection");
               iconNode.classList.add("icon-publications");
             }
@@ -3764,7 +3777,8 @@
      */
     _restoreIconNode(iconNode, state = this._iconNodeStates?.get(iconNode)) {
       if (!iconNode || !state) return;
-      if (String(iconNode.style?.backgroundImage || "").includes(`/content/icons/word.png`)) {
+      const bg = String(iconNode.style?.backgroundImage || "");
+      if (bg.includes("/content/icons/word.svg") || bg.includes("/content/icons/word.png")) {
         iconNode.style.backgroundImage = state.backgroundImage;
       }
       if (iconNode.classList) {
@@ -3925,7 +3939,7 @@
   var views_default = Views;
 
   // src/modules/preferences.ts
-  var buildVersion = true ? "16.2.2" : "";
+  var buildVersion = true ? "16.3.0" : "";
   var buildDate = true ? "2026-11-12" : "";
   var prefix = "extensions.zotero.zoterocitation.";
   var settings = [

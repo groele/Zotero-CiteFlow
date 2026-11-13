@@ -59,25 +59,31 @@ export function buildRefreshInputFingerprint(
   }
 
   const itemsApi = typeof Zotero !== "undefined" ? Zotero?.Items : undefined;
-  const appendEntry = (id: number, prefix: string): void => {
-    const rawList = citationsByItemID?.[id];
-    const citations = Array.isArray(rawList)
-      ? rawList.map(entry => {
-          const text = (entry as { properties?: { plainCitation?: unknown } })?.properties?.plainCitation;
-          return typeof text === "string" ? text : "";
-        }).join("\u001e")
-      : "";
-    const item = typeof itemsApi?.get === "function"
-      ? (itemsApi.get(id) as { libraryID?: number; deleted?: boolean; inTrash?: boolean } | null | undefined)
-      : null;
-    const meta = item
-      ? `${item.libraryID ?? ""}:${item.deleted === true ? 1 : 0}:${item.inTrash === true ? 1 : 0}`
-      : "missing";
-    parts.push(`${prefix}${id}\u001f${meta}\u001f${citations}`);
-  };
+  const getItem = typeof itemsApi?.get === "function" ? itemsApi.get.bind(itemsApi) : null;
 
-  for (const id of sortedItemIDs) appendEntry(id, "");
-  for (const id of extraIDs) appendEntry(id, "+");
+  for (let pass = 0; pass < 2; pass++) {
+    const list = pass === 0 ? sortedItemIDs : extraIDs;
+    const prefix = pass === 0 ? "" : "+";
+    for (let i = 0; i < list.length; i++) {
+      const id = list[i];
+      const rawList = citationsByItemID?.[id];
+      let citations = "";
+      if (Array.isArray(rawList) && rawList.length > 0) {
+        for (let j = 0; j < rawList.length; j++) {
+          const text = (rawList[j] as { properties?: { plainCitation?: unknown } })?.properties?.plainCitation;
+          if (j > 0) citations += "\u001e";
+          if (typeof text === "string") citations += text;
+        }
+      }
+      const item = getItem
+        ? (getItem(id) as { libraryID?: number; deleted?: boolean; inTrash?: boolean } | null | undefined)
+        : null;
+      const meta = item
+        ? `${item.libraryID ?? ""}:${item.deleted === true ? 1 : 0}:${item.inTrash === true ? 1 : 0}`
+        : "missing";
+      parts.push(`${prefix}${id}\u001f${meta}\u001f${citations}`);
+    }
+  }
   return parts.join("\u001d");
 }
 

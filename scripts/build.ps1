@@ -24,7 +24,7 @@ $runtimeFiles = @(
     'chrome/content/icons/icon-128.png',
     'chrome/content/icons/citeflow.svg',
     'chrome/content/icons/icon.svg',
-    'chrome/content/icons/word.png',
+    'chrome/content/icons/word.svg',
     'locale/en-US/zoterocitation-addon.ftl',
     'locale/zh-CN/zoterocitation-addon.ftl'
 )
