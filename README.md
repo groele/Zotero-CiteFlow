@@ -338,3 +338,6 @@ python scripts/release-tags.py --self-test
 - **二次开发致谢声明**：Zotero CiteFlow 基于 MuiseDestiny（Polygon）的开源插件 [zotero-citation](https://github.com/MuiseDestiny/zotero-citation) 二次开发并独立演进维护。上游作者版权、`AGPL-3.0-only` 义务及 [第三方组件声明](THIRD_PARTY.md) 继续有效；本项目并非上游项目或 Zotero 官方发布产品。
 - **开源许可**：[AGPL-3.0-only](LICENSE)。
 - Zotero、Microsoft Word 及相关第三方产品名称与商标归各自权利人所有。
+
+
+**致谢 / Acknowledgements：** 详细的上游作者、第三方项目贡献及版权归属请参见 [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md)。致谢不代替原许可证、版权行或发布包应包含的通知。
