@@ -328,3 +328,6 @@ Each add-on installs and updates independently; sharing the series name does not
 - **Secondary Development Notice**: Zotero CiteFlow is independently developed and maintained based on MuiseDestiny’s (Polygon) open-source add-on [zotero-citation](https://github.com/MuiseDestiny/zotero-citation). Upstream copyright, `AGPL-3.0-only` obligations, and [third-party notices](THIRD_PARTY.md) remain in full effect; this project is neither an upstream distribution nor an official Zotero release.
 - **License**: [AGPL-3.0-only](LICENSE).
 - Zotero, Microsoft Word, and third-party names, logos, and trademarks belong to their respective owners.
+
+
+**Acknowledgements and third-party rights:** See [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md) for upstream authorship and community credits, and [THIRD_PARTY.md](THIRD_PARTY.md) for license provenance and release verification. Credits do not replace the original license, copyright statements or distribution obligations.
