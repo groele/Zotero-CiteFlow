@@ -3,15 +3,15 @@
     "citeflow@groele": {
       "updates": [
         {
-          "update_link": "https://github.com/groele/Zotero-CiteFlow/releases/download/v17.0.0/zotero-citeflow-17.0.0.xpi",
-          "update_hash": "sha512:cae5f0000d2c2e64a936b60823ade38b4a11f79d525d307e38ddcfba7b484754433f0bcf8a05219c3504aeb5389a73c0904584b50cf1c24f60666c496451ab16",
-          "version": "17.0.0",
+          "version": "17.0.1",
           "applications": {
             "zotero": {
               "strict_max_version": "12.*",
               "strict_min_version": "10.0"
             }
-          }
+          },
+          "update_hash": "sha512:70cb21614ef84a6444aac9c143c2ce53ca976c02a5a5a47a7978227456f810670ebfc3408a8260a8d6e08f19b0dce72d1428cc4d795d013cae138ea7ef3e17aa",
+          "update_link": "https://github.com/groele/Zotero-CiteFlow/releases/download/v17.0.1/zotero-citeflow-17.0.1.xpi"
         }
       ]
     }

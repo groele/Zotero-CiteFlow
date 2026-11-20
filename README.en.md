@@ -12,7 +12,9 @@ Track Word citations and connect them to Zotero items.
 
 [简体中文](README.md) · [English](README.en.md)
 
-[![Release](https://img.shields.io/badge/version-17.0.0-245ac7?style=flat-square)](https://github.com/groele/Zotero-CiteFlow/releases/tag/v17.0.0) · [Download XPI](https://github.com/groele/Zotero-CiteFlow/releases/download/v17.0.0/zotero-citeflow-17.0.0.xpi) · [Report an issue](https://github.com/groele/Zotero-CiteFlow/issues)
+The local candidate is **17.0.1**. The download link and checksums below refer to the published **17.0.0** release.
+
+[![Local candidate](https://img.shields.io/badge/version-17.0.1-245ac7?style=flat-square)](#installation) · [Download XPI](https://github.com/groele/Zotero-CiteFlow/releases/download/v17.0.0/zotero-citeflow-17.0.0.xpi) · [Report an issue](https://github.com/groele/Zotero-CiteFlow/issues)
 
 ![Zotero 10.0–12.*](https://img.shields.io/badge/Zotero-10.0--12.*-2f855a?style=flat-square)
 ![License AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0--only-64748b?style=flat-square)

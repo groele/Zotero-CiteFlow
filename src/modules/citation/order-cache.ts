@@ -137,6 +137,7 @@ export class CitationOrderCache {
         .sort((a, b) => Number(a) - Number(b));
       const parts = [];
       const seenIDs = new Set<number>();
+      const trashedIDs = new Set<number>();
       const sortedItemIDs: number[] = [];
 
       for (const key of indexKeys) {
@@ -148,15 +149,21 @@ export class CitationOrderCache {
           if (!item) continue;
           const id = this._parseValidItemID(item.id);
           if (id === null) continue;
+          if (seenIDs.has(id)) {
+            values.push(id);
+            continue;
+          }
+          if (trashedIDs.has(id)) continue;
           const zotItem = (typeof Zotero !== "undefined" && typeof Zotero.Items?.get === "function"
             ? Zotero.Items.get(id)
             : null) as { deleted?: boolean; inTrash?: boolean } | null;
-          if (zotItem && (zotItem.deleted === true || zotItem.inTrash === true)) continue;
-          values.push(id);
-          if (!seenIDs.has(id)) {
-            seenIDs.add(id);
-            sortedItemIDs.push(id);
+          if (zotItem && (zotItem.deleted === true || zotItem.inTrash === true)) {
+            trashedIDs.add(id);
+            continue;
           }
+          values.push(id);
+          seenIDs.add(id);
+          sortedItemIDs.push(id);
         }
         parts.push(key + ":" + values.join(",") + ";");
       }

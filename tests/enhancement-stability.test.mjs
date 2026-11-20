@@ -7,6 +7,7 @@ import {
   buildRefreshInputFingerprint,
   collectChangedCitationItemIDs,
   commitAppliedSessionCitations,
+  mergePendingRefreshTarget,
   refreshItemsViewTargeted,
   updateSessionCitationsIfDirty
 } from "../src/modules/citation/refresh-helpers.ts";
@@ -437,4 +438,76 @@ test("Addon.api.citeItems shows throttled localized busy notice when drag citati
     if (prevZoteroPane === undefined) delete globalThis.ZoteroPane; else globalThis.ZoteroPane = prevZoteroPane;
     if (prevAddon === undefined) delete globalThis.addon; else globalThis.addon = prevAddon;
   }
+});
+
+test("one Word read supplies both snapshot indexes at the same revision", async () => {
+  const c = createTestCitation();
+  for (const previous of [{}, { citationsByItemID: { stale: [] } }, { citationsByIndex: { stale: {} } }]) {
+    let reads = 0;
+    const native = { ...previous, async updateFromDocument() {
+      reads++;
+      this.citationsByIndex = { 0: { citationItems: [{ id: 12 }] } };
+      this.citationsByItemID = { 12: [] };
+    } };
+    const snapshot = await c._readSessionCitationSnapshots(native);
+    assert.equal(reads, 1);
+    assert.equal(snapshot.citationsByItemID, native.citationsByItemID);
+    assert.equal(snapshot.citationsByIndex, native.citationsByIndex);
+  }
+});
+
+test("sorting repeated citations reads each item's current trash status once per pass", t => {
+  const c = createTestCitation();
+  let lookups = 0;
+  let trashed = true;
+  const previous = globalThis.Zotero;
+  t.after(() => { if (previous === undefined) delete globalThis.Zotero; else globalThis.Zotero = previous; });
+  globalThis.Zotero = { Items: { get(id) { lookups++; return { deleted: trashed && id === 7 }; } } };
+  const index = Object.fromEntries(Array.from({ length: 1000 }, (_, i) => [i, { citationItems: [{ id: 7 }, { id: 12 }] }]));
+  assert.deepEqual(c.getSortedItemIDs(index, "S"), [12]);
+  assert.equal(lookups, 2);
+  trashed = false;
+  assert.deepEqual(c.getSortedItemIDs(index, "S"), [7, 12]);
+  assert.equal(lookups, 4);
+});
+
+test("a late empty Word snapshot cannot clear a replacement session", async () => {
+  const c = createTestCitation();
+  c.sessions.S = {};
+  let resume;
+  c._readSessionCitationSnapshots = () => new Promise(resolve => { resume = resolve; });
+  let emptyReads = 0;
+  c._handleEmptyCitationSnapshot = () => { emptyReads++; };
+  const refresh = c.refreshSessionCitations("S", {});
+  c.sessions.S = {};
+  resume({ citationsByItemID: {}, citationsByIndex: {}, transientMismatch: false });
+  await refresh;
+  assert.equal(emptyReads, 0);
+});
+
+test("slow item tree refresh coalesces queued updates and caps the pending ID set", async t => {
+  const c = createTestCitation();
+  const timers = [];
+  t.mock.method(globalThis, "setTimeout", callback => timers.push(callback));
+  const previous = globalThis.Zotero;
+  t.after(() => { if (previous === undefined) delete globalThis.Zotero; else globalThis.Zotero = previous; });
+  let resume;
+  const batches = [];
+  const view = {
+    getSortFields: () => ["title"], getRowIndexByID: () => false,
+    tree: { invalidateRow() {} }, invalidateRowCache(ids) { batches.push(ids); },
+    refreshAndMaintainSelection: () => new Promise(resolve => { resume = resolve; })
+  };
+  globalThis.Zotero = { getMainWindows: () => [{ ZoteroPane: { itemsView: view } }] };
+  c.scheduleItemsViewRefresh("full");
+  const active = timers.shift()();
+  c.scheduleItemsViewRefresh([2, 3]);
+  c.scheduleItemsViewRefresh([3, 4]);
+  assert.equal(timers.length, 0);
+  resume();
+  await active;
+  assert.equal(timers.length, 1);
+  await timers.shift()();
+  assert.deepEqual(batches, [[2, 3, 4]]);
+  assert.equal(mergePendingRefreshTarget(null, Array.from({ length: 201 }, (_, i) => i + 1)), "full");
 });

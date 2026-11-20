@@ -1784,6 +1784,7 @@
         const indexKeys = Object.keys(citationsByIndex).filter((key) => this._isValidCitationIndexKey(key)).sort((a, b) => Number(a) - Number(b));
         const parts = [];
         const seenIDs = /* @__PURE__ */ new Set();
+        const trashedIDs = /* @__PURE__ */ new Set();
         const sortedItemIDs = [];
         for (const key of indexKeys) {
           const values = [];
@@ -1792,13 +1793,19 @@
             if (!item) continue;
             const id = this._parseValidItemID(item.id);
             if (id === null) continue;
-            const zotItem = typeof Zotero !== "undefined" && typeof Zotero.Items?.get === "function" ? Zotero.Items.get(id) : null;
-            if (zotItem && (zotItem.deleted === true || zotItem.inTrash === true)) continue;
-            values.push(id);
-            if (!seenIDs.has(id)) {
-              seenIDs.add(id);
-              sortedItemIDs.push(id);
+            if (seenIDs.has(id)) {
+              values.push(id);
+              continue;
             }
+            if (trashedIDs.has(id)) continue;
+            const zotItem = typeof Zotero !== "undefined" && typeof Zotero.Items?.get === "function" ? Zotero.Items.get(id) : null;
+            if (zotItem && (zotItem.deleted === true || zotItem.inTrash === true)) {
+              trashedIDs.add(id);
+              continue;
+            }
+            values.push(id);
+            seenIDs.add(id);
+            sortedItemIDs.push(id);
           }
           parts.push(key + ":" + values.join(",") + ";");
         }
@@ -2359,6 +2366,7 @@
     const next = current instanceof Set ? current : /* @__PURE__ */ new Set();
     for (const id of incoming) {
       if (Number.isSafeInteger(id) && id > 0) next.add(id);
+      if (next.size > MAX_TARGETED_ROW_INVALIDATIONS) return "full";
     }
     return next.size > 0 ? next : current instanceof Set ? current : null;
   }
@@ -2515,22 +2523,13 @@
         this._activeRefreshTasks.delete(task);
       }
     }
-    /**
-     * Reads citationsByItemID and citationsByIndex from the native Word session,
-     * retrying once on bidirectional torn-snapshot mismatch (index empty while itemMap non-empty, or vice versa).
-     * @param {object} targetSession - Native Word session
-     * @returns {Promise<{ citationsByItemID: object, citationsByIndex: object, transientMismatch: boolean }>}
-     * @private
-     */
+    /** Reads both indexes from the same Word update and retries a torn snapshot once. */
     async _readSessionCitationSnapshots(targetSession) {
       let citationsByItemID = targetSession.citationsByItemID;
       let citationsByIndex = targetSession.citationsByIndex;
-      if (!citationsByItemID || typeof citationsByItemID !== "object") {
+      if (!citationsByItemID || typeof citationsByItemID !== "object" || !citationsByIndex || typeof citationsByIndex !== "object") {
         await targetSession.updateFromDocument(0);
         citationsByItemID = targetSession.citationsByItemID || {};
-      }
-      if (!citationsByIndex || typeof citationsByIndex !== "object") {
-        await targetSession.updateFromDocument(0);
         citationsByIndex = targetSession.citationsByIndex || {};
       }
       const indexEmpty = Object.keys(citationsByIndex).length === 0;
@@ -2587,6 +2586,7 @@
     async _refreshSessionCitations(sessionID, session) {
       const perfStart = Date.now();
       if (this._listenerStopped || !this.sessions?.[sessionID] || this.sessions[sessionID].closing) return;
+      const trackedSession = this.sessions[sessionID];
       const targetSession = session || Zotero.Integration.sessions[sessionID];
       if (!targetSession) return;
       this._refreshStateBySession ??= /* @__PURE__ */ new WeakMap();
@@ -2612,6 +2612,7 @@
       refreshState.syncing = true;
       try {
         const { citationsByItemID, citationsByIndex, transientMismatch } = await this._readSessionCitationSnapshots(targetSession);
+        if (this._listenerStopped || trackedSession.closing || this.sessions[sessionID] !== trackedSession) return;
         if (transientMismatch) {
           this._emptyReadCountBySession[sessionID] = 0;
           this._scheduleSessionRefresh(sessionID, targetSession, 250);
@@ -2630,7 +2631,7 @@
         this.logError("Citation snapshot refresh failed", e);
       } finally {
         refreshState.syncing = false;
-        if (refreshState.pending) {
+        if (refreshState.pending && this.sessions[sessionID] === trackedSession) {
           refreshState.pending = false;
           this._scheduleSessionRefresh(sessionID, targetSession, this._minRefreshInterval);
         }
@@ -2643,30 +2644,31 @@
       const merged = mergePendingRefreshTarget(this._pendingItemsViewRefreshIDs, changedItemIDs);
       if (!merged) return;
       this._pendingItemsViewRefreshIDs = merged;
-      if (this._itemsViewRefreshTimer) return;
+      if (this._itemsViewRefreshTimer || this._itemsViewRefreshInFlight) return;
       this._itemsViewRefreshTimer = timers5.setTimeout(async () => {
         this._itemsViewRefreshTimer = null;
-        const target = this._pendingItemsViewRefreshIDs ?? "full";
+        const failed = this._failedItemsViewRefreshTarget;
+        const target = failed ? mergePendingRefreshTarget(
+          this._pendingItemsViewRefreshIDs,
+          failed instanceof Set ? [...failed] : "full"
+        ) : this._pendingItemsViewRefreshIDs ?? "full";
         this._pendingItemsViewRefreshIDs = null;
         if (this._listenerStopped) return;
         this._itemsViewRefreshInFlight = true;
         let ok = false;
         try {
           ok = await dispatchItemsViewRefresh(target, (message, error) => this.logError(message, error));
+        } catch (error) {
+          this.logError("Cannot enumerate citation views", error);
         } finally {
           this._itemsViewRefreshInFlight = false;
         }
-        if (!this._listenerStopped) markViewRefreshOutcome(this, target, ok);
+        if (this._listenerStopped) return;
+        markViewRefreshOutcome(this, target, ok);
+        if (this._pendingItemsViewRefreshIDs) this.scheduleItemsViewRefresh([]);
       }, this._itemsViewRefreshDebounceMs);
     }
-    /**
-     * Queues an asynchronous citation update with revision tracking.
-     * @param {string} sessionID - Session identifier
-     * @param {object} citationsByItemID - Citations indexed by item ID
-     * @param {number[]} sortedItemIDs - Sorted document item order
-     * @param {string} styleClass - Citation style class ("note" or "in-text")
-     * @returns {Promise<void>}
-     */
+    /** Queues a detached citation snapshot and applies only the latest revision. */
     async updateCitations(sessionID, citationsByItemID, sortedItemIDs, styleClass) {
       if (this._listenerStopped || !this.sessions?.[sessionID] || this.sessions[sessionID].closing) return;
       if (citationsByItemID && typeof citationsByItemID === "object") {
@@ -3939,8 +3941,8 @@
   var views_default = Views;
 
   // src/modules/preferences.ts
-  var buildVersion = true ? "17.0.0" : "";
-  var buildDate = true ? "2026-11-13" : "";
+  var buildVersion = true ? "17.0.1" : "";
+  var buildDate = true ? "2026-11-20" : "";
   var prefix = "extensions.zotero.zoterocitation.";
   var settings = [
     { id: "enable", key: "enable", defaultValue: true },

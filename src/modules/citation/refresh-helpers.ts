@@ -206,6 +206,7 @@ export function mergePendingRefreshTarget(
   const next = current instanceof Set ? current : new Set<number>();
   for (const id of incoming) {
     if (Number.isSafeInteger(id) && id > 0) next.add(id);
+    if (next.size > MAX_TARGETED_ROW_INVALIDATIONS) return "full";
   }
   return next.size > 0 ? next : (current instanceof Set ? current : null);
 }

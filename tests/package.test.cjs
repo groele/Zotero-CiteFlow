@@ -2,14 +2,13 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { createHash } = require('node:crypto');
 
 const root = path.join(__dirname, '..');
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
 const product = JSON.parse(fs.readFileSync(path.join(root, 'docs/brand/product.json'), 'utf8'));
-const isCandidateFeed = Boolean(process.env.CITEFLOW_UPDATE_MANIFEST);
 const updateManifestPath = process.env.CITEFLOW_UPDATE_MANIFEST || path.join(root, 'update.json');
 const updateManifest = JSON.parse(fs.readFileSync(updateManifestPath, 'utf8'));
-const isLocalCandidate = !isCandidateFeed && product.releaseStatus === 'candidate' && product.version === manifest.version;
 const runtimeFiles = [
   'bootstrap.js',
   'LICENSE',
@@ -55,14 +54,19 @@ test('manifest and bundled addon identity agree', () => {
   assert.match(bundle, /addonRef: "zoterocitation"/);
 });
 
-test('published update manifest remains separate from an unpublished local candidate', () => {
+test('local update metadata matches the verified build identity', () => {
   const update = updateManifest.addons[manifest.applications.zotero.id].updates[0];
   assert.match(update.version, /^\d+\.\d+\.\d+$/);
-  if (isLocalCandidate) assert.notEqual(update.version, manifest.version);
-  else assert.equal(update.version, manifest.version);
+  assert.equal(product.version, manifest.version);
+  assert.equal(update.version, manifest.version);
   assert.equal(update.update_link,
     `https://github.com/groele/Zotero-CiteFlow/releases/download/v${update.version}/zotero-citeflow-${update.version}.xpi`);
   assert.match(update.update_hash, /^sha512:[a-f0-9]{128}$/i);
+  const archive = path.join(path.dirname(process.env.CITEFLOW_UPDATE_MANIFEST || path.join(root, 'dist', 'update.json')), `zotero-citeflow-${manifest.version}.xpi`);
+  if (process.env.CITEFLOW_UPDATE_MANIFEST || fs.existsSync(archive)) {
+    const hash = createHash('sha512').update(fs.readFileSync(archive)).digest('hex');
+    assert.equal(update.update_hash, 'sha512:' + hash);
+  }
   assert.equal(update.applications.zotero.strict_min_version, '10.0');
   assert.equal(update.applications.zotero.strict_max_version, '12.*');
 });

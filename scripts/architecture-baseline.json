@@ -1,10 +1,10 @@
 {
   "policy": "freeze-and-shrink",
   "maxSourceLines": 360,
-  "capturedAt": "2026-11-13",
+  "capturedAt": "2026-11-20",
   "debtCleared": true,
   "note": "Known §5.9 debt. Listed files may stay at or below the recorded line count, but must never grow; any other source file above 360 lines fails the guard. Remove an entry only after splitting that module below 360 lines. Every entry must still exist and must still exceed the ceiling - stale entries are rejected by the baseline integrity test.",
-  "lastReleasedVersion": "17.0.0",
+  "lastReleasedVersion": "17.0.1",
   "splitHistory": [
     {
       "version": "17.0.0",

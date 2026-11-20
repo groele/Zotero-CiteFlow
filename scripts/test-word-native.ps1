@@ -116,9 +116,10 @@ try {
     Write-Output "Real Word acceptance passed: $($checks.Count) checks. $SessionRoot/word-results.json"
 } finally {
     if ($word) {
-        foreach ($doc in $documents.Values) { if ($doc.Path) { $doc.Save() }; $doc.Close(0) }
+        $discardChanges = 0
+        foreach ($doc in $documents.Values) { if ($doc.Path) { $doc.Save() }; $doc.Close([ref]$discardChanges) }
         if ($previousDocument) { $previousDocument.Activate() }
-        if (-not $UseRunningWord) { $word.Quit(0) }
+        if (-not $UseRunningWord) { $word.Quit([ref]$discardChanges) }
         [Runtime.InteropServices.Marshal]::FinalReleaseComObject($word)|Out-Null
     }
     [IO.File]::WriteAllText((Join-Path $SessionRoot 'word-results.json'), (@{ok=[bool]$passed;wordVersion='16.0';checks=@($checks.ToArray());scope='Native Zotero drag handlers plus real Word COM fields; no OS pointer automation'} | ConvertTo-Json -Depth 15))

@@ -85,23 +85,15 @@ export class CitationFormatting {
     }
   }
 
-  /**
-   * Reads citationsByItemID and citationsByIndex from the native Word session,
-   * retrying once on bidirectional torn-snapshot mismatch (index empty while itemMap non-empty, or vice versa).
-   * @param {object} targetSession - Native Word session
-   * @returns {Promise<{ citationsByItemID: object, citationsByIndex: object, transientMismatch: boolean }>}
-   * @private
-   */
+  /** Reads both indexes from the same Word update and retries a torn snapshot once. */
   async _readSessionCitationSnapshots(this: FormatContext, targetSession: NativeSession) {
     let citationsByItemID = targetSession.citationsByItemID;
     let citationsByIndex = targetSession.citationsByIndex;
 
-    if (!citationsByItemID || typeof citationsByItemID !== "object") {
+    if (!citationsByItemID || typeof citationsByItemID !== "object"
+      || !citationsByIndex || typeof citationsByIndex !== "object") {
       await targetSession.updateFromDocument(0);
       citationsByItemID = targetSession.citationsByItemID || {};
-    }
-    if (!citationsByIndex || typeof citationsByIndex !== "object") {
-      await targetSession.updateFromDocument(0);
       citationsByIndex = targetSession.citationsByIndex || {};
     }
 
@@ -161,6 +153,7 @@ export class CitationFormatting {
   async _refreshSessionCitations(this: FormatContext, sessionID: string, session?: NativeSession) {
     const perfStart = Date.now();
     if (this._listenerStopped || !this.sessions?.[sessionID] || this.sessions[sessionID].closing) return;
+    const trackedSession = this.sessions[sessionID];
     const targetSession = session || Zotero.Integration.sessions[sessionID];
     if (!targetSession) return;
 
@@ -188,6 +181,7 @@ export class CitationFormatting {
     refreshState.syncing = true;
     try {
       const { citationsByItemID, citationsByIndex, transientMismatch } = await this._readSessionCitationSnapshots(targetSession);
+      if (this._listenerStopped || trackedSession.closing || this.sessions[sessionID] !== trackedSession) return;
       if (transientMismatch) {
         this._emptyReadCountBySession[sessionID] = 0;
         this._scheduleSessionRefresh(sessionID, targetSession, 250);
@@ -209,7 +203,7 @@ export class CitationFormatting {
       this.logError("Citation snapshot refresh failed", e);
     } finally {
       refreshState.syncing = false;
-      if (refreshState.pending) {
+      if (refreshState.pending && this.sessions[sessionID] === trackedSession) {
         refreshState.pending = false;
         this._scheduleSessionRefresh(sessionID, targetSession, this._minRefreshInterval);
       }
@@ -223,31 +217,30 @@ export class CitationFormatting {
     const merged = mergePendingRefreshTarget(this._pendingItemsViewRefreshIDs, changedItemIDs);
     if (!merged) return;
     this._pendingItemsViewRefreshIDs = merged;
-    if (this._itemsViewRefreshTimer) return;
+    if (this._itemsViewRefreshTimer || this._itemsViewRefreshInFlight) return;
     this._itemsViewRefreshTimer = timers.setTimeout(async () => {
       this._itemsViewRefreshTimer = null;
-      const target = this._pendingItemsViewRefreshIDs ?? "full";
+      const failed = this._failedItemsViewRefreshTarget;
+      const target = failed ? mergePendingRefreshTarget(this._pendingItemsViewRefreshIDs,
+        failed instanceof Set ? [...failed] : "full") : this._pendingItemsViewRefreshIDs ?? "full";
       this._pendingItemsViewRefreshIDs = null;
       if (this._listenerStopped) return;
       this._itemsViewRefreshInFlight = true;
       let ok = false;
       try {
         ok = await dispatchItemsViewRefresh(target, (message, error) => this.logError(message, error));
+      } catch (error) {
+        this.logError("Cannot enumerate citation views", error);
       } finally {
         this._itemsViewRefreshInFlight = false;
       }
-      if (!this._listenerStopped) markViewRefreshOutcome(this, target, ok);
+      if (this._listenerStopped) return;
+      markViewRefreshOutcome(this, target, ok);
+      if (this._pendingItemsViewRefreshIDs) this.scheduleItemsViewRefresh([]);
     }, this._itemsViewRefreshDebounceMs);
   }
 
-  /**
-   * Queues an asynchronous citation update with revision tracking.
-   * @param {string} sessionID - Session identifier
-   * @param {object} citationsByItemID - Citations indexed by item ID
-   * @param {number[]} sortedItemIDs - Sorted document item order
-   * @param {string} styleClass - Citation style class ("note" or "in-text")
-   * @returns {Promise<void>}
-   */
+  /** Queues a detached citation snapshot and applies only the latest revision. */
   async updateCitations(this: FormatContext, sessionID: string, citationsByItemID: CitationMap, sortedItemIDs: number[], styleClass?: string) {
     if (this._listenerStopped || !this.sessions?.[sessionID] || this.sessions[sessionID].closing) return;
     if (citationsByItemID && typeof citationsByItemID === "object") {
